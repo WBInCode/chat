@@ -50,6 +50,7 @@ model User {
   totpSecret   String? // AES-256-GCM ciphertext, never plaintext
   totpEnabled  Boolean   @default(false)
   publicKey    String? // X25519 identity key, E2EE phase 2
+  deletedAt    DateTime? // account deletion: user row kept (anonymized) for referential integrity of past messages
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -58,6 +59,7 @@ model User {
   messages       Message[]
   sessions       Session[]
   recoveryCodes  RecoveryCode[]
+  dataExports    DataExport[]
 
   @@map("users")
 }
@@ -240,6 +242,29 @@ model RecoveryCode {
 
   @@index([userId])
   @@map("recovery_codes")
+}
+
+enum ExportStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+model DataExport {
+  id             String       @id @default(uuid())
+  orgId          String? // null = personal cross-org export ("/me/export")
+  requestedById  String
+  targetUserId   String
+  status         ExportStatus @default(PENDING)
+  key            String? // S3 object key of the finished zip
+  error          String?
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime
+
+  targetUser User @relation(fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([targetUserId])
+  @@map("data_exports")
 }
 
 model AuditLog {

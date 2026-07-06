@@ -76,7 +76,7 @@ export function AdminPanel() {
 
       <div className="glass flex-1 overflow-y-auto p-5">
         <Routes>
-          <Route path="members" element={<MembersTab orgId={activeOrgId} />} />
+          <Route path="members" element={<MembersTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
           <Route path="channels" element={<ChannelsTab orgId={activeOrgId} />} />
           <Route path="audit" element={<AuditTab orgId={activeOrgId} />} />
           <Route path="settings" element={<SettingsTab orgId={activeOrgId} />} />
@@ -89,9 +89,10 @@ export function AdminPanel() {
 }
 
 // ── Members ────────────────────────────────────────────────────────────
-function MembersTab({ orgId }: { orgId: string }) {
+function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole }) {
   const [members, setMembers] = useState<AdminMemberDto[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
   function reload() {
     void apiFetch<AdminMemberDto[]>(`/orgs/${orgId}/admin/members`)
@@ -122,6 +123,33 @@ function MembersTab({ orgId }: { orgId: string }) {
       reload();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Błąd deaktywacji");
+    }
+  }
+
+  async function requestExport(userId: string) {
+    setExportingId(userId);
+    try {
+      const created = await apiFetch<{ id: string; status: string; downloadUrl: string | null }>(
+        `/orgs/${orgId}/admin/members/${userId}/export`,
+        { method: "POST" }
+      );
+      const poll = setInterval(async () => {
+        const updated = await apiFetch<{ id: string; status: string; downloadUrl: string | null }>(
+          `/orgs/${orgId}/admin/exports/${created.id}`
+        );
+        if (updated.status !== "PENDING") {
+          clearInterval(poll);
+          setExportingId(null);
+          if (updated.status === "READY" && updated.downloadUrl) {
+            window.open(updated.downloadUrl, "_blank", "noopener");
+          } else {
+            setError("Eksport danych członka nie powiódł się");
+          }
+        }
+      }, 2000);
+    } catch (e) {
+      setExportingId(null);
+      setError(e instanceof ApiError ? e.message : "Błąd eksportu danych");
     }
   }
 
@@ -169,14 +197,26 @@ function MembersTab({ orgId }: { orgId: string }) {
               )}
             </td>
             <td className="text-right">
-              {m.role !== "OWNER" && (
-                <button
-                  onClick={() => toggleDeactivate(m.userId, !m.disabled)}
-                  className="rounded-lg px-2 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50"
-                >
-                  {m.disabled ? "Aktywuj" : "Deaktywuj"}
-                </button>
-              )}
+              <div className="flex justify-end gap-1">
+                {viewerRole === "OWNER" && (
+                  <button
+                    onClick={() => requestExport(m.userId)}
+                    disabled={exportingId === m.userId}
+                    className="rounded-lg px-2 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50"
+                    title="Eksportuj dane RODO tego członka"
+                  >
+                    {exportingId === m.userId ? "Eksport…" : "⬇ Eksport"}
+                  </button>
+                )}
+                {m.role !== "OWNER" && (
+                  <button
+                    onClick={() => toggleDeactivate(m.userId, !m.disabled)}
+                    className="rounded-lg px-2 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50"
+                  >
+                    {m.disabled ? "Aktywuj" : "Deaktywuj"}
+                  </button>
+                )}
+              </div>
             </td>
           </tr>
         ))}

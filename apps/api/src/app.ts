@@ -14,6 +14,8 @@ import searchRoutes from "./modules/search/routes.js";
 import fileRoutes from "./modules/files/routes.js";
 import embedRoutes from "./modules/embeds/routes.js";
 import adminRoutes from "./modules/admin/routes.js";
+import exportRoutes from "./modules/exports/routes.js";
+import accountRoutes from "./modules/account/routes.js";
 import wsGateway from "./ws/gateway.js";
 import { ensureBucket } from "./lib/s3.js";
 import { HttpError } from "./lib/authz.js";
@@ -21,6 +23,9 @@ import { ValidationError, sendError } from "./lib/validation.js";
 import { registerFileScanWorker } from "./workers/file-scan.worker.js";
 import { registerFilePreviewWorker } from "./workers/file-preview.worker.js";
 import { registerLinkUnfurlWorker } from "./workers/link-unfurl.worker.js";
+import { registerDataExportWorker } from "./workers/data-export.worker.js";
+import { registerRetentionPurgeWorker } from "./workers/retention-purge.worker.js";
+import { scheduleRetentionPurge } from "./lib/queue.js";
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -86,6 +91,8 @@ export async function buildApp() {
   await fastify.register(fileRoutes, { prefix: "/api/v1" });
   await fastify.register(embedRoutes, { prefix: "/api/v1" });
   await fastify.register(adminRoutes, { prefix: "/api/v1" });
+  await fastify.register(exportRoutes, { prefix: "/api/v1" });
+  await fastify.register(accountRoutes, { prefix: "/api/v1" });
   await fastify.register(wsGateway);
 
   // Skipped under NODE_ENV=test: integration tests don't depend on async
@@ -94,6 +101,9 @@ export async function buildApp() {
     registerFileScanWorker(fastify);
     registerFilePreviewWorker(fastify);
     registerLinkUnfurlWorker(fastify);
+    registerDataExportWorker(fastify);
+    registerRetentionPurgeWorker(fastify);
+    await scheduleRetentionPurge();
   }
 
   return fastify;

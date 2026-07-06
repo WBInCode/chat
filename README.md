@@ -68,6 +68,13 @@ packages/config  Bazowe tsconfig/eslint
   - [x] F2-5b — Zarządzanie wiadomościami: wątki (panel boczny, licznik odpowiedzi), edycja inline, cofanie wiadomości, reakcje emoji (10), wzmianki @user z autocomplete i podświetleniem, Ctrl+K, licznik znaków, stylowany scrollbar
   - [x] F2-6 — Panel HR/Admin: rola HR + macierz uprawnień `can()`, zarządzanie członkami (zmiana roli, deaktywacja z natychmiastowym revoke sesji), archiwizacja kanałów, audit log z hash-chain (tamper-evident), ustawienia organizacji (2FA wymuszone, retencja, domeny email), dashboard z histogramem
   - [ ] F2-7, F2-8 — patrz PLAN-FAZA2.md (eksport RODO, retencja automatyczna, dalsze doprecyzowania)
+- [ ] Faza 3 — ogólny update platformy: [PLAN-FAZA3.md](./PLAN-FAZA3.md)
+  - [x] F3-1 — Zgodność: eksport RODO, retencja automatyczna, usuwanie konta
+  - [ ] F3-2 — Powiadomienia: Web Push, preferencje, badge, digest
+  - [ ] F3-3 — Profil: awatary, status, prezencja away/DND, karta profilu
+  - [ ] F3-4 — UX: przypięte/zakładki, szkice, markdown, nawigacja, filtry wyszukiwania
+  - [ ] F3-5 — Ekosystem: JWKS, tokeny API, webhooks
+  - [ ] F3-6 — Jakość: E2E Playwright, /metrics, bundle
 
 ## Konta testowe (seed)
 

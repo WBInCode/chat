@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { TotpSettings } from "./TotpSettings.js";
 import { ThemeToggle } from "./ThemeToggle.js";
+import { DataPrivacySection } from "./DataPrivacySection.js";
 
 export function SettingsPage() {
   return (
@@ -19,6 +20,7 @@ export function SettingsPage() {
       </div>
       <div className="animate-float-in">
         <TotpSettings />
+        <DataPrivacySection />
       </div>
     </div>
   );
