@@ -71,7 +71,7 @@ packages/config  Bazowe tsconfig/eslint
 - [ ] Faza 3 — ogólny update platformy: [PLAN-FAZA3.md](./PLAN-FAZA3.md)
   - [x] F3-1 — Zgodność: eksport RODO, retencja automatyczna, usuwanie konta
   - [ ] F3-2 — Powiadomienia: Web Push, preferencje, badge, digest
-  - [ ] F3-3 — Profil: awatary ✅, status ✅ · pozostało: prezencja away/DND, karta profilu (popover)
+  - [x] F3-3 — Profil: awatary, status, prezencja away/DND, karta profilu
   - [ ] F3-4 — UX: przypięte/zakładki, szkice, markdown, nawigacja, filtry wyszukiwania
   - [ ] F3-5 — Ekosystem: JWKS, tokeny API, webhooks
   - [ ] F3-6 — Jakość: E2E Playwright, /metrics, bundle

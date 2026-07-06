@@ -9,7 +9,8 @@ export const WS_CLIENT_EVENTS = {
   ReactionToggle: "reaction:toggle",
   TypingStart: "typing:start",
   TypingStop: "typing:stop",
-  ReadMark: "read:mark"
+  ReadMark: "read:mark",
+  PresenceSet: "presence:set"
 } as const;
 
 export const WS_SERVER_EVENTS = {
@@ -50,6 +51,7 @@ export interface ClientToServerEvents {
     channelId: string;
     messageId: string;
   }) => void;
+  [WS_CLIENT_EVENTS.PresenceSet]: (payload: { status: "online" | "away" | "dnd" }) => void;
 }
 
 export interface ServerToClientEvents {

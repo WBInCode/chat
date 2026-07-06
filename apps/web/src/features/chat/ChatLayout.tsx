@@ -9,9 +9,12 @@ import { useAuthStore } from "../../stores/auth.js";
 import { useChatStore, type ChannelItem } from "../../stores/chat.js";
 import { MessageRow } from "./MessageRow.js";
 import { ThreadPanel } from "./ThreadPanel.js";
+import { ProfileCard } from "./ProfileCard.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
+import { PresenceToggle } from "../settings/PresenceToggle.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
+import { useIdlePresence } from "../../lib/idlePresence.js";
 
 interface OrgItem {
   id: string;
@@ -44,6 +47,20 @@ interface PendingAttachment {
   fileId: string | null;
 }
 
+/** Presence dot color per status — matches the legend in the sidebar. */
+function presenceDotClass(status: "online" | "away" | "dnd" | "offline" | undefined): string {
+  switch (status) {
+    case "online":
+      return "bg-[var(--accent-2)] presence-pulse";
+    case "away":
+      return "bg-[var(--warning)]";
+    case "dnd":
+      return "bg-[var(--danger)]";
+    default:
+      return "bg-[var(--border)]";
+  }
+}
+
 export function ChatLayout() {
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clear);
@@ -53,7 +70,7 @@ export function ChatLayout() {
     channels,
     messages,
     typingUsers,
-    onlineUsers,
+    presenceStatus,
     setActiveOrg,
     setActiveChannel,
     setChannels,
@@ -75,7 +92,9 @@ export function ChatLayout() {
 
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
   const [members, setMembers] = useState<MemberItem[]>([]);
+  const [profileCard, setProfileCard] = useState<{ userId: string; anchor: { x: number; y: number } } | null>(null);
   const avatarUrls = useAvatarStore((s) => s.urls);
+  useIdlePresence(user ? getSocket() : null);
   const [draft, setDraft] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
@@ -140,9 +159,7 @@ export function ChatLayout() {
     socket.on("typing:update", ({ channelId, userId, isTyping }) =>
       setTyping(channelId, userId, isTyping)
     );
-    socket.on("presence:update", ({ userId, status }) =>
-      setPresence(userId, status === "online")
-    );
+    socket.on("presence:update", ({ userId, status }) => setPresence(userId, status));
     socket.on("file:status", ({ channelId, fileId, status }) =>
       updateFileStatus(channelId, fileId, status)
     );
@@ -446,6 +463,7 @@ export function ChatLayout() {
             {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}
           </span>
           <div className="flex items-center gap-1">
+            <PresenceToggle />
             <ThemeToggle />
             <button
               onClick={handleLogout}
@@ -522,9 +540,7 @@ export function ChatLayout() {
                 <span className="relative shrink-0">
                   <Avatar userId={m.userId} displayName={m.displayName} url={avatarUrls[m.userId]} size={24} />
                   <span
-                    className={`absolute -bottom-0.5 -right-0.5 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-[var(--bg)] transition-colors duration-300 ${
-                      onlineUsers.has(m.userId) ? "bg-[var(--accent-2)] presence-pulse" : "bg-[var(--border)]"
-                    }`}
+                    className={`absolute -bottom-0.5 -right-0.5 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-[var(--bg)] transition-colors duration-300 ${presenceDotClass(presenceStatus[m.userId])}`}
                   />
                 </span>
                 {m.displayName}
@@ -679,6 +695,7 @@ export function ChatLayout() {
                         onDelete={handleDeleteMessage}
                         onReact={handleReact}
                         onOpenThread={setOpenThread}
+                        onOpenProfile={(userId, anchor) => setProfileCard({ userId, anchor })}
                       />
                     </div>
                   );
@@ -741,9 +758,7 @@ export function ChatLayout() {
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
                       >
                         <span
-                          className={`inline-block h-2 w-2 rounded-full ${
-                            onlineUsers.has(m.userId) ? "bg-[var(--accent-2)]" : "bg-[var(--border)]"
-                          }`}
+                          className={`inline-block h-2 w-2 rounded-full ${presenceDotClass(presenceStatus[m.userId])}`}
                         />
                         {m.displayName}
                       </button>
@@ -809,6 +824,15 @@ export function ChatLayout() {
           onEdit={handleEditMessage}
           onDelete={handleDeleteMessage}
           onReact={handleReact}
+        />
+      )}
+
+      {profileCard && activeOrgId && (
+        <ProfileCard
+          orgId={activeOrgId}
+          userId={profileCard.userId}
+          anchor={profileCard.anchor}
+          onClose={() => setProfileCard(null)}
         />
       )}
     </div>

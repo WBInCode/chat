@@ -86,11 +86,11 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
     return count <= maxPerTenSeconds;
   }
 
-  async function setPresence(userId: string, status: "online" | "offline") {
-    if (status === "online") {
-      await fastify.redis.set(`presence:${userId}`, "online", "EX", PRESENCE_TTL_SECONDS);
-    } else {
+  async function setPresence(userId: string, status: "online" | "away" | "dnd" | "offline") {
+    if (status === "offline") {
       await fastify.redis.del(`presence:${userId}`);
+    } else {
+      await fastify.redis.set(`presence:${userId}`, status, "EX", PRESENCE_TTL_SECONDS);
     }
     io.emit(WS_SERVER_EVENTS.PresenceUpdate, {
       userId,
@@ -211,6 +211,12 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
       } catch {
         // read-marking failures are non-critical; ignore
       }
+    });
+
+    socket.on(WS_CLIENT_EVENTS.PresenceSet, async (payload) => {
+      if (payload?.status !== "online" && payload?.status !== "away" && payload?.status !== "dnd") return;
+      if (!(await allowEvent(userId, "presence", 20))) return;
+      await setPresence(userId, payload.status);
     });
 
     socket.on("disconnect", async () => {

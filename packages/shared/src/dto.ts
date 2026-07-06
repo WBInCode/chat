@@ -61,7 +61,7 @@ export interface LinkEmbedDto {
 
 export interface PresenceDto {
   userId: string;
-  status: "online" | "away" | "offline";
+  status: "online" | "away" | "dnd" | "offline";
   lastSeenAt: string;
 }
 

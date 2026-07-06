@@ -17,7 +17,8 @@ interface ChatState {
   /** Messages per channel, oldest → newest. */
   messages: Record<string, MessageDto[]>;
   typingUsers: Record<string, Set<string>>;
-  onlineUsers: Set<string>;
+  /** Per-user presence status: online / away / dnd / offline (absent = never seen / offline). */
+  presenceStatus: Record<string, "online" | "away" | "dnd" | "offline">;
 
   setActiveOrg: (orgId: string | null) => void;
   setActiveChannel: (channelId: string | null) => void;
@@ -36,7 +37,7 @@ interface ChatState {
   openThreadId: string | null;
   setOpenThread: (messageId: string | null) => void;
   setTyping: (channelId: string, userId: string, isTyping: boolean) => void;
-  setPresence: (userId: string, online: boolean) => void;
+  setPresence: (userId: string, status: "online" | "away" | "dnd" | "offline") => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -45,7 +46,7 @@ export const useChatStore = create<ChatState>((set) => ({
   channels: [],
   messages: {},
   typingUsers: {},
-  onlineUsers: new Set(),
+  presenceStatus: {},
 
   setActiveOrg: (orgId) => set({ activeOrgId: orgId, activeChannelId: null, channels: [] }),
   setActiveChannel: (channelId) => set({ activeChannelId: channelId }),
@@ -168,11 +169,6 @@ export const useChatStore = create<ChatState>((set) => ({
       return { typingUsers: { ...s.typingUsers, [channelId]: current } };
     }),
 
-  setPresence: (userId, online) =>
-    set((s) => {
-      const next = new Set(s.onlineUsers);
-      if (online) next.add(userId);
-      else next.delete(userId);
-      return { onlineUsers: next };
-    })
+  setPresence: (userId, status) =>
+    set((s) => ({ presenceStatus: { ...s.presenceStatus, [userId]: status } }))
 }));

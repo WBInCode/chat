@@ -22,6 +22,7 @@ interface MessageRowProps {
   onDelete: (messageId: string) => void;
   onReact: (messageId: string, emoji: string) => void;
   onOpenThread?: (messageId: string) => void;
+  onOpenProfile?: (userId: string, anchor: { x: number; y: number }) => void;
   /** Hide the thread button inside a thread panel (no nesting). */
   inThread?: boolean;
 }
@@ -88,6 +89,7 @@ export function MessageRow({
   onDelete,
   onReact,
   onOpenThread,
+  onOpenProfile,
   inThread = false
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
@@ -107,10 +109,20 @@ export function MessageRow({
     <div className="group relative">
       {!grouped && (
         <div className="flex items-center gap-2">
-          <Avatar userId={m.authorId} displayName={authorName} url={avatarUrl} size={20} />
-          <span className={`text-sm font-semibold ${mine ? "text-[var(--accent)]" : ""}`}>
+          <button
+            type="button"
+            onClick={(e) => onOpenProfile?.(m.authorId, { x: e.clientX, y: e.clientY })}
+            className="shrink-0 rounded-full transition-transform hover:scale-105"
+          >
+            <Avatar userId={m.authorId} displayName={authorName} url={avatarUrl} size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => onOpenProfile?.(m.authorId, { x: e.clientX, y: e.clientY })}
+            className={`text-sm font-semibold hover:underline ${mine ? "text-[var(--accent)]" : ""}`}
+          >
             {authorName}
-          </span>
+          </button>
           <span
             className="text-xs text-[var(--text-dim)]"
             title={new Date(m.createdAt).toLocaleString("pl-PL")}

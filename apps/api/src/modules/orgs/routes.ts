@@ -1,9 +1,13 @@
 import type { FastifyInstance } from "fastify";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createOrgSchema, inviteSchema } from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
-import { assertOrgAdmin, assertOrgMember } from "../../lib/authz.js";
+import { assertOrgAdmin, assertOrgMember, notFound } from "../../lib/authz.js";
 import { generateRefreshToken, hashToken } from "../../lib/tokens.js";
 import { logAudit } from "../../lib/audit.js";
+import { s3 } from "../../lib/s3.js";
+import { env } from "../../config/env.js";
 
 export default async function orgRoutes(fastify: FastifyInstance) {
   // All org routes require authentication.
@@ -78,6 +82,36 @@ export default async function orgRoutes(fastify: FastifyInstance) {
       avatarUrl: m.user.avatarUrl,
       role: m.role
     }));
+  });
+
+  /** Profile card popover data for a fellow org member (role, job title, status, etc). */
+  fastify.get("/:orgId/members/:userId/profile", async (request) => {
+    const { orgId, userId } = request.params as { orgId: string; userId: string };
+    await assertOrgMember(fastify, request.user!.id, orgId);
+    const target = await fastify.prisma.membership.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      include: { user: true }
+    });
+    if (!target) notFound("Członek nie istnieje");
+
+    const avatarUrl = target.user.avatarKey
+      ? await getSignedUrl(s3, new GetObjectCommand({ Bucket: env.S3_BUCKET, Key: target.user.avatarKey }), {
+          expiresIn: 3600
+        })
+      : null;
+
+    return {
+      userId: target.user.id,
+      displayName: target.user.displayName,
+      email: target.user.email,
+      role: target.role,
+      jobTitle: target.user.jobTitle,
+      department: target.user.department,
+      phone: target.user.phone,
+      statusText: target.user.statusText,
+      statusEmoji: target.user.statusEmoji,
+      avatarUrl
+    };
   });
 
   /** Create a one-time invite (admin only). Token returned once, only hash stored. */
