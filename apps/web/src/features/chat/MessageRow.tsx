@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import type { MessageDto } from "@chatv2/shared";
 import { ALLOWED_REACTIONS } from "@chatv2/shared";
 import { FileAttachment } from "./FileAttachment.js";
 import { EmbedCard } from "./EmbedCard.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
+import { renderMarkdown } from "./markdown.js";
 
 interface MemberLite {
   userId: string;
@@ -29,57 +30,6 @@ interface MessageRowProps {
   isSaved?: boolean;
   /** Hide the thread button inside a thread panel (no nesting). */
   inThread?: boolean;
-}
-
-/**
- * Renders message content with @mention highlighting. Mentions are matched
- * against the actual member list (not a free regex), so "@random text"
- * without a matching user renders as plain text — no false positives.
- */
-export function renderContentWithMentions(
-  content: string,
-  members: MemberLite[],
-  currentUserId: string
-): ReactNode[] {
-  if (!content.includes("@")) return [content];
-
-  const sorted = [...members].sort((a, b) => b.displayName.length - a.displayName.length);
-  const nodes: ReactNode[] = [];
-  let rest = content;
-  let key = 0;
-
-  while (rest.length > 0) {
-    const at = rest.indexOf("@");
-    if (at === -1) {
-      nodes.push(rest);
-      break;
-    }
-    const match = sorted.find((m) =>
-      rest.slice(at + 1).toLowerCase().startsWith(m.displayName.toLowerCase())
-    );
-    if (!match) {
-      nodes.push(rest.slice(0, at + 1));
-      rest = rest.slice(at + 1);
-      continue;
-    }
-    if (at > 0) nodes.push(rest.slice(0, at));
-    const isMe = match.userId === currentUserId;
-    nodes.push(
-      <span
-        key={`m-${key++}`}
-        className={`rounded px-1 font-medium ${
-          isMe
-            ? "bg-[var(--warning)]/25 text-[var(--warning)]"
-            : "bg-[var(--accent)]/15 text-[var(--accent)]"
-        }`}
-      >
-        @{match.displayName}
-      </span>
-    );
-    rest = rest.slice(at + 1 + match.displayName.length);
-  }
-
-  return nodes;
 }
 
 export function MessageRow({
@@ -259,12 +209,12 @@ export function MessageRow({
         </p>
       ) : (
         m.content && (
-          <p className={`text-[13px] leading-relaxed ${isTemp ? "opacity-50" : ""}`}>
-            {renderContentWithMentions(m.content, members, currentUserId)}
+          <div className={`text-[13px] leading-relaxed ${isTemp ? "opacity-50" : ""}`}>
+            {renderMarkdown(m.content, members, currentUserId)}
             {m.editedAt && (
               <span className="ml-1 text-xs text-[var(--text-dim)]">(edytowano)</span>
             )}
-          </p>
+          </div>
         )
       )}
 
