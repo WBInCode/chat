@@ -26,6 +26,7 @@ function toDto(
     editedAt: Date | null;
     deletedAt: Date | null;
     createdAt: Date;
+    pinnedAt?: Date | null;
   },
   files?: FileDto[],
   embeds?: LinkEmbedDto[],
@@ -42,6 +43,7 @@ function toDto(
     parentId: m.parentId,
     editedAt: m.editedAt?.toISOString() ?? null,
     createdAt: m.createdAt.toISOString(),
+    pinnedAt: m.pinnedAt?.toISOString() ?? null,
     ...(files && files.length > 0 ? { files } : {}),
     ...(embeds && embeds.length > 0 ? { embeds } : {}),
     ...(reactions && reactions.length > 0 ? { reactions } : {}),
@@ -262,7 +264,87 @@ export function createMessageService(fastify: FastifyInstance) {
     });
   }
 
-  return { listMessages, listThread, sendMessage, editMessage, deleteMessage, markRead, toggleReaction };
+  /** Pin/unpin require channel-level ADMIN (moderator) role, same bar as deleting others' messages. */
+  async function setPinned(userId: string, messageId: string, pinned: boolean) {
+    const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
+    const membership = await assertChannelMember(fastify, userId, message.channelId);
+    if (membership.role !== "ADMIN") {
+      forbidden("Tylko administrator kanału może przypinać wiadomości");
+    }
+
+    const updated = await fastify.prisma.message.update({
+      where: { id: messageId },
+      data: pinned ? { pinnedAt: new Date(), pinnedBy: userId } : { pinnedAt: null, pinnedBy: null }
+    });
+
+    const filesByMessage = await files.listForMessages([messageId]);
+    return toDto(updated, filesByMessage.get(messageId));
+  }
+
+  async function listPinned(userId: string, channelId: string) {
+    await assertChannelMember(fastify, userId, channelId);
+    const pinned = await fastify.prisma.message.findMany({
+      where: { channelId, pinnedAt: { not: null }, deletedAt: null },
+      orderBy: { pinnedAt: "desc" }
+    });
+    const { filesBy, reactionsBy, repliesBy, embedsBy } = await hydrate(pinned);
+    return pinned.map((m) =>
+      toDto(m, filesBy.get(m.id), embedsBy.get(m.id), reactionsBy.get(m.id), repliesBy.get(m.id))
+    );
+  }
+
+  /** Personal bookmark, independent from pinning — any channel member can save any message they can see. */
+  async function toggleSaved(userId: string, messageId: string) {
+    const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
+    await assertChannelMember(fastify, userId, message.channelId);
+
+    const existing = await fastify.prisma.savedMessage.findUnique({
+      where: { userId_messageId: { userId, messageId } }
+    });
+    if (existing) {
+      await fastify.prisma.savedMessage.delete({ where: { id: existing.id } });
+      return { messageId, saved: false };
+    }
+    await fastify.prisma.savedMessage.create({ data: { userId, messageId } });
+    return { messageId, saved: true };
+  }
+
+  async function listSaved(userId: string) {
+    const saved = await fastify.prisma.savedMessage.findMany({
+      where: { userId },
+      include: { message: true },
+      orderBy: { createdAt: "desc" }
+    });
+    const messages = saved.map((s) => s.message).filter((m) => !m.deletedAt);
+    const { filesBy, reactionsBy, repliesBy, embedsBy } = await hydrate(messages);
+    const byId = new Map(messages.map((m) => [m.id, m]));
+
+    return saved
+      .filter((s) => byId.has(s.messageId))
+      .map((s) => {
+        const m = byId.get(s.messageId)!;
+        return {
+          savedAt: s.createdAt.toISOString(),
+          message: toDto(m, filesBy.get(m.id), embedsBy.get(m.id), reactionsBy.get(m.id), repliesBy.get(m.id))
+        };
+      });
+  }
+
+  return {
+    listMessages,
+    listThread,
+    sendMessage,
+    editMessage,
+    deleteMessage,
+    markRead,
+    toggleReaction,
+    setPinned,
+    listPinned,
+    toggleSaved,
+    listSaved
+  };
 }
 
 export type MessageService = ReturnType<typeof createMessageService>;

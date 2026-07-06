@@ -10,6 +10,7 @@ import { useChatStore, type ChannelItem } from "../../stores/chat.js";
 import { MessageRow } from "./MessageRow.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 import { ProfileCard } from "./ProfileCard.js";
+import { SavedPanel } from "./SavedPanel.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
 import { PresenceToggle } from "../settings/PresenceToggle.js";
 import { Avatar } from "../../components/Avatar.js";
@@ -94,6 +95,10 @@ export function ChatLayout() {
   const [members, setMembers] = useState<MemberItem[]>([]);
   const [profileCard, setProfileCard] = useState<{ userId: string; anchor: { x: number; y: number } } | null>(null);
   const avatarUrls = useAvatarStore((s) => s.urls);
+  const [pinnedMessages, setPinnedMessages] = useState<MessageDto[]>([]);
+  const [showPinnedList, setShowPinnedList] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   useIdlePresence(user ? getSocket() : null);
   const [draft, setDraft] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -216,6 +221,49 @@ export function ChatLayout() {
       clearUnread(activeChannelId);
     });
   }, [activeChannelId, setMessages, clearUnread]);
+
+  // ── pinned messages banner for the active channel ──────────────────────
+  useEffect(() => {
+    if (!activeChannelId) {
+      setPinnedMessages([]);
+      return;
+    }
+    void apiFetch<MessageDto[]>(`/channels/${activeChannelId}/pinned`).then(setPinnedMessages);
+  }, [activeChannelId]);
+
+  // ── which of the currently loaded messages the user has saved ─────────
+  useEffect(() => {
+    void apiFetch<{ message: MessageDto }[]>("/me/saved-messages").then((items) => {
+      setSavedIds(new Set(items.map((i) => i.message.id)));
+    });
+  }, []);
+
+  function handleTogglePin(messageId: string, pin: boolean) {
+    void apiFetch<MessageDto>(`/messages/${messageId}/pin`, { method: pin ? "POST" : "DELETE" }).then(
+      (updated) => {
+        updateMessage(updated);
+        if (activeChannelId) {
+          void apiFetch<MessageDto[]>(`/channels/${activeChannelId}/pinned`).then(setPinnedMessages);
+        }
+      }
+    );
+  }
+
+  function handleToggleSave(messageId: string) {
+    setSavedIds((prev) => {
+      const next = new Set(prev);
+      next.has(messageId) ? next.delete(messageId) : next.add(messageId);
+      return next;
+    });
+    void apiFetch(`/messages/${messageId}/save`, { method: "POST" }).catch(() => {
+      // revert optimistic toggle on failure
+      setSavedIds((prev) => {
+        const next = new Set(prev);
+        next.has(messageId) ? next.delete(messageId) : next.add(messageId);
+        return next;
+      });
+    });
+  }
 
   const channelMessages = useMemo(
     () => (activeChannelId ? (messages[activeChannelId] ?? []) : []),
@@ -475,6 +523,17 @@ export function ChatLayout() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
+          <button
+            onClick={() => setShowSaved((v) => !v)}
+            className={`mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors duration-150 ${
+              showSaved
+                ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                : "text-[var(--text)] hover:bg-[var(--border)]/50"
+            }`}
+          >
+            🔖 Zapisane {savedIds.size > 0 && `(${savedIds.size})`}
+          </button>
+
           <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
             Kanały
           </p>
@@ -586,17 +645,51 @@ export function ChatLayout() {
                 {activeChannel.type === "DM" ? "@" : activeChannel.type === "PRIVATE" ? "🔒" : "#"}{" "}
                 {activeChannel.name}
               </h1>
-              <form onSubmit={handleSearch} className="relative">
-                <input
-                  ref={searchInputRef}
-                  type="search"
-                  value={searchTerm}
-                  onChange={(e) => handleSearchInput(e.target.value)}
-                  placeholder="Szukaj wiadomości...  (Ctrl+K)"
-                  className="w-56 rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-1.5 text-xs outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
-                />
-              </form>
+              <div className="flex items-center gap-2">
+                {pinnedMessages.length > 0 && (
+                  <button
+                    onClick={() => setShowPinnedList((v) => !v)}
+                    className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-2.5 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40"
+                  >
+                    📌 {pinnedMessages.length}
+                  </button>
+                )}
+                <form onSubmit={handleSearch} className="relative">
+                  <input
+                    ref={searchInputRef}
+                    type="search"
+                    value={searchTerm}
+                    onChange={(e) => handleSearchInput(e.target.value)}
+                    placeholder="Szukaj wiadomości...  (Ctrl+K)"
+                    className="w-56 rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-1.5 text-xs outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
+                  />
+                </form>
+              </div>
             </header>
+
+            {showPinnedList && pinnedMessages.length > 0 && (
+              <div className="animate-slide-up max-h-48 space-y-2 overflow-y-auto border-b border-[var(--glass-border)] bg-[var(--glass)] px-4 py-2 backdrop-blur-sm">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--text-dim)]">
+                    Przypięte wiadomości ({pinnedMessages.length})
+                  </span>
+                  <button
+                    onClick={() => setShowPinnedList(false)}
+                    className="text-xs text-[var(--text-dim)] transition-colors hover:text-[var(--text)]"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {pinnedMessages.map((pm) => (
+                  <div key={pm.id} className="rounded-lg bg-[var(--border)]/30 px-2 py-1.5 text-sm">
+                    <span className="font-medium">
+                      {members.find((m) => m.userId === pm.authorId)?.displayName ?? "Nieznany"}:
+                    </span>{" "}
+                    {pm.content || <em className="text-[var(--text-dim)]">(wiadomość usunięta)</em>}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {searchResults !== null && (
               <div className="animate-slide-up border-b border-[var(--glass-border)] bg-[var(--glass)] px-4 py-2 backdrop-blur-sm">
@@ -696,6 +789,10 @@ export function ChatLayout() {
                         onReact={handleReact}
                         onOpenThread={setOpenThread}
                         onOpenProfile={(userId, anchor) => setProfileCard({ userId, anchor })}
+                        onToggleSave={handleToggleSave}
+                        onTogglePin={handleTogglePin}
+                        canPin={activeChannel?.myRole === "ADMIN"}
+                        isSaved={savedIds.has(m.id)}
                       />
                     </div>
                   );
@@ -824,6 +921,15 @@ export function ChatLayout() {
           onEdit={handleEditMessage}
           onDelete={handleDeleteMessage}
           onReact={handleReact}
+        />
+      )}
+
+      {showSaved && user && (
+        <SavedPanel
+          currentUserId={user.id}
+          members={members}
+          onClose={() => setShowSaved(false)}
+          onToggleSave={handleToggleSave}
         />
       )}
 

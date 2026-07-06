@@ -60,7 +60,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         createdBy: ch.createdBy,
         createdAt: ch.createdAt.toISOString(),
         lastReadAt: m.lastReadAt?.toISOString() ?? null,
-        unreadCount
+        unreadCount,
+        myRole: m.role
       };
     });
   });

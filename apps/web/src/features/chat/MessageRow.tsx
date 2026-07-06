@@ -23,6 +23,10 @@ interface MessageRowProps {
   onReact: (messageId: string, emoji: string) => void;
   onOpenThread?: (messageId: string) => void;
   onOpenProfile?: (userId: string, anchor: { x: number; y: number }) => void;
+  onToggleSave?: (messageId: string) => void;
+  onTogglePin?: (messageId: string, pin: boolean) => void;
+  canPin?: boolean;
+  isSaved?: boolean;
   /** Hide the thread button inside a thread panel (no nesting). */
   inThread?: boolean;
 }
@@ -90,6 +94,10 @@ export function MessageRow({
   onReact,
   onOpenThread,
   onOpenProfile,
+  onToggleSave,
+  onTogglePin,
+  canPin = false,
+  isSaved = false,
   inThread = false
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
@@ -132,6 +140,11 @@ export function MessageRow({
               minute: "2-digit"
             })}
           </span>
+          {m.pinnedAt && (
+            <span className="rounded bg-[var(--warning)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--warning)]">
+              📌 Przypięte
+            </span>
+          )}
         </div>
       )}
 
@@ -152,6 +165,24 @@ export function MessageRow({
               className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
             >
               💬
+            </button>
+          )}
+          {onToggleSave && (
+            <button
+              onClick={() => onToggleSave(m.id)}
+              title={isSaved ? "Usuń z zapisanych" : "Zapisz wiadomość"}
+              className={`rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50 ${isSaved ? "text-[var(--accent)]" : ""}`}
+            >
+              {isSaved ? "🔖" : "📑"}
+            </button>
+          )}
+          {canPin && onTogglePin && !inThread && (
+            <button
+              onClick={() => onTogglePin(m.id, !m.pinnedAt)}
+              title={m.pinnedAt ? "Odepnij" : "Przypnij do kanału"}
+              className={`rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50 ${m.pinnedAt ? "text-[var(--warning)]" : ""}`}
+            >
+              📌
             </button>
           )}
           {mine && (

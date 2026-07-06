@@ -8,6 +8,7 @@ export interface ChannelItem {
   name: string | null;
   createdAt: string;
   unreadCount?: number;
+  myRole?: "ADMIN" | "MEMBER";
 }
 
 interface ChatState {

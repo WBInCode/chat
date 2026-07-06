@@ -70,4 +70,34 @@ export default async function messageRoutes(fastify: FastifyInstance) {
     fastify.wsBroadcastDeletedMessage?.(result);
     return reply.status(204).send();
   });
+
+  /** Pin/unpin a message (channel-ADMIN only) — reuses the message:updated WS broadcast. */
+  fastify.post("/messages/:messageId/pin", async (request) => {
+    const { messageId } = request.params as { messageId: string };
+    const message = await service.setPinned(request.user!.id, messageId, true);
+    fastify.wsBroadcastUpdatedMessage?.(message);
+    return message;
+  });
+
+  fastify.delete("/messages/:messageId/pin", async (request) => {
+    const { messageId } = request.params as { messageId: string };
+    const message = await service.setPinned(request.user!.id, messageId, false);
+    fastify.wsBroadcastUpdatedMessage?.(message);
+    return message;
+  });
+
+  fastify.get("/channels/:channelId/pinned", async (request) => {
+    const { channelId } = request.params as { channelId: string };
+    return service.listPinned(request.user!.id, channelId);
+  });
+
+  /** Personal bookmark — independent of channel-level pinning. */
+  fastify.post("/messages/:messageId/save", async (request) => {
+    const { messageId } = request.params as { messageId: string };
+    return service.toggleSaved(request.user!.id, messageId);
+  });
+
+  fastify.get("/me/saved-messages", async (request) => {
+    return service.listSaved(request.user!.id);
+  });
 }

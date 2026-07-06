@@ -26,6 +26,7 @@ export interface ChannelDto {
   createdBy: string;
   createdAt: string;
   unreadCount?: number;
+  myRole?: "ADMIN" | "MEMBER";
 }
 
 export interface MessageDto {
@@ -42,6 +43,12 @@ export interface MessageDto {
   embeds?: LinkEmbedDto[];
   reactions?: ReactionGroupDto[];
   replyCount?: number;
+  pinnedAt?: string | null;
+}
+
+export interface SavedMessageDto {
+  savedAt: string;
+  message: MessageDto;
 }
 
 export interface ReactionGroupDto {

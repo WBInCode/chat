@@ -142,6 +142,8 @@ model Message {
   content     String
   contentType String    @default("text")
   parentId    String?
+  pinnedAt    DateTime?
+  pinnedBy    String?
   editedAt    DateTime?
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -151,10 +153,25 @@ model Message {
   files   File[]
   embeds  LinkEmbed[]
   reactions Reaction[]
+  savedBy SavedMessage[]
 
   @@index([channelId, createdAt])
   @@index([parentId])
+  @@index([channelId, pinnedAt])
   @@map("messages")
+}
+
+model SavedMessage {
+  id        String   @id @default(uuid())
+  userId    String
+  messageId String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([userId, createdAt])
+  @@map("saved_messages")
 }
 
 enum FileStatus {
