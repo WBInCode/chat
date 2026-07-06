@@ -1,0 +1,269 @@
+import type { FastifyInstance } from "fastify";
+import type { MessageDto, FileDto, LinkEmbedDto, ReactionGroupDto } from "@chatv2/shared";
+import { assertChannelMember, HttpError, forbidden, notFound } from "../../lib/authz.js";
+import { createFileService } from "../files/service.js";
+import { enqueueLinkUnfurl } from "../../lib/queue.js";
+
+// Only the first few links per message are unfurled — avoids a single
+// message with a wall of URLs fanning out into dozens of outbound
+// requests and embed cards.
+const MAX_LINKS_PER_MESSAGE = 3;
+const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
+
+function extractUrls(content: string): string[] {
+  const matches = content.match(URL_REGEX) ?? [];
+  return [...new Set(matches)].slice(0, MAX_LINKS_PER_MESSAGE);
+}
+
+function toDto(
+  m: {
+    id: string;
+    channelId: string;
+    authorId: string;
+    content: string;
+    contentType: string;
+    parentId: string | null;
+    editedAt: Date | null;
+    deletedAt: Date | null;
+    createdAt: Date;
+  },
+  files?: FileDto[],
+  embeds?: LinkEmbedDto[],
+  reactions?: ReactionGroupDto[],
+  replyCount?: number
+): MessageDto {
+  return {
+    id: m.id,
+    channelId: m.channelId,
+    authorId: m.authorId,
+    // Soft-deleted messages keep their slot but content is blanked out.
+    content: m.deletedAt ? "" : m.content,
+    contentType: m.contentType as MessageDto["contentType"],
+    parentId: m.parentId,
+    editedAt: m.editedAt?.toISOString() ?? null,
+    createdAt: m.createdAt.toISOString(),
+    ...(files && files.length > 0 ? { files } : {}),
+    ...(embeds && embeds.length > 0 ? { embeds } : {}),
+    ...(reactions && reactions.length > 0 ? { reactions } : {}),
+    ...(replyCount && replyCount > 0 ? { replyCount } : {})
+  };
+}
+
+export function createMessageService(fastify: FastifyInstance) {
+  const files = createFileService(fastify);
+
+  /** Groups raw reaction rows into per-emoji aggregates for the DTO. */
+  async function reactionsForMessages(messageIds: string[]): Promise<Map<string, ReactionGroupDto[]>> {
+    if (messageIds.length === 0) return new Map();
+    const rows = await fastify.prisma.reaction.findMany({
+      where: { messageId: { in: messageIds } },
+      orderBy: { createdAt: "asc" }
+    });
+    const map = new Map<string, Map<string, ReactionGroupDto>>();
+    for (const r of rows) {
+      const byEmoji = map.get(r.messageId) ?? new Map<string, ReactionGroupDto>();
+      const group = byEmoji.get(r.emoji) ?? { emoji: r.emoji, count: 0, userIds: [] };
+      group.count += 1;
+      group.userIds.push(r.userId);
+      byEmoji.set(r.emoji, group);
+      map.set(r.messageId, byEmoji);
+    }
+    const result = new Map<string, ReactionGroupDto[]>();
+    for (const [msgId, byEmoji] of map) result.set(msgId, [...byEmoji.values()]);
+    return result;
+  }
+
+  async function replyCounts(messageIds: string[]): Promise<Map<string, number>> {
+    if (messageIds.length === 0) return new Map();
+    const rows = await fastify.prisma.message.groupBy({
+      by: ["parentId"],
+      where: { parentId: { in: messageIds }, deletedAt: null },
+      _count: { _all: true }
+    });
+    return new Map(rows.map((r) => [r.parentId as string, r._count._all]));
+  }
+
+  async function hydrate(page: { id: string }[]) {
+    const ids = page.map((m) => m.id);
+    const [filesBy, reactionsBy, repliesBy, embedRows] = await Promise.all([
+      files.listForMessages(ids),
+      reactionsForMessages(ids),
+      replyCounts(ids),
+      fastify.prisma.linkEmbed.findMany({
+        where: { messageId: { in: ids } },
+        orderBy: { createdAt: "asc" }
+      })
+    ]);
+    const embedsBy = new Map<string, LinkEmbedDto[]>();
+    for (const e of embedRows) {
+      const list = embedsBy.get(e.messageId) ?? [];
+      list.push({
+        id: e.id,
+        url: e.url,
+        title: e.title,
+        description: e.description,
+        siteName: e.siteName,
+        hasImage: !!e.imageKey
+      });
+      embedsBy.set(e.messageId, list);
+    }
+    return { filesBy, reactionsBy, repliesBy, embedsBy };
+  }
+
+  async function listMessages(
+    userId: string,
+    channelId: string,
+    opts: { cursor?: string; limit: number }
+  ) {
+    await assertChannelMember(fastify, userId, channelId);
+
+    const messages = await fastify.prisma.message.findMany({
+      // Top-level only — thread replies live in the thread panel.
+      where: { channelId, parentId: null },
+      orderBy: { createdAt: "desc" },
+      take: opts.limit + 1,
+      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {})
+    });
+
+    const hasMore = messages.length > opts.limit;
+    const page = hasMore ? messages.slice(0, opts.limit) : messages;
+    const { filesBy, reactionsBy, repliesBy, embedsBy } = await hydrate(page);
+
+    return {
+      messages: page.map((m) =>
+        toDto(m, filesBy.get(m.id), embedsBy.get(m.id), reactionsBy.get(m.id), repliesBy.get(m.id))
+      ),
+      nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null
+    };
+  }
+
+  /** All replies of a thread, oldest first, incl. the parent message. */
+  async function listThread(userId: string, parentId: string) {
+    const parent = await fastify.prisma.message.findUnique({ where: { id: parentId } });
+    if (!parent || parent.deletedAt) notFound("Wiadomość nie istnieje");
+    await assertChannelMember(fastify, userId, parent.channelId);
+
+    const replies = await fastify.prisma.message.findMany({
+      where: { parentId, deletedAt: null },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const all = [parent, ...replies];
+    const { filesBy, reactionsBy, repliesBy, embedsBy } = await hydrate(all);
+
+    return {
+      parent: toDto(parent, filesBy.get(parent.id), embedsBy.get(parent.id), reactionsBy.get(parent.id), repliesBy.get(parent.id)),
+      replies: replies.map((m) =>
+        toDto(m, filesBy.get(m.id), embedsBy.get(m.id), reactionsBy.get(m.id))
+      )
+    };
+  }
+
+  async function sendMessage(
+    userId: string,
+    channelId: string,
+    content: string,
+    fileIds: string[] = [],
+    parentId?: string
+  ) {
+    await assertChannelMember(fastify, userId, channelId);
+
+    if (parentId) {
+      const parent = await fastify.prisma.message.findUnique({ where: { id: parentId } });
+      // Parent must exist in the SAME channel; also disallow nesting
+      // (replying to a reply attaches to the root — single-level threads).
+      if (!parent || parent.deletedAt || parent.channelId !== channelId) {
+        notFound("Wątek nie istnieje");
+      }
+      if (parent.parentId) parentId = parent.parentId;
+    }
+
+    const contentType = fileIds.length > 0 ? "file" : "text";
+    const message = await fastify.prisma.message.create({
+      data: { channelId, authorId: userId, content, contentType, parentId: parentId ?? null }
+    });
+
+    if (fileIds.length > 0) {
+      await files.attachToMessage(userId, fileIds, message.id, channelId);
+    }
+
+    for (const url of extractUrls(content)) {
+      await enqueueLinkUnfurl({ messageId: message.id, channelId, url });
+    }
+
+    const filesByMessage = await files.listForMessages([message.id]);
+    return toDto(message, filesByMessage.get(message.id));
+  }
+
+  /** Idempotent toggle: same user+emoji again removes the reaction. */
+  async function toggleReaction(userId: string, messageId: string, emoji: string) {
+    const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
+    await assertChannelMember(fastify, userId, message.channelId);
+
+    const existing = await fastify.prisma.reaction.findUnique({
+      where: { messageId_userId_emoji: { messageId, userId, emoji } }
+    });
+
+    if (existing) {
+      await fastify.prisma.reaction.delete({ where: { id: existing.id } });
+    } else {
+      await fastify.prisma.reaction.create({ data: { messageId, userId, emoji } });
+    }
+
+    const reactionsBy = await reactionsForMessages([messageId]);
+    return {
+      messageId,
+      channelId: message.channelId,
+      reactions: reactionsBy.get(messageId) ?? []
+    };
+  }
+
+  async function editMessage(userId: string, messageId: string, content: string) {
+    const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
+    await assertChannelMember(fastify, userId, message.channelId);
+    if (message.authorId !== userId) {
+      forbidden("Możesz edytować tylko własne wiadomości");
+    }
+
+    const updated = await fastify.prisma.message.update({
+      where: { id: messageId },
+      data: { content, editedAt: new Date() }
+    });
+
+    return toDto(updated);
+  }
+
+  async function deleteMessage(userId: string, messageId: string) {
+    const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
+    const membership = await assertChannelMember(fastify, userId, message.channelId);
+    if (message.authorId !== userId && membership.role !== "ADMIN") {
+      forbidden("Możesz usuwać tylko własne wiadomości");
+    }
+
+    await fastify.prisma.message.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date() }
+    });
+
+    return { messageId, channelId: message.channelId };
+  }
+
+  async function markRead(userId: string, channelId: string, messageId: string) {
+    await assertChannelMember(fastify, userId, channelId);
+    const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.channelId !== channelId) notFound("Wiadomość nie istnieje");
+
+    await fastify.prisma.channelMember.update({
+      where: { channelId_userId: { channelId, userId } },
+      data: { lastReadAt: message.createdAt }
+    });
+  }
+
+  return { listMessages, listThread, sendMessage, editMessage, deleteMessage, markRead, toggleReaction };
+}
+
+export type MessageService = ReturnType<typeof createMessageService>;
+export { HttpError };

@@ -1,0 +1,280 @@
+@import "tailwindcss";
+
+/* ── Design tokens ────────────────────────────────────────────────────── */
+:root {
+  --bg-base: #eef1f6;
+  --mesh-1: rgba(91, 124, 255, 0.16);
+  --mesh-2: rgba(46, 182, 122, 0.12);
+  --mesh-3: rgba(255, 138, 101, 0.1);
+
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-strong: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-highlight: rgba(255, 255, 255, 0.9);
+
+  --bg: var(--bg-base);
+  --surface: var(--glass);
+  --border: rgba(17, 24, 39, 0.08);
+  --text: #16181d;
+  --text-dim: #5d6675;
+  --accent: #5b7cff;
+  --accent-2: #2eb67d;
+  --danger: #e5484d;
+  --warning: #f5a623;
+
+  --shadow-glass: 0 8px 32px rgba(31, 41, 55, 0.1), 0 1px 0 rgba(255, 255, 255, 0.4) inset;
+  --radius-glass: 18px;
+}
+
+:root.dark {
+  --bg-base: #0a0d14;
+  --mesh-1: rgba(91, 124, 255, 0.14);
+  --mesh-2: rgba(124, 92, 255, 0.12);
+  --mesh-3: rgba(46, 182, 122, 0.08);
+
+  --glass: rgba(22, 27, 38, 0.55);
+  --glass-strong: rgba(22, 27, 38, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.06);
+
+  --bg: var(--bg-base);
+  --surface: var(--glass);
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e9ecf2;
+  --text-dim: #8a93a5;
+  --accent: #6e8bff;
+  --accent-2: #34c88a;
+  --danger: #ff6369;
+
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────── */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg-base);
+  background-image:
+    radial-gradient(ellipse 60% 50% at 15% 10%, var(--mesh-1), transparent),
+    radial-gradient(ellipse 55% 45% at 85% 20%, var(--mesh-2), transparent),
+    radial-gradient(ellipse 50% 60% at 50% 100%, var(--mesh-3), transparent);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family:
+    "Inter",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+/* Inputs inherit theme text color explicitly — without this, the UA
+   default (black) makes typed text invisible on dark glass surfaces. */
+input,
+textarea,
+select {
+  color: var(--text);
+  caret-color: var(--accent);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+/* ── Custom scrollbar (WebKit + Firefox) ─────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-dim) 35%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-dim) 30%, transparent);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-dim) 55%, transparent);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Liquid glass surfaces ────────────────────────────────────────────── */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-glass);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+.glass-strong {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-glass);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-strong {
+    background: var(--surface);
+  }
+}
+
+/* ── Animations ───────────────────────────────────────────────────────── */
+@keyframes float-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slide-up-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spring-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-2) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent-2) 0%, transparent);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes bounce-dot {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.animate-float-in {
+  animation: float-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-up {
+  animation: slide-up-fade 0.18s ease-out both;
+}
+
+.animate-spring-in {
+  animation: spring-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-modal-pop {
+  animation: modal-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-toast-in {
+  animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.presence-pulse {
+  animation: pulse-ring 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.typing-dot {
+  animation: bounce-dot 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* Sidebar active "pill" slides smoothly between items. */
+.nav-item {
+  position: relative;
+  transition: color 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+

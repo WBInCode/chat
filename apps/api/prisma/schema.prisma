@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  HR
+  MEMBER
+}
+
+enum ChannelType {
+  PUBLIC
+  PRIVATE
+  DM
+}
+
+enum ChannelRole {
+  ADMIN
+  MEMBER
+}
+
+model Organization {
+  id             String       @id @default(uuid())
+  name           String
+  slug           String       @unique
+  require2fa     Boolean      @default(false)
+  messageRetentionDays Int?   // null = keep forever
+  allowedEmailDomains  String? // comma-separated, null = any domain
+  createdAt      DateTime     @default(now())
+  members        Membership[]
+  channels       Channel[]
+  invites        Invite[]
+  auditLogs      AuditLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  displayName  String
+  avatarUrl    String?
+  totpSecret   String? // AES-256-GCM ciphertext, never plaintext
+  totpEnabled  Boolean   @default(false)
+  publicKey    String? // X25519 identity key, E2EE phase 2
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships    Membership[]
+  channelMembers ChannelMember[]
+  messages       Message[]
+  sessions       Session[]
+  recoveryCodes  RecoveryCode[]
+
+  @@map("users")
+}
+
+model Membership {
+  id          String    @id @default(uuid())
+  userId      String
+  orgId       String
+  role        OrgRole   @default(MEMBER)
+  disabledAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+  @@map("memberships")
+}
+
+model Invite {
+  id        String   @id @default(uuid())
+  orgId     String
+  email     String
+  role      OrgRole  @default(MEMBER)
+  tokenHash String   @unique
+  expiresAt DateTime
+  acceptedAt DateTime?
+  createdAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("invites")
+}
+
+model Channel {
+  id         String      @id @default(uuid())
+  orgId      String
+  type       ChannelType
+  name       String?
+  createdBy  String
+  archivedAt DateTime?
+  createdAt  DateTime    @default(now())
+
+  org     Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members ChannelMember[]
+  messages Message[]
+
+  @@index([orgId])
+  @@map("channels")
+}
+
+model ChannelMember {
+  id         String      @id @default(uuid())
+  channelId  String
+  userId     String
+  role       ChannelRole @default(MEMBER)
+  lastReadAt DateTime?
+  createdAt  DateTime    @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([userId])
+  @@map("channel_members")
+}
+
+model Message {
+  id          String    @id @default(uuid())
+  channelId   String
+  authorId    String
+  content     String
+  contentType String    @default("text")
+  parentId    String?
+  editedAt    DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  files   File[]
+  embeds  LinkEmbed[]
+  reactions Reaction[]
+
+  @@index([channelId, createdAt])
+  @@index([parentId])
+  @@map("messages")
+}
+
+enum FileStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+}
+
+model File {
+  id           String     @id @default(uuid())
+  orgId        String
+  channelId    String
+  uploaderId   String
+  messageId    String?
+  key          String     @unique
+  name         String
+  mimeType     String
+  size         Int
+  status       FileStatus @default(PENDING)
+  width        Int?
+  height       Int?
+  thumbKey     String?
+  previewKey   String?
+  previewStatus String    @default("NONE") // NONE | PENDING | READY | FAILED
+  createdAt    DateTime   @default(now())
+
+  message Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([channelId])
+  @@index([messageId])
+  @@map("files")
+}
+
+model LinkEmbed {
+  id          String   @id @default(uuid())
+  messageId   String
+  url         String
+  title       String?
+  description String?
+  imageKey    String?
+  siteName    String?
+  createdAt   DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("link_embeds")
+}
+
+model Reaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("reactions")
+}
+
+model Session {
+  id           String    @id @default(uuid())
+  userId       String
+  refreshHash  String    @unique
+  familyId     String // rotation family, revoked together on reuse detection
+  userAgent    String?
+  ip           String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("sessions")
+}
+
+model RecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  orgId     String
+  actorId   String?
+  action    String
+  meta      Json     @default("{}")
+  ip        String?
+  // Tamper-evident hash chain: prevHash links each entry to the previous
+  // one for this org, so a DB-level edit/delete breaks the chain visibly.
+  prevHash  String?
+  hash      String?
+  createdAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@map("audit_logs")
+}

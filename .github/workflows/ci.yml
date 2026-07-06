@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: chatv2
+          POSTGRES_PASSWORD: chatv2_test_password
+          POSTGRES_DB: chatv2_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chatv2"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://chatv2:chatv2_test_password@localhost:5432/chatv2_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      CORS_ORIGIN: http://localhost:5273
+      JWT_PRIVATE_KEY_PATH: ./keys/jwt_private.pem
+      JWT_PUBLIC_KEY_PATH: ./keys/jwt_public.pem
+      COOKIE_SECRET: ci-only-cookie-secret-not-for-production-use
+      FIELD_ENCRYPTION_KEY: ${{ secrets.CI_FIELD_ENCRYPTION_KEY || 'bm90LWZvci1wcm9kdWN0aW9uLWNpLW9ubHkta2V5ISEhIQ==' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies (high+)
+        run: pnpm audit --audit-level high
+        continue-on-error: true
+
+      - name: Generate JWT keys (CI only)
+        working-directory: apps/api
+        run: node scripts/generate-jwt-keys.mjs
+
+      - name: Prisma generate + migrate
+        working-directory: apps/api
+        run: |
+          pnpm prisma generate
+          pnpm prisma migrate deploy
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

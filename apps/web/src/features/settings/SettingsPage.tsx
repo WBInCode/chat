@@ -1,0 +1,25 @@
+import { Link } from "react-router-dom";
+import { TotpSettings } from "./TotpSettings.js";
+import { ThemeToggle } from "./ThemeToggle.js";
+
+export function SettingsPage() {
+  return (
+    <div className="mx-auto max-w-2xl p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Ustawienia</h1>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <Link
+            to="/"
+            className="text-sm text-[var(--accent)] transition-colors hover:underline"
+          >
+            ← Wróć do czatu
+          </Link>
+        </div>
+      </div>
+      <div className="animate-float-in">
+        <TotpSettings />
+      </div>
+    </div>
+  );
+}

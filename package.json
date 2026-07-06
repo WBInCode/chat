@@ -1,0 +1,23 @@
+{
+  "name": "chatv2",
+  "private": true,
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:migrate": "pnpm --filter @chatv2/api prisma migrate dev",
+    "db:generate": "pnpm --filter @chatv2/api prisma generate",
+    "db:studio": "pnpm --filter @chatv2/api prisma studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  }
+}
