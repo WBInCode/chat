@@ -66,7 +66,7 @@ export function DataPrivacySection() {
   }
 
   return (
-    <div className="glass-strong mt-6 space-y-4 p-6">
+    <div className="glass-strong space-y-4 p-6">
       <h2 className="text-base font-semibold text-[var(--text)]">Prywatność i dane (RODO)</h2>
 
       <div className="space-y-2">

@@ -8,3 +8,4 @@ export * from "./schemas/search.js";
 export * from "./schemas/file.js";
 export * from "./schemas/admin.js";
 export * from "./schemas/export.js";
+export * from "./schemas/profile.js";

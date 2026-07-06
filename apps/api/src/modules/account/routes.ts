@@ -1,9 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { deleteAccountSchema } from "@chatv2/shared";
 import { parseOrThrow } from "../../lib/validation.js";
 import { logAudit } from "../../lib/audit.js";
 import { revokeSession } from "../../plugins/auth-guard.js";
+import { s3 } from "../../lib/s3.js";
+import { env } from "../../config/env.js";
 
 /**
  * Self-service account deletion. Anonymizes the user row in place rather
@@ -22,6 +25,11 @@ export default async function accountRoutes(fastify: FastifyInstance) {
     const memberships = await fastify.prisma.membership.findMany({ where: { userId } });
     const sessions = await fastify.prisma.session.findMany({ where: { userId, revokedAt: null } });
 
+    const existing = await fastify.prisma.user.findUnique({ where: { id: userId }, select: { avatarKey: true } });
+    if (existing?.avatarKey) {
+      await s3.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key: existing.avatarKey })).catch(() => {});
+    }
+
     const anonEmail = `deleted-${userId}@deleted.local`;
     await fastify.prisma.user.update({
       where: { id: userId },
@@ -29,6 +37,12 @@ export default async function accountRoutes(fastify: FastifyInstance) {
         email: anonEmail,
         displayName: "Użytkownik usunięty",
         avatarUrl: null,
+        avatarKey: null,
+        jobTitle: null,
+        department: null,
+        phone: null,
+        statusText: null,
+        statusEmoji: null,
         passwordHash: randomBytes(32).toString("hex"), // unusable — login is now impossible
         totpSecret: null,
         totpEnabled: false,

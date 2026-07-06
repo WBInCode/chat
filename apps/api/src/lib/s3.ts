@@ -33,3 +33,11 @@ export function buildThumbKey(fileKey: string) {
 export function buildEmbedKey(id: string) {
   return `embeds/${id}`;
 }
+
+export function buildAvatarRawKey(userId: string, ext: string) {
+  return `avatars/raw/${userId}-${Date.now()}.${ext}`;
+}
+
+export function buildAvatarKey(userId: string) {
+  return `avatars/${userId}.webp`;
+}

@@ -10,6 +10,8 @@ import { useChatStore, type ChannelItem } from "../../stores/chat.js";
 import { MessageRow } from "./MessageRow.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
+import { Avatar } from "../../components/Avatar.js";
+import { useAvatarStore } from "../../stores/avatars.js";
 
 interface OrgItem {
   id: string;
@@ -73,6 +75,7 @@ export function ChatLayout() {
 
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
   const [members, setMembers] = useState<MemberItem[]>([]);
+  const avatarUrls = useAvatarStore((s) => s.urls);
   const [draft, setDraft] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
@@ -115,7 +118,10 @@ export function ChatLayout() {
       setChannels(data);
       if (data[0]) setActiveChannel(data[0].id);
     });
-    void apiFetch<MemberItem[]>(`/orgs/${activeOrgId}/members`).then(setMembers);
+    void apiFetch<MemberItem[]>(`/orgs/${activeOrgId}/members`).then((data) => {
+      setMembers(data);
+      useAvatarStore.getState().ensure(data.map((m) => m.userId));
+    });
   }, [activeOrgId, setChannels, setActiveChannel]);
 
   useEffect(() => {
@@ -513,11 +519,14 @@ export function ChatLayout() {
                 title={`Napisz do: ${m.displayName}`}
                 className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] transition-colors duration-150 hover:bg-[var(--border)]/50"
               >
-                <span
-                  className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${
-                    onlineUsers.has(m.userId) ? "bg-[var(--accent-2)] presence-pulse" : "bg-[var(--border)]"
-                  }`}
-                />
+                <span className="relative shrink-0">
+                  <Avatar userId={m.userId} displayName={m.displayName} url={avatarUrls[m.userId]} size={24} />
+                  <span
+                    className={`absolute -bottom-0.5 -right-0.5 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-[var(--bg)] transition-colors duration-300 ${
+                      onlineUsers.has(m.userId) ? "bg-[var(--accent-2)] presence-pulse" : "bg-[var(--border)]"
+                    }`}
+                  />
+                </span>
                 {m.displayName}
               </button>
             ))}

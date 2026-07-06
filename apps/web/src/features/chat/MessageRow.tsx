@@ -3,6 +3,8 @@ import type { MessageDto } from "@chatv2/shared";
 import { ALLOWED_REACTIONS } from "@chatv2/shared";
 import { FileAttachment } from "./FileAttachment.js";
 import { EmbedCard } from "./EmbedCard.js";
+import { Avatar } from "../../components/Avatar.js";
+import { useAvatarStore } from "../../stores/avatars.js";
 
 interface MemberLite {
   userId: string;
@@ -93,6 +95,7 @@ export function MessageRow({
   const [editValue, setEditValue] = useState(m.content);
   const isTemp = m.id.startsWith("temp-");
   const isDeleted = !m.content && !m.files?.length && m.contentType === "text";
+  const avatarUrl = useAvatarStore((s) => s.urls[m.authorId]);
 
   function submitEdit() {
     const v = editValue.trim();
@@ -103,7 +106,8 @@ export function MessageRow({
   return (
     <div className="group relative">
       {!grouped && (
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2">
+          <Avatar userId={m.authorId} displayName={authorName} url={avatarUrl} size={20} />
           <span className={`text-sm font-semibold ${mine ? "text-[var(--accent)]" : ""}`}>
             {authorName}
           </span>
