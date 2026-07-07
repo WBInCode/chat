@@ -1,6 +1,6 @@
 {
-  "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter @chatv2/shared build && pnpm --filter @chatv2/web build",
-  "outputDirectory": "apps/web/dist",
+  "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter @chatv2/shared build && cd apps/web && npx vite build --outDir ../../dist",
+  "outputDirectory": "dist",
   "installCommand": "echo skip",
   "framework": null,
   "rewrites": [
