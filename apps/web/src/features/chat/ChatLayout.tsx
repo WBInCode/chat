@@ -19,6 +19,7 @@ import { SchedulePicker } from "./SchedulePicker.js";
 import { CreatePollModal } from "./CreatePollModal.js";
 import { ReminderPicker } from "./ReminderPicker.js";
 import { UserStatusControl } from "../../components/UserStatusControl.js";
+import { SidebarSection } from "../../components/SidebarSection.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
@@ -791,21 +792,15 @@ export function ChatLayout() {
             <Icon icon={Bookmark} size={15} /> Zapisane {savedIds.size > 0 && `(${savedIds.size})`}
           </button>
 
-          <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
-            Kanały
-          </p>
           {channels.some((c) => c.favorite) && (
-            <>
-              <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--warning)]">
-                <Icon icon={Star} size={12} className="fill-current" /> Ulubione
-              </p>
+            <SidebarSection id="favorites" title="Ulubione">
               {channels
                 .filter((c) => c.favorite)
                 .map((c) => (
                   <button
                     key={`fav-${c.id}`}
                     onClick={() => setActiveChannel(c.id)}
-                    className={`nav-item mb-1 flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
+                    className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
                       c.id === activeChannelId
                         ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
                         : "text-[var(--text)] hover:bg-[var(--border)]/50"
@@ -821,95 +816,96 @@ export function ChatLayout() {
                     )}
                   </button>
                 ))}
-              <p className="mt-2 px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
-                Kanały
-              </p>
-            </>
+            </SidebarSection>
           )}
-          {channels
-            .filter((c) => c.type !== "DM")
-            .map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setActiveChannel(c.id)}
-                className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
-                  c.id === activeChannelId
-                    ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
-                    : c.muted
-                      ? "text-[var(--text-dim)] hover:bg-[var(--border)]/50"
-                      : "text-[var(--text)] hover:bg-[var(--border)]/50"
-                }`}
-              >
-                <span className="flex items-center gap-1">
-                  {c.type === "PRIVATE" ? "🔒" : "#"} {c.name} {c.muted && <Icon icon={BellOff} size={12} />}
-                  {draftChannels.has(c.id) && (
-                    <span className="text-[10px] italic text-[var(--text-dim)]">(szkic)</span>
+
+          <SidebarSection id="channels" title="Kanały">
+            {channels
+              .filter((c) => c.type !== "DM")
+              .map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setActiveChannel(c.id)}
+                  className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
+                    c.id === activeChannelId
+                      ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
+                      : c.muted
+                        ? "text-[var(--text-dim)] hover:bg-[var(--border)]/50"
+                        : "text-[var(--text)] hover:bg-[var(--border)]/50"
+                  }`}
+                >
+                  <span className="flex items-center gap-1">
+                    {c.type === "PRIVATE" ? "🔒" : "#"} {c.name} {c.muted && <Icon icon={BellOff} size={12} />}
+                    {draftChannels.has(c.id) && (
+                      <span className="text-[10px] italic text-[var(--text-dim)]">(szkic)</span>
+                    )}
+                  </span>
+                  {(c.unreadCount ?? 0) > 0 && !c.muted && (
+                    <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
+                      {c.unreadCount}
+                    </span>
                   )}
-                </span>
-                {(c.unreadCount ?? 0) > 0 && !c.muted && (
-                  <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
-                    {c.unreadCount}
-                  </span>
-                )}
-              </button>
-            ))}
+                </button>
+              ))}
+          </SidebarSection>
 
-          <div className="mt-4 flex items-center justify-between px-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
-              Wiadomości bezpośrednie
-            </p>
-            <button
-              onClick={() => setShowGroupDmPicker(true)}
-              title="Nowa grupa"
-              className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)]"
-            >
-              + Grupa
-            </button>
-          </div>
-          {channels
-            .filter((c) => c.type === "DM")
-            .map((c) => (
+          <SidebarSection
+            id="dms"
+            title="Wiadomości bezpośrednie"
+            action={
               <button
-                key={c.id}
-                onClick={() => setActiveChannel(c.id)}
-                className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
-                  c.id === activeChannelId
-                    ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
-                    : "text-[var(--text)] hover:bg-[var(--border)]/50"
-                }`}
+                onClick={() => setShowGroupDmPicker(true)}
+                title="Nowa grupa"
+                className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)]"
               >
-                <span>
-                  @ {c.name} {c.muted && <Icon icon={BellOff} size={12} />}
-                </span>
-                {(c.unreadCount ?? 0) > 0 && !c.muted && (
-                  <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
-                    {c.unreadCount}
+                + Grupa
+              </button>
+            }
+          >
+            {channels
+              .filter((c) => c.type === "DM")
+              .map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setActiveChannel(c.id)}
+                  className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
+                    c.id === activeChannelId
+                      ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
+                      : "text-[var(--text)] hover:bg-[var(--border)]/50"
+                  }`}
+                >
+                  <span>
+                    @ {c.name} {c.muted && <Icon icon={BellOff} size={12} />}
                   </span>
-                )}
-              </button>
-            ))}
+                  {(c.unreadCount ?? 0) > 0 && !c.muted && (
+                    <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
+                      {c.unreadCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+          </SidebarSection>
 
-          <p className="mt-4 px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
-            Zespół
-          </p>
-          {members
-            .filter((m) => m.userId !== user?.id)
-            .map((m) => (
-              <button
-                key={m.userId}
-                onClick={() => void handleStartDm(m.userId)}
-                title={`Napisz do: ${m.displayName}`}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] transition-colors duration-150 hover:bg-[var(--border)]/50"
-              >
-                <span className="relative shrink-0">
-                  <Avatar userId={m.userId} displayName={m.displayName} url={avatarUrls[m.userId]} size={24} />
-                  <span
-                    className={`absolute -bottom-0.5 -right-0.5 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-[var(--bg)] transition-colors duration-300 ${presenceDotClass(presenceStatus[m.userId])}`}
-                  />
-                </span>
-                {m.displayName}
+          <SidebarSection id="team" title="Zespół">
+            {members
+              .filter((m) => m.userId !== user?.id)
+              .map((m) => (
+                <button
+                  key={m.userId}
+                  onClick={() => void handleStartDm(m.userId)}
+                  title={`Napisz do: ${m.displayName}`}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] transition-colors duration-150 hover:bg-[var(--border)]/50"
+                >
+                  <span className="relative shrink-0">
+                    <Avatar userId={m.userId} displayName={m.displayName} url={avatarUrls[m.userId]} size={24} />
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-[var(--bg)] transition-colors duration-300 ${presenceDotClass(presenceStatus[m.userId])}`}
+                    />
+                  </span>
+                  {m.displayName}
               </button>
             ))}
+          </SidebarSection>
         </div>
 
         <div className="border-t border-[var(--glass-border)] p-2">
