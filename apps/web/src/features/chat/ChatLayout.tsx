@@ -11,6 +11,7 @@ import { MessageRow } from "./MessageRow.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 import { ProfileCard } from "./ProfileCard.js";
 import { SavedPanel } from "./SavedPanel.js";
+import { ForwardPicker } from "./ForwardPicker.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
 import { PresenceToggle } from "../settings/PresenceToggle.js";
 import { Avatar } from "../../components/Avatar.js";
@@ -99,6 +100,13 @@ export function ChatLayout() {
   const [showPinnedList, setShowPinnedList] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [forwardMessage, setForwardMessage] = useState<{ message: MessageDto; authorName: string } | null>(
+    null
+  );
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const permalinkHandled = useRef(false);
+  const permalinkInProgressRef = useRef<string | null>(null);
+  const suppressAutoScrollRef = useRef(false);
   useIdlePresence(user ? getSocket() : null);
   const [draft, setDraft] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -204,6 +212,7 @@ export function ChatLayout() {
   // ── history for the active channel ─────────────────────────────────────
   useEffect(() => {
     if (!activeChannelId) return;
+    if (permalinkInProgressRef.current === activeChannelId) return;
     void apiFetch<{ messages: MessageDto[] }>(
       `/channels/${activeChannelId}/messages?limit=50`
     ).then((data) => {
@@ -282,6 +291,10 @@ export function ChatLayout() {
   });
 
   useEffect(() => {
+    if (suppressAutoScrollRef.current) {
+      suppressAutoScrollRef.current = false;
+      return;
+    }
     if (channelMessages.length > 0) {
       rowVirtualizer.scrollToIndex(channelMessages.length - 1, { align: "end" });
     }
@@ -407,8 +420,80 @@ export function ChatLayout() {
     setPending([]);
   }
 
-  function handleDraftChange(value: string) {
-    setDraft(value);
+  function handleQuote(message: MessageDto, _authorName: string) {
+    const snippet = message.content.length > 200 ? `${message.content.slice(0, 200)}…` : message.content;
+    const quote = snippet
+      .split("\n")
+      .map((line) => `> ${line}`)
+      .join("\n");
+    setDraft((prev) => (prev ? `${prev}\n${quote}\n` : `${quote}\n`));
+  }
+
+  function handleForward(message: MessageDto, authorName: string) {
+    setForwardMessage({ message, authorName });
+  }
+
+  async function submitForward(targetChannelId: string, comment: string) {
+    if (!forwardMessage || !user) return;
+    const { message, authorName } = forwardMessage;
+    const quoted = message.content
+      .split("\n")
+      .map((line) => `> ${line}`)
+      .join("\n");
+    const content = `↪️ Przekazane od **${authorName}**:\n${quoted}${comment.trim() ? `\n\n${comment.trim()}` : ""}`;
+    const tempId = `temp-${crypto.randomUUID()}`;
+    if (targetChannelId === activeChannelId) {
+      addMessage({
+        id: tempId,
+        channelId: targetChannelId,
+        authorId: user.id,
+        content,
+        contentType: "text",
+        parentId: null,
+        editedAt: null,
+        createdAt: new Date().toISOString()
+      });
+    }
+    getSocket().emit("message:send", { channelId: targetChannelId, tempId, content, fileIds: [] });
+    setForwardMessage(null);
+  }
+
+  function handleCopyLink(messageId: string) {
+    if (!activeChannelId) return;
+    const url = new URL(window.location.href);
+    url.search = `?channel=${activeChannelId}&msg=${messageId}`;
+    void navigator.clipboard.writeText(url.toString());
+  }
+
+  // ── permalink navigation: ?channel=X&msg=Y jumps straight to a message ──
+  useEffect(() => {
+    if (permalinkHandled.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetChannel = params.get("channel");
+    const targetMsg = params.get("msg");
+    if (!targetChannel || !targetMsg || channels.length === 0) return;
+    permalinkHandled.current = true;
+    permalinkInProgressRef.current = targetChannel;
+
+    setActiveChannel(targetChannel);
+    void apiFetch<{ messages: MessageDto[]; targetId: string }>(
+      `/channels/${targetChannel}/messages/around/${targetMsg}`
+    ).then((data) => {
+      suppressAutoScrollRef.current = true;
+      setMessages(targetChannel, data.messages);
+      setHighlightedMessageId(data.targetId);
+      setTimeout(() => {
+        const el = document.getElementById(`message-${data.targetId}`);
+        el?.scrollIntoView({ block: "center" });
+      }, 100);
+      setTimeout(() => setHighlightedMessageId(null), 2500);
+      permalinkInProgressRef.current = null;
+      // Clean the URL so a refresh doesn't re-jump.
+      window.history.replaceState({}, "", window.location.pathname);
+    });
+  }, [channels, setActiveChannel, setMessages]);
+
+  function handleDraftChange(value: string) {    setDraft(value);
     // @mention autocomplete: detect a trailing "@query" fragment.
     const match = value.match(/@([\p{L}\d ]{0,30})$/u);
     setMentionQuery(match ? (match[1] ?? "") : null);
@@ -791,6 +876,10 @@ export function ChatLayout() {
                         onOpenProfile={(userId, anchor) => setProfileCard({ userId, anchor })}
                         onToggleSave={handleToggleSave}
                         onTogglePin={handleTogglePin}
+                        onQuote={handleQuote}
+                        onForward={handleForward}
+                        onCopyLink={handleCopyLink}
+                        highlighted={m.id === highlightedMessageId}
                         canPin={activeChannel?.myRole === "ADMIN"}
                         isSaved={savedIds.has(m.id)}
                       />
@@ -939,6 +1028,14 @@ export function ChatLayout() {
           userId={profileCard.userId}
           anchor={profileCard.anchor}
           onClose={() => setProfileCard(null)}
+        />
+      )}
+
+      {forwardMessage && (
+        <ForwardPicker
+          channels={channels}
+          onClose={() => setForwardMessage(null)}
+          onSubmit={(channelId, comment) => void submitForward(channelId, comment)}
         />
       )}
     </div>

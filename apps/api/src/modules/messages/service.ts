@@ -139,6 +139,42 @@ export function createMessageService(fastify: FastifyInstance) {
     };
   }
 
+  /**
+   * Permalink support: fetch a window of messages centered on a specific
+   * one (e.g. from a "copy link" action or search result), so the client
+   * can jump straight to it without paging through the whole history.
+   */
+  async function listAround(userId: string, channelId: string, messageId: string, radius = 25) {
+    await assertChannelMember(fastify, userId, channelId);
+    const target = await fastify.prisma.message.findUnique({ where: { id: messageId } });
+    if (!target || target.channelId !== channelId) notFound("Wiadomość nie istnieje");
+
+    const [before, after] = await Promise.all([
+      fastify.prisma.message.findMany({
+        where: { channelId, parentId: null, createdAt: { lt: target.createdAt } },
+        orderBy: { createdAt: "desc" },
+        take: radius
+      }),
+      fastify.prisma.message.findMany({
+        where: { channelId, parentId: null, createdAt: { gte: target.createdAt } },
+        orderBy: { createdAt: "asc" },
+        take: radius
+      })
+    ]);
+
+    const page = [...before.reverse(), ...after].filter(
+      (m, i, arr) => arr.findIndex((x) => x.id === m.id) === i
+    );
+    const { filesBy, reactionsBy, repliesBy, embedsBy } = await hydrate(page);
+
+    return {
+      messages: page.map((m) =>
+        toDto(m, filesBy.get(m.id), embedsBy.get(m.id), reactionsBy.get(m.id), repliesBy.get(m.id))
+      ),
+      targetId: target.id
+    };
+  }
+
   /** All replies of a thread, oldest first, incl. the parent message. */
   async function listThread(userId: string, parentId: string) {
     const parent = await fastify.prisma.message.findUnique({ where: { id: parentId } });
@@ -334,6 +370,7 @@ export function createMessageService(fastify: FastifyInstance) {
 
   return {
     listMessages,
+    listAround,
     listThread,
     sendMessage,
     editMessage,

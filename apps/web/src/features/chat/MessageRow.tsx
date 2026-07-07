@@ -26,8 +26,13 @@ interface MessageRowProps {
   onOpenProfile?: (userId: string, anchor: { x: number; y: number }) => void;
   onToggleSave?: (messageId: string) => void;
   onTogglePin?: (messageId: string, pin: boolean) => void;
+  onCopyLink?: (messageId: string) => void;
+  onQuote?: (message: MessageDto, authorName: string) => void;
+  onForward?: (message: MessageDto, authorName: string) => void;
   canPin?: boolean;
   isSaved?: boolean;
+  /** Highlighted briefly after navigating in via a permalink. */
+  highlighted?: boolean;
   /** Hide the thread button inside a thread panel (no nesting). */
   inThread?: boolean;
 }
@@ -46,8 +51,12 @@ export function MessageRow({
   onOpenProfile,
   onToggleSave,
   onTogglePin,
+  onCopyLink,
+  onQuote,
+  onForward,
   canPin = false,
   isSaved = false,
+  highlighted = false,
   inThread = false
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
@@ -64,7 +73,12 @@ export function MessageRow({
   }
 
   return (
-    <div className="group relative">
+    <div
+      id={`message-${m.id}`}
+      className={`group relative rounded-lg transition-colors duration-500 ${
+        highlighted ? "bg-[var(--accent)]/15 ring-1 ring-[var(--accent)]/40" : ""
+      }`}
+    >
       {!grouped && (
         <div className="flex items-center gap-2">
           <button
@@ -133,6 +147,33 @@ export function MessageRow({
               className={`rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50 ${m.pinnedAt ? "text-[var(--warning)]" : ""}`}
             >
               📌
+            </button>
+          )}
+          {onQuote && (
+            <button
+              onClick={() => onQuote(m, authorName)}
+              title="Cytuj"
+              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+            >
+              ❮
+            </button>
+          )}
+          {onForward && !inThread && (
+            <button
+              onClick={() => onForward(m, authorName)}
+              title="Przekaż dalej"
+              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+            >
+              ↪️
+            </button>
+          )}
+          {onCopyLink && !inThread && (
+            <button
+              onClick={() => onCopyLink(m.id)}
+              title="Kopiuj link do wiadomości"
+              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+            >
+              🔗
             </button>
           )}
           {mine && (

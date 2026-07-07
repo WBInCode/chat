@@ -44,6 +44,12 @@ export default async function messageRoutes(fastify: FastifyInstance) {
     return service.listThread(request.user!.id, messageId);
   });
 
+  /** Permalink support: a window of messages centered on one specific message. */
+  fastify.get("/channels/:channelId/messages/around/:messageId", async (request) => {
+    const { channelId, messageId } = request.params as { channelId: string; messageId: string };
+    return service.listAround(request.user!.id, channelId, messageId);
+  });
+
   /** HTTP fallback for reactions (primary path is WebSocket). */
   fastify.post("/messages/:messageId/reactions", async (request) => {
     const { messageId } = request.params as { messageId: string };
