@@ -100,6 +100,26 @@ textarea::placeholder {
   border-radius: 4px;
 }
 
+/* ── Mobile sidebar drawer ─────────────────────────────────────────────
+   Own CSS (not Tailwind translate utilities) because Tailwind v4 drives
+   translate via the `translate` CSS property, which made a conditional
+   `translate-x-0`/`-translate-x-full` class toggle unreliable to override.
+   Scoped to <768px so desktop layout (md:static sidebar) is untouched. */
+@media (max-width: 767px) {
+  .mobile-drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .mobile-drawer.mobile-drawer--open {
+    transform: translateX(0);
+  }
+}
+
 /* ── Custom scrollbar (WebKit + Firefox) ─────────────────────────────── */
 * {
   scrollbar-width: thin;

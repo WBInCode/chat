@@ -30,7 +30,7 @@ import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -144,6 +144,7 @@ export function ChatLayout() {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showComposerActions, setShowComposerActions] = useState(false);
+  const [showChannelMenu, setShowChannelMenu] = useState(false);
   useIdlePresence(user ? getSocket() : null);
 
   useEffect(() => {
@@ -818,10 +819,10 @@ export function ChatLayout() {
 
   // ── render ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full gap-3 p-3">
+    <div className="flex h-full gap-0 p-0 md:gap-3 md:p-3">
       {showMobileSidebar && (
         <div
-          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
           onClick={() => setShowMobileSidebar(false)}
         />
       )}
@@ -829,8 +830,9 @@ export function ChatLayout() {
         onClickCapture={() => {
           if (window.innerWidth < 768) setShowMobileSidebar(false);
         }}
-        style={{ transform: showMobileSidebar ? "translateX(0)" : undefined }}
-        className="glass fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 -translate-x-full flex-col overflow-hidden transition-transform duration-200 md:static md:z-auto md:w-64 md:!translate-x-0"
+        className={`mobile-drawer glass flex w-[82%] max-w-xs shrink-0 flex-col overflow-hidden max-md:!rounded-none max-md:!border-y-0 max-md:!border-l-0 md:static md:z-auto md:w-64 ${
+          showMobileSidebar ? "mobile-drawer--open" : ""
+        }`}
       >
         <div className="flex items-center justify-between border-b border-[var(--glass-border)] p-4">
           <span className="font-semibold">
@@ -1035,7 +1037,7 @@ export function ChatLayout() {
         </div>
       </aside>
 
-      <main className="glass flex min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="glass flex min-w-0 flex-1 flex-col overflow-hidden max-md:!rounded-none max-md:!border-0 max-md:!shadow-none">
         {activeChannel ? (
           <>
             <header className="flex items-center justify-between gap-4 border-b border-[var(--glass-border)] px-4 py-3">
@@ -1044,56 +1046,130 @@ export function ChatLayout() {
                   <button
                     onClick={() => setShowMobileSidebar(true)}
                     title="Menu"
-                    className="text-[var(--text-dim)] hover:text-[var(--text)] md:hidden"
+                    className="-ml-1 p-1 text-[var(--text-dim)] hover:text-[var(--text)] md:hidden"
                   >
-                    <Icon icon={Menu} size={18} />
+                    <Icon icon={Menu} size={22} />
                   </button>
-                  <button
-                    onClick={() => toggleFavorite(activeChannel.id, !activeChannel.favorite)}
-                    title={activeChannel.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
-                    className={activeChannel.favorite ? "text-[var(--warning)]" : "text-[var(--text-dim)] hover:text-[var(--warning)]"}
-                  >
-                    <Icon icon={Star} className={activeChannel.favorite ? "fill-current" : ""} />
-                  </button>
-                  <h1 className="truncate text-sm font-semibold">
+                  <h1 className="truncate text-base font-semibold md:text-sm">
                     {activeChannel.type === "DM" ? "@" : activeChannel.type === "PRIVATE" ? "🔒" : "#"}{" "}
                     {activeChannel.name}
                   </h1>
-                  <button
-                    onClick={() => toggleMute(activeChannel.id, !activeChannel.muted)}
-                    title={activeChannel.muted ? "Wyłącz wyciszenie" : "Wycisz kanał"}
-                    className="text-[var(--text-dim)] hover:text-[var(--text)]"
-                  >
-                    <Icon icon={activeChannel.muted ? BellOff : Bell} size={15} />
-                  </button>
-                  {activeChannel.type !== "DM" && (
+
+                  {/* Desktop: channel actions inline. */}
+                  <div className="hidden items-center gap-1.5 md:flex">
                     <button
-                      onClick={() => setShowMembersPanel(true)}
-                      title="Członkowie kanału"
+                      onClick={() => toggleFavorite(activeChannel.id, !activeChannel.favorite)}
+                      title={activeChannel.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
+                      className={activeChannel.favorite ? "text-[var(--warning)]" : "text-[var(--text-dim)] hover:text-[var(--warning)]"}
+                    >
+                      <Icon icon={Star} className={activeChannel.favorite ? "fill-current" : ""} />
+                    </button>
+                    <button
+                      onClick={() => toggleMute(activeChannel.id, !activeChannel.muted)}
+                      title={activeChannel.muted ? "Wyłącz wyciszenie" : "Wycisz kanał"}
                       className="text-[var(--text-dim)] hover:text-[var(--text)]"
                     >
-                      <Icon icon={Users} size={15} />
+                      <Icon icon={activeChannel.muted ? BellOff : Bell} size={15} />
                     </button>
-                  )}
-                  {aiEnabled && (
+                    {activeChannel.type !== "DM" && (
+                      <button
+                        onClick={() => setShowMembersPanel(true)}
+                        title="Członkowie kanału"
+                        className="text-[var(--text-dim)] hover:text-[var(--text)]"
+                      >
+                        <Icon icon={Users} size={15} />
+                      </button>
+                    )}
+                    {aiEnabled && (
+                      <button
+                        onClick={() => void runAiSummary()}
+                        disabled={aiSummaryLoading}
+                        title="Podsumuj czego nie przeczytałeś (AI)"
+                        className="text-[var(--text-dim)] hover:text-[var(--accent)] disabled:opacity-40"
+                      >
+                        <Icon icon={Sparkles} size={15} />
+                      </button>
+                    )}
+                    {activeChannel.type !== "DM" && (
+                      <button
+                        onClick={() => setInVoiceChannelId((prev) => (prev === activeChannel.id ? null : activeChannel.id))}
+                        title={inVoiceChannelId === activeChannel.id ? "W rozmowie głosowej" : "Dołącz do rozmowy głosowej"}
+                        className={inVoiceChannelId === activeChannel.id ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--accent)]"}
+                      >
+                        <Icon icon={Mic} size={15} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Mobile: fold channel actions into a "⋯" menu. */}
+                  <div className="relative md:hidden">
                     <button
-                      onClick={() => void runAiSummary()}
-                      disabled={aiSummaryLoading}
-                      title="Podsumuj czego nie przeczytałeś (AI)"
-                      className="text-[var(--text-dim)] hover:text-[var(--accent)] disabled:opacity-40"
+                      onClick={() => setShowChannelMenu((v) => !v)}
+                      title="Akcje kanału"
+                      className="p-1 text-[var(--text-dim)] hover:text-[var(--text)]"
                     >
-                      <Icon icon={Sparkles} size={15} />
+                      <Icon icon={MoreVertical} size={20} />
                     </button>
-                  )}
-                  {activeChannel.type !== "DM" && (
-                    <button
-                      onClick={() => setInVoiceChannelId((prev) => (prev === activeChannel.id ? null : activeChannel.id))}
-                      title={inVoiceChannelId === activeChannel.id ? "W rozmowie głosowej" : "Dołącz do rozmowy głosowej"}
-                      className={inVoiceChannelId === activeChannel.id ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--accent)]"}
-                    >
-                      <Icon icon={Mic} size={15} />
-                    </button>
-                  )}
+                    {showChannelMenu && (
+                      <div className="animate-slide-up absolute left-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
+                        <button
+                          onClick={() => {
+                            setShowChannelMenu(false);
+                            toggleFavorite(activeChannel.id, !activeChannel.favorite);
+                          }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                        >
+                          <Icon icon={Star} size={16} className={activeChannel.favorite ? "fill-current text-[var(--warning)]" : ""} />
+                          {activeChannel.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowChannelMenu(false);
+                            toggleMute(activeChannel.id, !activeChannel.muted);
+                          }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                        >
+                          <Icon icon={activeChannel.muted ? BellOff : Bell} size={16} />
+                          {activeChannel.muted ? "Wyłącz wyciszenie" : "Wycisz kanał"}
+                        </button>
+                        {activeChannel.type !== "DM" && (
+                          <button
+                            onClick={() => {
+                              setShowChannelMenu(false);
+                              setShowMembersPanel(true);
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                          >
+                            <Icon icon={Users} size={16} /> Członkowie kanału
+                          </button>
+                        )}
+                        {aiEnabled && (
+                          <button
+                            onClick={() => {
+                              setShowChannelMenu(false);
+                              void runAiSummary();
+                            }}
+                            disabled={aiSummaryLoading}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 disabled:opacity-40"
+                          >
+                            <Icon icon={Sparkles} size={16} /> Podsumuj kanał (AI)
+                          </button>
+                        )}
+                        {activeChannel.type !== "DM" && (
+                          <button
+                            onClick={() => {
+                              setShowChannelMenu(false);
+                              setInVoiceChannelId((prev) => (prev === activeChannel.id ? null : activeChannel.id));
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                          >
+                            <Icon icon={Mic} size={16} />
+                            {inVoiceChannelId === activeChannel.id ? "Opuść rozmowę głosową" : "Dołącz do rozmowy głosowej"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {editingTopic ? (
                   <div className="mt-0.5 flex items-center gap-1">
