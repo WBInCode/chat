@@ -58,7 +58,7 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
     fastify.server,
     {
       path: "/ws",
-      cors: { origin: env.CORS_ORIGIN.split(","), credentials: true },
+      cors: { origin: env.CORS_ORIGIN.split(",").map((o) => o.trim()), credentials: true },
       // Keep payloads small; message length is validated separately too.
       maxHttpBufferSize: 64 * 1024
     }
