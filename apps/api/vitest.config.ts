@@ -9,6 +9,7 @@ export default defineConfig({
     // Auth tests hit a real Postgres+Redis (docker compose); run serially
     // to avoid cross-test interference on shared state.
     pool: "forks",
-    poolOptions: { forks: { singleFork: true } }
+    poolOptions: { forks: { singleFork: true } },
+    setupFiles: ["./vitest.setup.ts"]
   }
 });

@@ -80,7 +80,7 @@ export function ThreadPanel({
   }
 
   return (
-    <aside className="glass animate-float-in flex w-80 shrink-0 flex-col overflow-hidden">
+    <aside className="glass animate-float-in fixed inset-0 z-40 flex flex-col overflow-hidden md:static md:z-auto md:w-80 md:shrink-0">
       <div className="flex items-center justify-between border-b border-[var(--glass-border)] px-4 py-3">
         <h2 className="text-sm font-semibold">Wątek</h2>
         <button

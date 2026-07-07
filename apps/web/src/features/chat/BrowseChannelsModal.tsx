@@ -48,7 +48,7 @@ export function BrowseChannelsModal({ orgId, onClose, onJoined }: BrowseChannels
   return createPortal(
     <>
       <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-96 -translate-x-1/2 -translate-y-1/2 space-y-3 p-5">
+      <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-96 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 p-5">
         <h2 className="text-sm font-semibold">Przeglądaj kanały publiczne</h2>
 
         <div className="max-h-80 space-y-1.5 overflow-y-auto">

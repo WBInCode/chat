@@ -90,6 +90,16 @@ textarea::placeholder {
   opacity: 0.7;
 }
 
+/* ── Accessibility: visible focus ring for keyboard navigation ───────── */
+/* Only shown for keyboard focus (:focus-visible), never for mouse clicks —
+   avoids the "focus ring flashes on every click" complaint while still
+   satisfying WCAG 2.4.7 (Focus Visible) for keyboard/screen-reader users. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* ── Custom scrollbar (WebKit + Firefox) ─────────────────────────────── */
 * {
   scrollbar-width: thin;

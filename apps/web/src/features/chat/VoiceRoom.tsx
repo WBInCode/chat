@@ -117,7 +117,7 @@ export function VoiceRoom({ channelId, channelName, myUserId, members, onClose }
   }
 
   return createPortal(
-    <div className="glass-strong fixed bottom-4 right-4 z-40 w-72 rounded-2xl p-4 shadow-2xl">
+    <div className="glass-strong fixed bottom-4 right-4 z-40 w-72 max-w-[92vw] rounded-2xl p-4 shadow-2xl">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <p className="text-xs text-[var(--text-dim)]">Rozmowa głosowa</p>

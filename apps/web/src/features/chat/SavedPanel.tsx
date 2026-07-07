@@ -33,7 +33,7 @@ export function SavedPanel({ currentUserId, members, onClose, onToggleSave }: Sa
   }
 
   return (
-    <aside className="glass-strong flex w-80 shrink-0 flex-col overflow-hidden">
+    <aside className="glass-strong fixed inset-0 z-40 flex flex-col overflow-hidden md:static md:z-auto md:w-80 md:shrink-0">
       <div className="flex items-center justify-between border-b border-[var(--glass-border)] p-3">
         <span className="text-sm font-semibold">🔖 Zapisane wiadomości</span>
         <button onClick={onClose} className="text-[var(--text-dim)] hover:text-[var(--text)]">

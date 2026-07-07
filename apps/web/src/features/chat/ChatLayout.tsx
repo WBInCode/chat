@@ -30,7 +30,7 @@ import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -141,6 +141,7 @@ export function ChatLayout() {
   const [showAiRewriteMenu, setShowAiRewriteMenu] = useState(false);
   const [aiRewriteLoading, setAiRewriteLoading] = useState(false);
   const [inVoiceChannelId, setInVoiceChannelId] = useState<string | null>(null);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   useIdlePresence(user ? getSocket() : null);
 
   useEffect(() => {
@@ -816,7 +817,19 @@ export function ChatLayout() {
   // ── render ─────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full gap-3 p-3">
-      <aside className="glass flex w-64 shrink-0 flex-col overflow-hidden">
+      {showMobileSidebar && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setShowMobileSidebar(false)}
+        />
+      )}
+      <aside
+        onClickCapture={() => {
+          if (window.innerWidth < 768) setShowMobileSidebar(false);
+        }}
+        style={{ transform: showMobileSidebar ? "translateX(0)" : undefined }}
+        className="glass fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 -translate-x-full flex-col overflow-hidden transition-transform duration-200 md:static md:z-auto md:w-64 md:!translate-x-0"
+      >
         <div className="flex items-center justify-between border-b border-[var(--glass-border)] p-4">
           <span className="font-semibold">
             {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}
@@ -1017,6 +1030,13 @@ export function ChatLayout() {
             <header className="flex items-center justify-between gap-4 border-b border-[var(--glass-border)] px-4 py-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowMobileSidebar(true)}
+                    title="Menu"
+                    className="text-[var(--text-dim)] hover:text-[var(--text)] md:hidden"
+                  >
+                    <Icon icon={Menu} size={18} />
+                  </button>
                   <button
                     onClick={() => toggleFavorite(activeChannel.id, !activeChannel.favorite)}
                     title={activeChannel.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
@@ -1423,8 +1443,19 @@ export function ChatLayout() {
             </form>
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center text-[var(--text-dim)]">
-            <p className="text-sm">Wybierz kanał, aby rozpocząć rozmowę</p>
+          <div className="flex flex-1 flex-col">
+            <div className="p-4 md:hidden">
+              <button
+                onClick={() => setShowMobileSidebar(true)}
+                title="Menu"
+                className="text-[var(--text-dim)] hover:text-[var(--text)]"
+              >
+                <Icon icon={Menu} size={18} />
+              </button>
+            </div>
+            <div className="flex flex-1 items-center justify-center text-[var(--text-dim)]">
+              <p className="text-sm">Wybierz kanał, aby rozpocząć rozmowę</p>
+            </div>
           </div>
         )}
       </main>

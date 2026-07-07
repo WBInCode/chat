@@ -100,7 +100,7 @@ export function ChannelMembersPanel({
   return createPortal(
     <>
       <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-96 -translate-x-1/2 -translate-y-1/2 space-y-3 p-5">
+      <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-96 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 p-5">
         <div className="flex items-center justify-between">
           <div className="flex gap-1">
             <button
