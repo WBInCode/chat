@@ -19,6 +19,7 @@ import { QuickSwitcher } from "./QuickSwitcher.js";
 import { SchedulePicker } from "./SchedulePicker.js";
 import { CreatePollModal } from "./CreatePollModal.js";
 import { ReminderPicker } from "./ReminderPicker.js";
+import { VoiceRoom } from "./VoiceRoom.js";
 import { UserStatusControl } from "../../components/UserStatusControl.js";
 import { SidebarSection } from "../../components/SidebarSection.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
@@ -29,7 +30,7 @@ import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -139,6 +140,7 @@ export function ChatLayout() {
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [showAiRewriteMenu, setShowAiRewriteMenu] = useState(false);
   const [aiRewriteLoading, setAiRewriteLoading] = useState(false);
+  const [inVoiceChannelId, setInVoiceChannelId] = useState<string | null>(null);
   useIdlePresence(user ? getSocket() : null);
 
   useEffect(() => {
@@ -1052,6 +1054,15 @@ export function ChatLayout() {
                       <Icon icon={Sparkles} size={15} />
                     </button>
                   )}
+                  {activeChannel.type !== "DM" && (
+                    <button
+                      onClick={() => setInVoiceChannelId((prev) => (prev === activeChannel.id ? null : activeChannel.id))}
+                      title={inVoiceChannelId === activeChannel.id ? "W rozmowie głosowej" : "Dołącz do rozmowy głosowej"}
+                      className={inVoiceChannelId === activeChannel.id ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--accent)]"}
+                    >
+                      <Icon icon={Mic} size={15} />
+                    </button>
+                  )}
                 </div>
                 {editingTopic ? (
                   <div className="mt-0.5 flex items-center gap-1">
@@ -1371,7 +1382,8 @@ export function ChatLayout() {
                           { mode: "improve", label: "Popraw ton" },
                           { mode: "shorten", label: "Skróć" },
                           { mode: "translate_en", label: "Przetłumacz na EN" },
-                          { mode: "translate_pl", label: "Przetłumacz na PL" }
+                          { mode: "translate_pl", label: "Przetłumacz na PL" },
+                          { mode: "corpo", label: "🤵 Korpo-mowa" }
                         ].map((opt) => (
                           <button
                             key={opt.mode}
@@ -1579,6 +1591,16 @@ export function ChatLayout() {
               setActiveChannel(channelId);
             });
           }}
+        />
+      )}
+
+      {inVoiceChannelId && user && (
+        <VoiceRoom
+          channelId={inVoiceChannelId}
+          channelName={channels.find((c) => c.id === inVoiceChannelId)?.name ?? ""}
+          myUserId={user.id}
+          members={members}
+          onClose={() => setInVoiceChannelId(null)}
         />
       )}
     </div>

@@ -19,7 +19,7 @@ import {
 import { env } from "../config/env.js";
 import { verifyAccessToken } from "../lib/jwt.js";
 import { createMessageService } from "../modules/messages/service.js";
-import { HttpError } from "../lib/authz.js";
+import { HttpError, assertChannelMember, assertOrgPermission } from "../lib/authz.js";
 
 interface SocketData {
   userId: string;
@@ -42,6 +42,15 @@ declare module "fastify" {
 }
 
 const PRESENCE_TTL_SECONDS = 60;
+const VOICE_TTL_SECONDS = 60;
+const MAX_VOICE_PARTICIPANTS = 4;
+
+function voiceUsersKey(channelId: string) {
+  return `voice:room:${channelId}:users`;
+}
+function voiceMutedKey(channelId: string) {
+  return `voice:room:${channelId}:muted`;
+}
 
 export default fp(async function wsGateway(fastify: FastifyInstance) {
   const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(
@@ -100,6 +109,28 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
       status,
       lastSeenAt: new Date().toISOString()
     });
+  }
+
+  async function broadcastVoiceParticipants(channelId: string) {
+    const users = await fastify.redis.smembers(voiceUsersKey(channelId));
+    const participants: { userId: string; muted: boolean }[] = [];
+    if (users.length > 0) {
+      const mutedVals = await fastify.redis.hmget(voiceMutedKey(channelId), ...users);
+      for (let i = 0; i < users.length; i++) {
+        participants.push({ userId: users[i]!, muted: mutedVals[i] === "1" });
+      }
+    }
+    io.to(`voice:${channelId}`).emit(WS_SERVER_EVENTS.VoiceParticipants, { channelId, participants });
+  }
+
+  async function leaveVoiceRoom(channelId: string, userId: string, socket: { leave: (room: string) => Promise<void> | void }) {
+    const wasMember = await fastify.redis.sismember(voiceUsersKey(channelId), userId);
+    if (!wasMember) return;
+    await fastify.redis.srem(voiceUsersKey(channelId), userId);
+    await fastify.redis.hdel(voiceMutedKey(channelId), userId);
+    await socket.leave(`voice:${channelId}`);
+    io.to(`voice:${channelId}`).emit(WS_SERVER_EVENTS.VoicePeerLeft, { channelId, userId });
+    await broadcastVoiceParticipants(channelId);
   }
 
   io.on("connection", async (socket) => {
@@ -222,12 +253,93 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
       await setPresence(userId, payload.status);
     });
 
+    socket.on(WS_CLIENT_EVENTS.VoiceJoin, async (payload) => {
+      try {
+        const channelId = payload?.channelId;
+        if (!channelId) return;
+        const member = await assertChannelMember(fastify, userId, channelId);
+        await assertOrgPermission(fastify, userId, member.channel.orgId, "voice.use");
+
+        const existing = await fastify.redis.smembers(voiceUsersKey(channelId));
+        if (!existing.includes(userId) && existing.length >= MAX_VOICE_PARTICIPANTS) {
+          return socket.emit(WS_SERVER_EVENTS.Error, {
+            code: "VOICE_ROOM_FULL",
+            message: "Rozmowa głosowa jest ograniczona do 4 osób (darmowy P2P mesh)."
+          });
+        }
+
+        await socket.join(`voice:${channelId}`);
+        await fastify.redis.sadd(voiceUsersKey(channelId), userId);
+        await fastify.redis.hset(voiceMutedKey(channelId), userId, "0");
+        await fastify.redis.expire(voiceUsersKey(channelId), VOICE_TTL_SECONDS);
+        await fastify.redis.expire(voiceMutedKey(channelId), VOICE_TTL_SECONDS);
+        await broadcastVoiceParticipants(channelId);
+      } catch (err) {
+        socket.emit(WS_SERVER_EVENTS.Error, {
+          code: err instanceof HttpError ? err.code : "VOICE_JOIN_FAILED",
+          message: "Nie udało się dołączyć do rozmowy głosowej"
+        });
+      }
+    });
+
+    socket.on(WS_CLIENT_EVENTS.VoiceLeave, async (payload) => {
+      const channelId = payload?.channelId;
+      if (!channelId) return;
+      await leaveVoiceRoom(channelId, userId, socket);
+    });
+
+    socket.on(WS_CLIENT_EVENTS.VoiceOffer, (payload) => {
+      if (!payload?.channelId || !payload?.toUserId) return;
+      io.to(`user:${payload.toUserId}`).emit(WS_SERVER_EVENTS.VoiceOffer, {
+        channelId: payload.channelId,
+        fromUserId: userId,
+        sdp: payload.sdp
+      });
+    });
+
+    socket.on(WS_CLIENT_EVENTS.VoiceAnswer, (payload) => {
+      if (!payload?.channelId || !payload?.toUserId) return;
+      io.to(`user:${payload.toUserId}`).emit(WS_SERVER_EVENTS.VoiceAnswer, {
+        channelId: payload.channelId,
+        fromUserId: userId,
+        sdp: payload.sdp
+      });
+    });
+
+    socket.on(WS_CLIENT_EVENTS.VoiceIce, (payload) => {
+      if (!payload?.channelId || !payload?.toUserId) return;
+      io.to(`user:${payload.toUserId}`).emit(WS_SERVER_EVENTS.VoiceIce, {
+        channelId: payload.channelId,
+        fromUserId: userId,
+        candidate: payload.candidate
+      });
+    });
+
+    socket.on(WS_CLIENT_EVENTS.VoiceMute, async (payload) => {
+      const channelId = payload?.channelId;
+      if (!channelId) return;
+      const isMember = await fastify.redis.sismember(voiceUsersKey(channelId), userId);
+      if (!isMember) return;
+      await fastify.redis.hset(voiceMutedKey(channelId), userId, payload.muted ? "1" : "0");
+      io.to(`voice:${channelId}`).emit(WS_SERVER_EVENTS.VoiceMuteUpdate, {
+        channelId,
+        userId,
+        muted: payload.muted
+      });
+    });
+
     socket.on("disconnect", async () => {
       clearInterval(heartbeat);
       // Only mark offline when the user has no other open sockets.
       const remaining = await io.in(`user:${userId}`).fetchSockets();
       if (remaining.length === 0) {
         await setPresence(userId, "offline");
+      }
+      // Clean up any voice rooms this socket was part of.
+      for (const room of socket.rooms) {
+        if (room.startsWith("voice:")) {
+          await leaveVoiceRoom(room.slice("voice:".length), userId, socket);
+        }
       }
     });
   });

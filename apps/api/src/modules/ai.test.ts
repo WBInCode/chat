@@ -140,6 +140,18 @@ describe("AI assistant (F5-D)", () => {
     expect(res.json().result).toBe("Poprawiony i elegancki tekst.");
   });
 
+  it("supports the 'corpo' rewrite mode (corporate buzzword translator)", async () => {
+    mockGroqOnce("Zdecydowanie leveragujemy synergie na poziomie wysokim, action items TBD EOD.");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/ai/rewrite?orgId=${orgId}`,
+      headers: auth(owner.token),
+      payload: { text: "zróbmy to jutro", mode: "corpo" }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result).toContain("synergie");
+  });
+
   it("rejects an unknown rewrite mode (zod validation)", async () => {
     const res = await app.inject({
       method: "POST",

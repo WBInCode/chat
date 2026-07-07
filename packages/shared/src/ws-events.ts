@@ -10,7 +10,13 @@ export const WS_CLIENT_EVENTS = {
   TypingStart: "typing:start",
   TypingStop: "typing:stop",
   ReadMark: "read:mark",
-  PresenceSet: "presence:set"
+  PresenceSet: "presence:set",
+  VoiceJoin: "voice:join",
+  VoiceLeave: "voice:leave",
+  VoiceOffer: "voice:offer",
+  VoiceAnswer: "voice:answer",
+  VoiceIce: "voice:ice",
+  VoiceMute: "voice:mute"
 } as const;
 
 export const WS_SERVER_EVENTS = {
@@ -26,6 +32,12 @@ export const WS_SERVER_EVENTS = {
   MessageEmbeds: "message:embeds",
   ReactionUpdate: "reaction:update",
   PollUpdate: "poll:update",
+  VoiceParticipants: "voice:participants",
+  VoiceOffer: "voice:offer",
+  VoiceAnswer: "voice:answer",
+  VoiceIce: "voice:ice",
+  VoicePeerLeft: "voice:peer-left",
+  VoiceMuteUpdate: "voice:mute-update",
   Error: "error"
 } as const;
 
@@ -53,6 +65,12 @@ export interface ClientToServerEvents {
     messageId: string;
   }) => void;
   [WS_CLIENT_EVENTS.PresenceSet]: (payload: { status: "online" | "away" | "dnd" }) => void;
+  [WS_CLIENT_EVENTS.VoiceJoin]: (payload: { channelId: string }) => void;
+  [WS_CLIENT_EVENTS.VoiceLeave]: (payload: { channelId: string }) => void;
+  [WS_CLIENT_EVENTS.VoiceOffer]: (payload: { channelId: string; toUserId: string; sdp: string }) => void;
+  [WS_CLIENT_EVENTS.VoiceAnswer]: (payload: { channelId: string; toUserId: string; sdp: string }) => void;
+  [WS_CLIENT_EVENTS.VoiceIce]: (payload: { channelId: string; toUserId: string; candidate: string }) => void;
+  [WS_CLIENT_EVENTS.VoiceMute]: (payload: { channelId: string; muted: boolean }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -97,5 +115,14 @@ export interface ServerToClientEvents {
     channelId: string;
     poll: import("./schemas/productivity.js").PollDto;
   }) => void;
+  [WS_SERVER_EVENTS.VoiceParticipants]: (payload: {
+    channelId: string;
+    participants: { userId: string; muted: boolean }[];
+  }) => void;
+  [WS_SERVER_EVENTS.VoiceOffer]: (payload: { channelId: string; fromUserId: string; sdp: string }) => void;
+  [WS_SERVER_EVENTS.VoiceAnswer]: (payload: { channelId: string; fromUserId: string; sdp: string }) => void;
+  [WS_SERVER_EVENTS.VoiceIce]: (payload: { channelId: string; fromUserId: string; candidate: string }) => void;
+  [WS_SERVER_EVENTS.VoicePeerLeft]: (payload: { channelId: string; userId: string }) => void;
+  [WS_SERVER_EVENTS.VoiceMuteUpdate]: (payload: { channelId: string; userId: string; muted: boolean }) => void;
   [WS_SERVER_EVENTS.Error]: (payload: { code: string; message: string }) => void;
 }

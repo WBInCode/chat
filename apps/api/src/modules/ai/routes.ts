@@ -10,14 +10,15 @@ const summarizeSchema = z.object({
 
 const rewriteSchema = z.object({
   text: z.string().trim().min(1).max(4000),
-  mode: z.enum(["improve", "shorten", "translate_en", "translate_pl"])
+  mode: z.enum(["improve", "shorten", "translate_en", "translate_pl", "corpo"])
 });
 
-const REWRITE_INSTRUCTIONS: Record<"improve" | "shorten" | "translate_en" | "translate_pl", string> = {
+const REWRITE_INSTRUCTIONS: Record<"improve" | "shorten" | "translate_en" | "translate_pl" | "corpo", string> = {
   improve: "Popraw ton i gramatykę poniższego tekstu, zachowując jego sens i długość. Zwróć TYLKO poprawiony tekst, bez komentarzy.",
   shorten: "Skróć poniższy tekst do najważniejszej treści, zachowując sens. Zwróć TYLKO skrócony tekst, bez komentarzy.",
   translate_en: "Przetłumacz poniższy tekst na angielski. Zwróć TYLKO tłumaczenie, bez komentarzy.",
-  translate_pl: "Przetłumacz poniższy tekst na polski. Zwróć TYLKO tłumaczenie, bez komentarzy."
+  translate_pl: "Przetłumacz poniższy tekst na polski. Zwróć TYLKO tłumaczenie, bez komentarzy.",
+  corpo: "Przetłumacz poniższy prosty tekst na korporacyjny żargon pełen frazesów biznesowych (np. 'synergia', 'value-added', 'touchpoint', 'action items', 'deep dive', 'leverage', 'poziom wysoki', 'na koniec dnia', 'win-win', 'quick win', 'stakeholder', 'roadmapa', 'KPI'). Zachowaj ogólny sens wiadomości, ale zrewnij ją w nadmiernie korporacyjny, buzzwordowy styl (możesz mieszać polski z angielskimi terminami korpo, tak jak mówi się w typowych firmach). Zwróć TYLKO przetłumaczony tekst, bez komentarzy."
 };
 
 export default async function aiRoutes(fastify: FastifyInstance) {
