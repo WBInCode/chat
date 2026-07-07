@@ -14,6 +14,7 @@
     "@chatv2/shared": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-virtual": "^3.14.5",
+    "lucide-react": "^1.23.0",
     "pdfjs-dist": "^6.1.200",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

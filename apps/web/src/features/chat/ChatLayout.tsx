@@ -18,13 +18,15 @@ import { QuickSwitcher } from "./QuickSwitcher.js";
 import { SchedulePicker } from "./SchedulePicker.js";
 import { CreatePollModal } from "./CreatePollModal.js";
 import { ReminderPicker } from "./ReminderPicker.js";
+import { UserStatusControl } from "../../components/UserStatusControl.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
-import { PresenceToggle } from "../settings/PresenceToggle.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { useIdlePresence } from "../../lib/idlePresence.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
+import { Icon } from "../../components/Icon.js";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X } from "lucide-react";
 
 interface OrgItem {
   id: string;
@@ -767,7 +769,6 @@ export function ChatLayout() {
             {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}
           </span>
           <div className="flex items-center gap-1">
-            <PresenceToggle />
             <ThemeToggle />
             <button
               onClick={handleLogout}
@@ -787,7 +788,7 @@ export function ChatLayout() {
                 : "text-[var(--text)] hover:bg-[var(--border)]/50"
             }`}
           >
-            🔖 Zapisane {savedIds.size > 0 && `(${savedIds.size})`}
+            <Icon icon={Bookmark} size={15} /> Zapisane {savedIds.size > 0 && `(${savedIds.size})`}
           </button>
 
           <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
@@ -796,7 +797,7 @@ export function ChatLayout() {
           {channels.some((c) => c.favorite) && (
             <>
               <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--warning)]">
-                ⭐ Ulubione
+                <Icon icon={Star} size={12} className="fill-current" /> Ulubione
               </p>
               {channels
                 .filter((c) => c.favorite)
@@ -840,7 +841,7 @@ export function ChatLayout() {
                 }`}
               >
                 <span className="flex items-center gap-1">
-                  {c.type === "PRIVATE" ? "🔒" : "#"} {c.name} {c.muted && "🔕"}
+                  {c.type === "PRIVATE" ? "🔒" : "#"} {c.name} {c.muted && <Icon icon={BellOff} size={12} />}
                   {draftChannels.has(c.id) && (
                     <span className="text-[10px] italic text-[var(--text-dim)]">(szkic)</span>
                   )}
@@ -878,7 +879,7 @@ export function ChatLayout() {
                 }`}
               >
                 <span>
-                  @ {c.name} {c.muted && "🔕"}
+                  @ {c.name} {c.muted && <Icon icon={BellOff} size={12} />}
                 </span>
                 {(c.unreadCount ?? 0) > 0 && !c.muted && (
                   <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
@@ -911,32 +912,32 @@ export function ChatLayout() {
             ))}
         </div>
 
-        <div className="border-t border-[var(--glass-border)] p-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span>
-              <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-2)]" />
-              {user?.displayName ?? "—"}
-            </span>
-            <div className="flex items-center gap-2">
-              {["OWNER", "ADMIN", "HR"].includes(
-                orgs.find((o) => o.id === activeOrgId)?.role ?? ""
-              ) && (
-                <Link
-                  to="/admin/members"
-                  title="Panel administracyjny"
-                  className="text-xs text-[var(--text-dim)] transition-colors hover:text-[var(--text)]"
-                >
-                  Admin
-                </Link>
-              )}
+        <div className="border-t border-[var(--glass-border)] p-2">
+          <UserStatusControl
+            userId={user?.id ?? ""}
+            displayName={user?.displayName ?? "—"}
+            avatarUrl={user ? avatarUrls[user.id] : null}
+            myPresenceDotClass={presenceDotClass(user ? presenceStatus[user.id] : undefined) || "bg-[var(--accent-2)]"}
+          />
+          <div className="mt-1 flex items-center justify-end gap-3 px-1.5">
+            {["OWNER", "ADMIN", "HR"].includes(
+              orgs.find((o) => o.id === activeOrgId)?.role ?? ""
+            ) && (
               <Link
-                to="/settings"
-                title="Ustawienia"
+                to="/admin/members"
+                title="Panel administracyjny"
                 className="text-xs text-[var(--text-dim)] transition-colors hover:text-[var(--text)]"
               >
-                Ustawienia
+                Admin
               </Link>
-            </div>
+            )}
+            <Link
+              to="/settings"
+              title="Ustawienia"
+              className="text-xs text-[var(--text-dim)] transition-colors hover:text-[var(--text)]"
+            >
+              Ustawienia
+            </Link>
           </div>
         </div>
       </aside>
@@ -950,9 +951,9 @@ export function ChatLayout() {
                   <button
                     onClick={() => toggleFavorite(activeChannel.id, !activeChannel.favorite)}
                     title={activeChannel.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
-                    className={`text-sm ${activeChannel.favorite ? "text-[var(--warning)]" : "text-[var(--text-dim)] hover:text-[var(--warning)]"}`}
+                    className={activeChannel.favorite ? "text-[var(--warning)]" : "text-[var(--text-dim)] hover:text-[var(--warning)]"}
                   >
-                    {activeChannel.favorite ? "★" : "☆"}
+                    <Icon icon={Star} className={activeChannel.favorite ? "fill-current" : ""} />
                   </button>
                   <h1 className="truncate text-sm font-semibold">
                     {activeChannel.type === "DM" ? "@" : activeChannel.type === "PRIVATE" ? "🔒" : "#"}{" "}
@@ -961,17 +962,17 @@ export function ChatLayout() {
                   <button
                     onClick={() => toggleMute(activeChannel.id, !activeChannel.muted)}
                     title={activeChannel.muted ? "Wyłącz wyciszenie" : "Wycisz kanał"}
-                    className="text-xs text-[var(--text-dim)] hover:text-[var(--text)]"
+                    className="text-[var(--text-dim)] hover:text-[var(--text)]"
                   >
-                    {activeChannel.muted ? "🔕" : "🔔"}
+                    <Icon icon={activeChannel.muted ? BellOff : Bell} size={15} />
                   </button>
                   {activeChannel.type !== "DM" && (
                     <button
                       onClick={() => setShowMembersPanel(true)}
                       title="Członkowie kanału"
-                      className="text-xs text-[var(--text-dim)] hover:text-[var(--text)]"
+                      className="text-[var(--text-dim)] hover:text-[var(--text)]"
                     >
-                      👥
+                      <Icon icon={Users} size={15} />
                     </button>
                   )}
                 </div>
@@ -1012,7 +1013,7 @@ export function ChatLayout() {
                     onClick={() => setShowPinnedList((v) => !v)}
                     className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-2.5 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40"
                   >
-                    📌 {pinnedMessages.length}
+                    <Icon icon={Pin} size={12} /> {pinnedMessages.length}
                   </button>
                 )}
                 <form onSubmit={handleSearch} className="relative">
@@ -1038,7 +1039,7 @@ export function ChatLayout() {
                     onClick={() => setShowPinnedList(false)}
                     className="text-xs text-[var(--text-dim)] transition-colors hover:text-[var(--text)]"
                   >
-                    ✕
+                    <Icon icon={X} size={13} />
                   </button>
                 </div>
                 {pinnedMessages.map((pm) => (
@@ -1217,7 +1218,7 @@ export function ChatLayout() {
                         className="ml-1 text-[var(--text-dim)] transition-colors hover:text-[var(--danger)]"
                         aria-label="Usuń załącznik"
                       >
-                        ✕
+                        <Icon icon={X} size={13} />
                       </button>
                     </div>
                   ))}
@@ -1255,26 +1256,26 @@ export function ChatLayout() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   title="Załącz plik"
-                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
+                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
                 >
-                  📎
+                  <Icon icon={Paperclip} />
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowPollModal(true)}
                   title="Utwórz ankietę"
-                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
+                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
                 >
-                  📊
+                  <Icon icon={BarChart3} />
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowSchedulePicker(true)}
                   disabled={!draft.trim()}
                   title="Wyślij później"
-                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
+                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
                 >
-                  🕐
+                  <Icon icon={Clock} />
                 </button>
                 <input
                   type="text"

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Sun, Moon } from "lucide-react";
 import { useThemeStore } from "../../stores/theme.js";
 
 /** Sun/moon toggle with a smooth rotate transition between states. */
@@ -21,12 +22,10 @@ export function ThemeToggle() {
       title={isDark ? "Przełącz na jasny motyw" : "Przełącz na ciemny motyw"}
       className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-dim)] transition-all hover:bg-[var(--border)]/60 hover:text-[var(--text)]"
     >
-      <span
-        key={isDark ? "dark" : "light"}
-        className="animate-spring-in inline-block text-sm"
-      >
-        {isDark ? "🌙" : "☀️"}
+      <span key={isDark ? "dark" : "light"} className="animate-spring-in inline-flex">
+        {isDark ? <Moon size={16} strokeWidth={1.75} /> : <Sun size={16} strokeWidth={1.75} />}
       </span>
     </button>
+
   );
 }

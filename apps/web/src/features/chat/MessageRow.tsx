@@ -7,6 +7,19 @@ import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { renderMarkdown } from "./markdown.js";
 import { PollCard } from "./PollCard.js";
+import { Icon } from "../../components/Icon.js";
+import {
+  SmilePlus,
+  MessageSquare,
+  Bookmark,
+  Pin,
+  Quote,
+  Forward,
+  Link2,
+  AlarmClock,
+  Pencil,
+  Trash2
+} from "lucide-react";
 
 interface MemberLite {
   userId: string;
@@ -131,71 +144,71 @@ export function MessageRow({
           <button
             onClick={() => setShowPicker((v) => !v)}
             title="Dodaj reakcję"
-            className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+            className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
           >
-            🙂
+            <Icon icon={SmilePlus} />
           </button>
           {!inThread && onOpenThread && (
             <button
               onClick={() => onOpenThread(m.id)}
               title="Odpowiedz w wątku"
-              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+              className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
             >
-              💬
+              <Icon icon={MessageSquare} />
             </button>
           )}
           {onToggleSave && (
             <button
               onClick={() => onToggleSave(m.id)}
               title={isSaved ? "Usuń z zapisanych" : "Zapisz wiadomość"}
-              className={`rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50 ${isSaved ? "text-[var(--accent)]" : ""}`}
+              className={`rounded px-1.5 py-1 hover:bg-[var(--border)]/50 ${isSaved ? "text-[var(--accent)]" : ""}`}
             >
-              {isSaved ? "🔖" : "📑"}
+              <Icon icon={Bookmark} className={isSaved ? "fill-current" : ""} />
             </button>
           )}
           {canPin && onTogglePin && !inThread && (
             <button
               onClick={() => onTogglePin(m.id, !m.pinnedAt)}
               title={m.pinnedAt ? "Odepnij" : "Przypnij do kanału"}
-              className={`rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50 ${m.pinnedAt ? "text-[var(--warning)]" : ""}`}
+              className={`rounded px-1.5 py-1 hover:bg-[var(--border)]/50 ${m.pinnedAt ? "text-[var(--warning)]" : ""}`}
             >
-              📌
+              <Icon icon={Pin} className={m.pinnedAt ? "fill-current" : ""} />
             </button>
           )}
           {onQuote && (
             <button
               onClick={() => onQuote(m, authorName)}
               title="Cytuj"
-              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+              className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
             >
-              ❮
+              <Icon icon={Quote} />
             </button>
           )}
           {onForward && !inThread && (
             <button
               onClick={() => onForward(m, authorName)}
               title="Przekaż dalej"
-              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+              className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
             >
-              ↪️
+              <Icon icon={Forward} />
             </button>
           )}
           {onCopyLink && !inThread && (
             <button
               onClick={() => onCopyLink(m.id)}
               title="Kopiuj link do wiadomości"
-              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+              className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
             >
-              🔗
+              <Icon icon={Link2} />
             </button>
           )}
           {onRemind && !inThread && (
             <button
               onClick={() => onRemind(m.id)}
               title="Przypomnij mi o tym"
-              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+              className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
             >
-              ⏰
+              <Icon icon={AlarmClock} />
             </button>
           )}
           {mine && (
@@ -206,16 +219,16 @@ export function MessageRow({
                   setEditing(true);
                 }}
                 title="Edytuj"
-                className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+                className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
               >
-                ✏️
+                <Icon icon={Pencil} />
               </button>
               <button
                 onClick={() => onDelete(m.id)}
                 title="Cofnij wiadomość"
-                className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--danger)]/20"
+                className="rounded px-1.5 py-1 hover:bg-[var(--danger)]/20"
               >
-                🗑️
+                <Icon icon={Trash2} />
               </button>
             </>
           )}
