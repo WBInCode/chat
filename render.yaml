@@ -15,9 +15,10 @@ services:
     buildCommand: >-
       pnpm install --frozen-lockfile &&
       pnpm --filter @chatv2/shared build &&
+      pnpm --filter @chatv2/api exec prisma generate &&
       pnpm --filter @chatv2/api build &&
       (node apps/api/scripts/generate-jwt-keys.mjs || true) &&
-      pnpm --filter @chatv2/api prisma migrate deploy
+      pnpm --filter @chatv2/api exec prisma migrate deploy
     startCommand: node apps/api/dist/server.js
     envVars:
       - key: NODE_ENV
