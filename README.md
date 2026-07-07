@@ -80,7 +80,7 @@ packages/config  Bazowe tsconfig/eslint
   - [x] F4-B — Kanały pro: opis/temat, zarządzanie członkami, mute, grupowe DM, ulubione
   - [x] F4-C — Powiadomienia: Web Push, preferencje, badge title, podsumowanie
   - [x] F4-D — Wyszukiwanie pro: filtry, Ctrl+P przełącznik, separator nowych
-  - [ ] F4-E — Codzienna praca: szkice, wyślij później, przypomnienia, ankiety, auto-statusy
+  - [x] F4-E — Codzienna praca: szkice, wyślij później, przypomnienia, ankiety, auto-statusy
 
 ## Konta testowe (seed)
 

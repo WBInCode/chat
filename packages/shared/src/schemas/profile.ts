@@ -6,7 +6,8 @@ export const updateProfileSchema = z.object({
   department: z.string().trim().max(120).nullable().optional(),
   phone: z.string().trim().max(40).nullable().optional(),
   statusText: z.string().trim().max(120).nullable().optional(),
-  statusEmoji: z.string().trim().max(8).nullable().optional()
+  statusEmoji: z.string().trim().max(8).nullable().optional(),
+  statusExpiresAt: z.string().datetime().nullable().optional()
 });
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
@@ -34,6 +35,7 @@ export interface ProfileDto {
   phone: string | null;
   statusText: string | null;
   statusEmoji: string | null;
+  statusExpiresAt: string | null;
   avatarUrl: string | null;
   createdAt: string;
 }

@@ -10,3 +10,4 @@ export * from "./schemas/admin.js";
 export * from "./schemas/export.js";
 export * from "./schemas/profile.js";
 export * from "./schemas/notifications.js";
+export * from "./schemas/productivity.js";

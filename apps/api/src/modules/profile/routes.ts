@@ -41,6 +41,7 @@ async function toProfileDto(user: User): Promise<ProfileDto> {
     phone: user.phone,
     statusText: user.statusText,
     statusEmoji: user.statusEmoji,
+    statusExpiresAt: user.statusExpiresAt?.toISOString() ?? null,
     avatarUrl: await resolveAvatarUrl(user),
     createdAt: user.createdAt.toISOString()
   };
@@ -73,7 +74,13 @@ export default async function profileRoutes(fastify: FastifyInstance) {
     const input = parseOrThrow(updateProfileSchema, request.body);
     // Strip undefined keys (exactOptionalPropertyTypes) — only fields the
     // client actually sent should be touched, `null` explicitly clears them.
-    const data = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+    const data = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)) as Record<
+      string,
+      unknown
+    >;
+    if ("statusExpiresAt" in data) {
+      data.statusExpiresAt = data.statusExpiresAt ? new Date(data.statusExpiresAt as string) : null;
+    }
     const user = await fastify.prisma.user.update({
       where: { id: request.user!.id },
       data

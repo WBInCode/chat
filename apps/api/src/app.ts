@@ -18,6 +18,7 @@ import exportRoutes from "./modules/exports/routes.js";
 import accountRoutes from "./modules/account/routes.js";
 import profileRoutes from "./modules/profile/routes.js";
 import notificationRoutes from "./modules/notifications/routes.js";
+import productivityRoutes from "./modules/productivity/routes.js";
 import wsGateway from "./ws/gateway.js";
 import { ensureBucket } from "./lib/s3.js";
 import { HttpError } from "./lib/authz.js";
@@ -27,7 +28,9 @@ import { registerFilePreviewWorker } from "./workers/file-preview.worker.js";
 import { registerLinkUnfurlWorker } from "./workers/link-unfurl.worker.js";
 import { registerDataExportWorker } from "./workers/data-export.worker.js";
 import { registerRetentionPurgeWorker } from "./workers/retention-purge.worker.js";
+import { registerDueSweepWorker } from "./workers/due-sweep.worker.js";
 import { scheduleRetentionPurge } from "./lib/queue.js";
+import { scheduleDueSweep } from "./lib/queue.js";
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -97,6 +100,7 @@ export async function buildApp() {
   await fastify.register(accountRoutes, { prefix: "/api/v1" });
   await fastify.register(profileRoutes, { prefix: "/api/v1" });
   await fastify.register(notificationRoutes, { prefix: "/api/v1" });
+  await fastify.register(productivityRoutes, { prefix: "/api/v1" });
   await fastify.register(wsGateway);
 
   // Skipped under NODE_ENV=test: integration tests don't depend on async
@@ -107,7 +111,9 @@ export async function buildApp() {
     registerLinkUnfurlWorker(fastify);
     registerDataExportWorker(fastify);
     registerRetentionPurgeWorker(fastify);
+    registerDueSweepWorker(fastify);
     await scheduleRetentionPurge();
+    await scheduleDueSweep();
   }
 
   return fastify;

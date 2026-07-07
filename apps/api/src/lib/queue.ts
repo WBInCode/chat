@@ -113,3 +113,26 @@ export async function scheduleRetentionPurge() {
   );
 }
 
+// ── F4-E: scheduled messages, reminders, status auto-expiry ────────────
+// All three are "sweep due rows" jobs — cheap to run every minute since
+// the actual due-check is a single indexed query, not per-row scheduling.
+export const DUE_SWEEP_QUEUE = "due-sweep";
+
+export const dueSweepQueue = new Queue(DUE_SWEEP_QUEUE, {
+  connection: queueConnection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: "exponential", delay: 5000 },
+    removeOnComplete: { count: 20 },
+    removeOnFail: { count: 20 }
+  }
+});
+
+export async function scheduleDueSweep() {
+  await dueSweepQueue.upsertJobScheduler(
+    "minutely-due-sweep",
+    { every: 60_000 }, // every minute
+    { name: "sweep", data: {} }
+  );
+}
+

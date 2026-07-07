@@ -13,15 +13,25 @@ interface ProfileDto {
   phone: string | null;
   statusText: string | null;
   statusEmoji: string | null;
+  statusExpiresAt: string | null;
   avatarUrl: string | null;
   createdAt: string;
 }
 
 const STATUS_EMOJI_OPTIONS = ["🙂", "🌴", "🤒", "🏠", "🚀", "☕", "🎯", ""];
+type StatusExpiry = "never" | "1h" | "4h" | "today";
 
 export function ProfileSettings() {
   const [profile, setProfile] = useState<ProfileDto | null>(null);
-  const [form, setForm] = useState({ displayName: "", jobTitle: "", department: "", phone: "", statusText: "", statusEmoji: "" });
+  const [form, setForm] = useState({
+    displayName: "",
+    jobTitle: "",
+    department: "",
+    phone: "",
+    statusText: "",
+    statusEmoji: "",
+    statusExpiry: "never" as StatusExpiry
+  });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +49,23 @@ export function ProfileSettings() {
         department: p.department ?? "",
         phone: p.phone ?? "",
         statusText: p.statusText ?? "",
-        statusEmoji: p.statusEmoji ?? ""
+        statusEmoji: p.statusEmoji ?? "",
+        statusExpiry: "never"
       });
     });
   }, []);
+
+  function statusExpiryToIso(choice: StatusExpiry): string | null {
+    const now = Date.now();
+    if (choice === "1h") return new Date(now + 60 * 60 * 1000).toISOString();
+    if (choice === "4h") return new Date(now + 4 * 60 * 60 * 1000).toISOString();
+    if (choice === "today") {
+      const d = new Date();
+      d.setHours(23, 59, 0, 0);
+      return d.toISOString();
+    }
+    return null;
+  }
 
   async function save() {
     setSaving(true);
@@ -57,7 +80,8 @@ export function ProfileSettings() {
           department: form.department || null,
           phone: form.phone || null,
           statusText: form.statusText || null,
-          statusEmoji: form.statusEmoji || null
+          statusEmoji: form.statusEmoji || null,
+          statusExpiresAt: statusExpiryToIso(form.statusExpiry)
         })
       });
       setProfile(updated);
@@ -201,6 +225,16 @@ export function ProfileSettings() {
             placeholder="Brak statusu"
           />
         </div>
+        <select
+          className={`${glassInput} mt-1.5`}
+          value={form.statusExpiry}
+          onChange={(e) => setForm({ ...form, statusExpiry: e.target.value as typeof form.statusExpiry })}
+        >
+          <option value="never">Bez wygaśnięcia</option>
+          <option value="1h">Zniknie za godzinę</option>
+          <option value="4h">Zniknie za 4 godziny</option>
+          <option value="today">Zniknie dziś o północy</option>
+        </select>
       </label>
 
       {error && <p className="text-sm text-[var(--danger)]">{error}</p>}

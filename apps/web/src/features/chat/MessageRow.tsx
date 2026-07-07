@@ -6,6 +6,7 @@ import { EmbedCard } from "./EmbedCard.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { renderMarkdown } from "./markdown.js";
+import { PollCard } from "./PollCard.js";
 
 interface MemberLite {
   userId: string;
@@ -29,6 +30,7 @@ interface MessageRowProps {
   onCopyLink?: (messageId: string) => void;
   onQuote?: (message: MessageDto, authorName: string) => void;
   onForward?: (message: MessageDto, authorName: string) => void;
+  onRemind?: (messageId: string) => void;
   canPin?: boolean;
   isSaved?: boolean;
   /** Highlighted briefly after navigating in via a permalink. */
@@ -56,6 +58,7 @@ export function MessageRow({
   onCopyLink,
   onQuote,
   onForward,
+  onRemind,
   canPin = false,
   isSaved = false,
   highlighted = false,
@@ -186,6 +189,15 @@ export function MessageRow({
               🔗
             </button>
           )}
+          {onRemind && !inThread && (
+            <button
+              onClick={() => onRemind(m.id)}
+              title="Przypomnij mi o tym"
+              className="rounded px-1.5 py-0.5 text-sm hover:bg-[var(--border)]/50"
+            >
+              ⏰
+            </button>
+          )}
           {mine && (
             <>
               <button
@@ -259,7 +271,8 @@ export function MessageRow({
           Wiadomość została cofnięta
         </p>
       ) : (
-        m.content && (
+        m.content &&
+        m.contentType !== "poll" && (
           <div className={`text-[13px] leading-relaxed ${isTemp ? "opacity-50" : ""}`}>
             {renderMarkdown(m.content, members, currentUserId)}
             {m.editedAt && (
@@ -271,6 +284,7 @@ export function MessageRow({
 
       {m.files?.map((f) => <FileAttachment key={f.id} file={f} />)}
       {m.embeds?.map((e) => <EmbedCard key={e.id} embed={e} />)}
+      {m.contentType === "poll" && <PollCard messageId={m.id} />}
 
       {/* Reactions */}
       {m.reactions && m.reactions.length > 0 && (

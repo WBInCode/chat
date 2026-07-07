@@ -13,7 +13,8 @@ import {
   type ClientToServerEvents,
   type ServerToClientEvents,
   type MessageDto,
-  type ReactionGroupDto
+  type ReactionGroupDto,
+  type PollDto
 } from "@chatv2/shared";
 import { env } from "../config/env.js";
 import { verifyAccessToken } from "../lib/jwt.js";
@@ -36,6 +37,7 @@ declare module "fastify" {
       channelId: string;
       reactions: ReactionGroupDto[];
     }) => void;
+    wsBroadcastPollUpdate?: (payload: { messageId: string; channelId: string; poll: PollDto }) => void;
   }
 }
 
@@ -243,6 +245,12 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
     "wsBroadcastReactionUpdate",
     (payload: { messageId: string; channelId: string; reactions: ReactionGroupDto[] }) => {
       io.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.ReactionUpdate, payload);
+    }
+  );
+  fastify.decorate(
+    "wsBroadcastPollUpdate",
+    (payload: { messageId: string; channelId: string; poll: PollDto }) => {
+      io.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.PollUpdate, payload);
     }
   );
 

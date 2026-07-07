@@ -25,6 +25,7 @@ export const WS_SERVER_EVENTS = {
   FilePreview: "file:preview",
   MessageEmbeds: "message:embeds",
   ReactionUpdate: "reaction:update",
+  PollUpdate: "poll:update",
   Error: "error"
 } as const;
 
@@ -90,6 +91,11 @@ export interface ServerToClientEvents {
     messageId: string;
     channelId: string;
     reactions: import("./dto.js").ReactionGroupDto[];
+  }) => void;
+  [WS_SERVER_EVENTS.PollUpdate]: (payload: {
+    messageId: string;
+    channelId: string;
+    poll: import("./schemas/productivity.js").PollDto;
   }) => void;
   [WS_SERVER_EVENTS.Error]: (payload: { code: string; message: string }) => void;
 }

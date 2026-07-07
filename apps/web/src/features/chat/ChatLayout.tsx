@@ -15,12 +15,16 @@ import { ForwardPicker } from "./ForwardPicker.js";
 import { ChannelMembersPanel } from "./ChannelMembersPanel.js";
 import { GroupDmPicker } from "./GroupDmPicker.js";
 import { QuickSwitcher } from "./QuickSwitcher.js";
+import { SchedulePicker } from "./SchedulePicker.js";
+import { CreatePollModal } from "./CreatePollModal.js";
+import { ReminderPicker } from "./ReminderPicker.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
 import { PresenceToggle } from "../settings/PresenceToggle.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { useIdlePresence } from "../../lib/idlePresence.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
+import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 
 interface OrgItem {
   id: string;
@@ -118,8 +122,12 @@ export function ChatLayout() {
   const [groupDmSelection, setGroupDmSelection] = useState<Set<string>>(new Set());
   const [digestToast, setDigestToast] = useState<string | null>(null);
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [showPollModal, setShowPollModal] = useState(false);
+  const [reminderMessageId, setReminderMessageId] = useState<string | null>(null);
   useIdlePresence(user ? getSocket() : null);
   const [draft, setDraft] = useState("");
+  const [draftChannels, setDraftChannels] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
@@ -185,12 +193,19 @@ export function ChatLayout() {
     void apiFetch<ChannelItem[]>(`/orgs/${activeOrgId}/channels`).then((data) => {
       setChannels(data);
       if (data[0]) setActiveChannel(data[0].id);
+      setDraftChannels(new Set(data.filter((c) => hasDraft(c.id)).map((c) => c.id)));
     });
     void apiFetch<MemberItem[]>(`/orgs/${activeOrgId}/members`).then((data) => {
       setMembers(data);
       useAvatarStore.getState().ensure(data.map((m) => m.userId));
     });
   }, [activeOrgId, setChannels, setActiveChannel]);
+
+  // Load the persisted draft (if any) whenever the active channel changes.
+  useEffect(() => {
+    if (!activeChannelId) return;
+    setDraft(getDraft(activeChannelId));
+  }, [activeChannelId]);
 
   useEffect(() => {
     const socket = connectSocket();
@@ -512,6 +527,12 @@ export function ChatLayout() {
     getSocket().emit("message:send", { channelId: activeChannelId, tempId, content, fileIds });
     getSocket().emit("typing:stop", { channelId: activeChannelId });
     setDraft("");
+    clearDraftPersisted(activeChannelId);
+    setDraftChannels((prev) => {
+      const next = new Set(prev);
+      next.delete(activeChannelId);
+      return next;
+    });
     for (const p of pending) if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
     setPending([]);
   }
@@ -561,6 +582,35 @@ export function ChatLayout() {
     void navigator.clipboard.writeText(url.toString());
   }
 
+  async function submitSchedule(sendAtIso: string) {
+    if (!activeChannelId || !draft.trim()) return;
+    await apiFetch(`/channels/${activeChannelId}/schedule`, {
+      method: "POST",
+      body: JSON.stringify({ content: draft.trim(), sendAt: sendAtIso })
+    });
+    setDraft("");
+    clearDraftPersisted(activeChannelId);
+    setShowSchedulePicker(false);
+  }
+
+  async function submitPoll(question: string, options: string[], allowMultiple: boolean) {
+    if (!activeChannelId) return;
+    await apiFetch(`/channels/${activeChannelId}/polls`, {
+      method: "POST",
+      body: JSON.stringify({ question, options, allowMultiple })
+    });
+    setShowPollModal(false);
+  }
+
+  async function submitReminder(remindAt: string) {
+    if (!reminderMessageId) return;
+    await apiFetch("/reminders", {
+      method: "POST",
+      body: JSON.stringify({ messageId: reminderMessageId, remindAt })
+    });
+    setReminderMessageId(null);
+  }
+
   // ── permalink navigation: ?channel=X&msg=Y jumps straight to a message ──
   useEffect(() => {
     if (permalinkHandled.current) return;
@@ -589,7 +639,17 @@ export function ChatLayout() {
     });
   }, [channels, setActiveChannel, setMessages]);
 
-  function handleDraftChange(value: string) {    setDraft(value);
+  function handleDraftChange(value: string) {
+    setDraft(value);
+    if (activeChannelId) {
+      setDraftPersisted(activeChannelId, value);
+      setDraftChannels((prev) => {
+        const next = new Set(prev);
+        if (value.trim()) next.add(activeChannelId);
+        else next.delete(activeChannelId);
+        return next;
+      });
+    }
     // @mention autocomplete: detect a trailing "@query" fragment.
     const match = value.match(/@([\p{L}\d ]{0,30})$/u);
     setMentionQuery(match ? (match[1] ?? "") : null);
@@ -781,6 +841,9 @@ export function ChatLayout() {
               >
                 <span className="flex items-center gap-1">
                   {c.type === "PRIVATE" ? "🔒" : "#"} {c.name} {c.muted && "🔕"}
+                  {draftChannels.has(c.id) && (
+                    <span className="text-[10px] italic text-[var(--text-dim)]">(szkic)</span>
+                  )}
                 </span>
                 {(c.unreadCount ?? 0) > 0 && !c.muted && (
                   <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
@@ -1104,6 +1167,7 @@ export function ChatLayout() {
                         onQuote={handleQuote}
                         onForward={handleForward}
                         onCopyLink={handleCopyLink}
+                        onRemind={setReminderMessageId}
                         highlighted={m.id === highlightedMessageId}
                         canPin={activeChannel?.myRole === "ADMIN"}
                         isSaved={savedIds.has(m.id)}
@@ -1194,6 +1258,23 @@ export function ChatLayout() {
                   className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
                 >
                   📎
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPollModal(true)}
+                  title="Utwórz ankietę"
+                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
+                >
+                  📊
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSchedulePicker(true)}
+                  disabled={!draft.trim()}
+                  title="Wyślij później"
+                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
+                >
+                  🕐
                 </button>
                 <input
                   type="text"
@@ -1312,6 +1393,24 @@ export function ChatLayout() {
             setShowQuickSwitcher(false);
           }}
           onClose={() => setShowQuickSwitcher(false)}
+        />
+      )}
+
+      {showSchedulePicker && (
+        <SchedulePicker onClose={() => setShowSchedulePicker(false)} onSubmit={(iso) => void submitSchedule(iso)} />
+      )}
+
+      {showPollModal && (
+        <CreatePollModal
+          onClose={() => setShowPollModal(false)}
+          onSubmit={(q, opts, multi) => void submitPoll(q, opts, multi)}
+        />
+      )}
+
+      {reminderMessageId && (
+        <ReminderPicker
+          onClose={() => setReminderMessageId(null)}
+          onSubmit={(iso) => void submitReminder(iso)}
         />
       )}
     </div>

@@ -43,6 +43,7 @@ export default async function accountRoutes(fastify: FastifyInstance) {
         phone: null,
         statusText: null,
         statusEmoji: null,
+        statusExpiresAt: null,
         passwordHash: randomBytes(32).toString("hex"), // unusable — login is now impossible
         totpSecret: null,
         totpEnabled: false,

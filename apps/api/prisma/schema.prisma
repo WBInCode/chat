@@ -53,6 +53,7 @@ model User {
   phone        String?
   statusText   String?
   statusEmoji  String?
+  statusExpiresAt DateTime?
   notifyMode   NotifyMode @default(ALL)
   totpSecret   String? // AES-256-GCM ciphertext, never plaintext
   totpEnabled  Boolean   @default(false)
@@ -68,8 +69,84 @@ model User {
   recoveryCodes  RecoveryCode[]
   dataExports    DataExport[]
   pushSubscriptions PushSubscription[]
+  scheduledMessages ScheduledMessage[]
+  reminders      Reminder[]
+  pollVotes      PollVote[]
 
   @@map("users")
+}
+
+model ScheduledMessage {
+  id        String    @id @default(uuid())
+  channelId String
+  authorId  String
+  content   String
+  sendAt    DateTime
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([sendAt])
+  @@index([authorId])
+  @@map("scheduled_messages")
+}
+
+model Reminder {
+  id        String    @id @default(uuid())
+  userId    String
+  messageId String
+  channelId String
+  note      String?
+  remindAt  DateTime
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([remindAt])
+  @@index([userId])
+  @@map("reminders")
+}
+
+model Poll {
+  id        String       @id @default(uuid())
+  messageId String       @unique
+  question  String
+  allowMultiple Boolean  @default(false)
+  closesAt  DateTime?
+  createdAt DateTime     @default(now())
+
+  message Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  options PollOption[]
+
+  @@map("polls")
+}
+
+model PollOption {
+  id       String     @id @default(uuid())
+  pollId   String
+  text     String
+  position Int
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+
+  @@index([pollId])
+  @@map("poll_options")
+}
+
+model PollVote {
+  id           String   @id @default(uuid())
+  pollOptionId String
+  userId       String
+  createdAt    DateTime @default(now())
+
+  option PollOption @relation(fields: [pollOptionId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollOptionId, userId])
+  @@map("poll_votes")
 }
 
 enum NotifyMode {
@@ -179,6 +256,7 @@ model Message {
   embeds  LinkEmbed[]
   reactions Reaction[]
   savedBy SavedMessage[]
+  poll    Poll?
 
   @@index([channelId, createdAt])
   @@index([parentId])

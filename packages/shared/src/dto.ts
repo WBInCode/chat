@@ -38,7 +38,7 @@ export interface MessageDto {
   channelId: string;
   authorId: string;
   content: string;
-  contentType: "text" | "file" | "image" | "system";
+  contentType: "text" | "file" | "image" | "system" | "poll";
   parentId: string | null;
   editedAt: string | null;
   createdAt: string;
@@ -48,6 +48,7 @@ export interface MessageDto {
   reactions?: ReactionGroupDto[];
   replyCount?: number;
   pinnedAt?: string | null;
+  poll?: import("./schemas/productivity.js").PollDto;
 }
 
 export interface SavedMessageDto {
