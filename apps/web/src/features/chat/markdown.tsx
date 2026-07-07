@@ -5,6 +5,44 @@ interface MemberLite {
   displayName: string;
 }
 
+const URL_REGEX = /https?:\/\/[^\s<>"'`]+/gi;
+
+/**
+ * Auto-links bare URLs in plain-text segments (e.g. a pasted YouTube link)
+ * as clickable `<a>` tags — separate from the async LinkEmbed preview card
+ * (F2-4), which only shows up later once the unfurl worker fetches OG
+ * metadata. Without this, a pasted URL rendered as inert plain text until
+ * the embed card appeared, which is confusing (looks unclickable).
+ */
+function renderLinks(text: string, keyPrefix: string): ReactNode[] {
+  if (!text.includes("http://") && !text.includes("https://")) return [text];
+
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let key = 0;
+  const regex = new RegExp(URL_REGEX);
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text))) {
+    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
+    const url = match[0];
+    nodes.push(
+      <a
+        key={`${keyPrefix}u${key++}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        className="break-all text-[var(--accent)] underline decoration-1 underline-offset-2 hover:opacity-80"
+      >
+        {url}
+      </a>
+    );
+    lastIndex = match.index + url.length;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes;
+}
+
 /**
  * Renders message content with @mention highlighting. Mentions are matched
  * against the actual member list (not a free regex), so "@random text"
@@ -16,7 +54,7 @@ export function renderMentions(
   currentUserId: string,
   keyPrefix = ""
 ): ReactNode[] {
-  if (!content.includes("@")) return [content];
+  if (!content.includes("@")) return renderLinks(content, keyPrefix);
 
   const sorted = [...members].sort((a, b) => b.displayName.length - a.displayName.length);
   const nodes: ReactNode[] = [];
@@ -26,18 +64,18 @@ export function renderMentions(
   while (rest.length > 0) {
     const at = rest.indexOf("@");
     if (at === -1) {
-      nodes.push(rest);
+      nodes.push(...renderLinks(rest, `${keyPrefix}e${key++}-`));
       break;
     }
     const match = sorted.find((m) =>
       rest.slice(at + 1).toLowerCase().startsWith(m.displayName.toLowerCase())
     );
     if (!match) {
-      nodes.push(rest.slice(0, at + 1));
+      nodes.push(...renderLinks(rest.slice(0, at + 1), `${keyPrefix}e${key++}-`));
       rest = rest.slice(at + 1);
       continue;
     }
-    if (at > 0) nodes.push(rest.slice(0, at));
+    if (at > 0) nodes.push(...renderLinks(rest.slice(0, at), `${keyPrefix}e${key++}-`));
     const isMe = match.userId === currentUserId;
     nodes.push(
       <span
