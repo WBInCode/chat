@@ -40,7 +40,7 @@ jobs:
       JWT_PRIVATE_KEY_PATH: ./keys/jwt_private.pem
       JWT_PUBLIC_KEY_PATH: ./keys/jwt_public.pem
       COOKIE_SECRET: ci-only-cookie-secret-not-for-production-use
-      FIELD_ENCRYPTION_KEY: ${{ secrets.CI_FIELD_ENCRYPTION_KEY || 'bm90LWZvci1wcm9kdWN0aW9uLWNpLW9ubHkta2V5ISEhIQ==' }}
+      FIELD_ENCRYPTION_KEY: ${{ secrets.CI_FIELD_ENCRYPTION_KEY || 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=' }}
 
     steps:
       - uses: actions/checkout@v4
