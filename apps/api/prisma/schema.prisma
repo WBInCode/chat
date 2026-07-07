@@ -37,6 +37,7 @@ model Organization {
   channels       Channel[]
   invites        Invite[]
   auditLogs      AuditLog[]
+  roles          Role[]
 
   @@map("organizations")
 }
@@ -170,19 +171,38 @@ model PushSubscription {
 }
 
 model Membership {
-  id          String    @id @default(uuid())
-  userId      String
-  orgId       String
-  role        OrgRole   @default(MEMBER)
-  disabledAt  DateTime?
-  createdAt   DateTime  @default(now())
+  id           String    @id @default(uuid())
+  userId       String
+  orgId        String
+  role         OrgRole   @default(MEMBER)
+  customRoleId String?
+  disabledAt   DateTime?
+  createdAt    DateTime  @default(now())
 
-  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  customRole Role?        @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
 
   @@unique([userId, orgId])
   @@index([orgId])
+  @@index([customRoleId])
   @@map("memberships")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  orgId       String
+  name        String
+  color       String   @default("#8b5cf6")
+  permissions String[]
+  createdAt   DateTime @default(now())
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+
+  @@unique([orgId, name])
+  @@index([orgId])
+  @@map("roles")
 }
 
 model Invite {

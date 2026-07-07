@@ -3,7 +3,8 @@ import {
   changeRoleSchema,
   setDeactivatedSchema,
   orgSettingsSchema,
-  auditLogQuerySchema
+  auditLogQuerySchema,
+  setCustomRoleSchema
 } from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import { assertOrgPermission, assertOrgMember, forbidden, notFound, HttpError } from "../../lib/authz.js";
@@ -37,10 +38,40 @@ export default async function adminRoutes(fastify: FastifyInstance) {
       displayName: m.user.displayName,
       avatarUrl: m.user.avatarUrl,
       role: m.role,
+      customRoleId: m.customRoleId,
       disabled: !!m.disabledAt,
       totpEnabled: m.user.totpEnabled,
       createdAt: m.createdAt.toISOString()
     }));
+  });
+
+  fastify.patch("/orgs/:orgId/admin/members/:userId/custom-role", async (request, reply) => {
+    const { orgId, userId } = request.params as { orgId: string; userId: string };
+    const actor = await assertOrgPermission(fastify, request.user!.id, orgId, "role.manage");
+    const input = parseOrThrow(setCustomRoleSchema, request.body);
+
+    const target = await fastify.prisma.membership.findUnique({ where: { userId_orgId: { userId, orgId } } });
+    if (!target) notFound("Członek nie istnieje");
+
+    if (input.roleId) {
+      const role = await fastify.prisma.role.findUnique({ where: { id: input.roleId } });
+      if (!role || role.orgId !== orgId) notFound("Rola nie istnieje");
+    }
+
+    await fastify.prisma.membership.update({
+      where: { userId_orgId: { userId, orgId } },
+      data: { customRoleId: input.roleId }
+    });
+
+    await logAudit(fastify, {
+      orgId,
+      actorId: actor.userId,
+      action: "member.custom_role_changed",
+      meta: { targetUserId: userId, roleId: input.roleId },
+      ip: request.ip
+    });
+
+    return reply.send({ ok: true });
   });
 
   fastify.patch("/orgs/:orgId/admin/members/:userId/role", async (request, reply) => {

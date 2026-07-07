@@ -47,11 +47,15 @@ export type OrgAction =
   | "member.changeRole"
   | "member.deactivate"
   | "channel.manage"
+  | "channel.create"
   | "org.settings"
   | "org.auditLog"
   | "org.auditLogFull" // includes actions performed BY admins/owner
   | "org.export"
-  | "org.transferOwnership";
+  | "org.transferOwnership"
+  | "role.manage"
+  | "ai.use"
+  | "voice.use";
 
 /**
  * Single source of truth for the role × action permission matrix (see
@@ -64,15 +68,29 @@ const PERMISSION_MATRIX: Record<OrgAction, OrgRole[]> = {
   "member.changeRole": ["OWNER", "ADMIN"],
   "member.deactivate": ["OWNER", "ADMIN", "HR"],
   "channel.manage": ["OWNER", "ADMIN"],
+  "channel.create": ["OWNER", "ADMIN", "HR", "MEMBER"],
   "org.settings": ["OWNER", "ADMIN"],
   "org.auditLog": ["OWNER", "ADMIN", "HR"],
   "org.auditLogFull": ["OWNER", "ADMIN"],
   "org.export": ["OWNER"],
-  "org.transferOwnership": ["OWNER"]
+  "org.transferOwnership": ["OWNER"],
+  "role.manage": ["OWNER"],
+  "ai.use": ["OWNER", "ADMIN", "HR", "MEMBER"],
+  "voice.use": ["OWNER", "ADMIN", "HR", "MEMBER"]
 };
 
-export function can(role: OrgRole, action: OrgAction): boolean {
-  return PERMISSION_MATRIX[action].includes(role);
+/**
+ * Custom-role permissions are ADDITIVE on top of the base system-role matrix
+ * above — a custom role can only grant actions that already exist in the
+ * fixed `OrgAction` universe, it never widens the base matrix or the
+ * OWNER-only gates (role.manage, org.export, org.transferOwnership stay
+ * reachable only through the system role check, since only OWNER can ever
+ * create/assign custom roles in the first place — see role.manage gate).
+ */
+export function can(role: OrgRole, action: OrgAction, customRolePermissions?: string[] | null): boolean {
+  if (PERMISSION_MATRIX[action].includes(role)) return true;
+  if (customRolePermissions?.includes(action)) return true;
+  return false;
 }
 
 export async function assertOrgPermission(
@@ -82,7 +100,12 @@ export async function assertOrgPermission(
   action: OrgAction
 ) {
   const membership = await assertOrgMember(fastify, userId, orgId);
-  if (!can(membership.role as OrgRole, action)) {
+  let customRolePermissions: string[] | null = null;
+  if (membership.customRoleId) {
+    const customRole = await fastify.prisma.role.findUnique({ where: { id: membership.customRoleId } });
+    customRolePermissions = customRole?.permissions ?? null;
+  }
+  if (!can(membership.role as OrgRole, action, customRolePermissions)) {
     forbidden("Brak uprawnień do wykonania tej akcji");
   }
   return membership;

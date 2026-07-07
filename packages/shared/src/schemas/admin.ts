@@ -36,6 +36,7 @@ export interface AdminMemberDto {
   displayName: string;
   avatarUrl: string | null;
   role: AdminOrgRole;
+  customRoleId: string | null;
   disabled: boolean;
   totpEnabled: boolean;
   createdAt: string;
@@ -66,4 +67,59 @@ export interface AdminDashboardDto {
   messagesLast30d: number[]; // one entry per day, oldest first
   totalFiles: number;
   recentSecurityEvents: AuditLogEntryDto[];
+}
+
+// ── Custom roles (F5-C) ──────────────────────────────────────────────────
+export const ORG_PERMISSIONS = [
+  "member.invite",
+  "member.remove",
+  "member.changeRole",
+  "member.deactivate",
+  "channel.manage",
+  "channel.create",
+  "org.settings",
+  "org.auditLog",
+  "org.auditLogFull",
+  "org.export",
+  "org.transferOwnership",
+  "role.manage",
+  "ai.use",
+  "voice.use"
+] as const;
+export type OrgPermission = (typeof ORG_PERMISSIONS)[number];
+
+export const createRoleSchema = z.object({
+  name: z.string().trim().min(2).max(50),
+  color: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Kolor w formacie #rrggbb")
+    .default("#8b5cf6"),
+  permissions: z.array(z.enum(ORG_PERMISSIONS)).max(ORG_PERMISSIONS.length)
+});
+export type CreateRoleInput = z.infer<typeof createRoleSchema>;
+
+export const updateRoleSchema = z.object({
+  name: z.string().trim().min(2).max(50).optional(),
+  color: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Kolor w formacie #rrggbb")
+    .optional(),
+  permissions: z.array(z.enum(ORG_PERMISSIONS)).max(ORG_PERMISSIONS.length).optional()
+});
+export type UpdateRoleInput = z.infer<typeof updateRoleSchema>;
+
+export const setCustomRoleSchema = z.object({
+  roleId: z.string().uuid().nullable()
+});
+export type SetCustomRoleInput = z.infer<typeof setCustomRoleSchema>;
+
+export interface RoleDto {
+  id: string;
+  name: string;
+  color: string;
+  permissions: OrgPermission[];
+  memberCount: number;
+  createdAt: string;
 }

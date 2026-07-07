@@ -5,8 +5,11 @@ import type {
   AdminChannelDto,
   AuditLogEntryDto,
   AdminDashboardDto,
-  OrgRole
+  OrgRole,
+  RoleDto,
+  OrgPermission
 } from "@chatv2/shared";
+import { ORG_PERMISSIONS } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { glassButtonGhost, glassButtonPrimary, glassInput } from "../../styles/glass.js";
 
@@ -53,6 +56,7 @@ export function AdminPanel() {
       <nav className="glass flex w-fit gap-1 p-1">
         {[
           { to: "members", label: "Członkowie" },
+          { to: "roles", label: "Role" },
           { to: "channels", label: "Kanały" },
           { to: "audit", label: "Audit log" },
           { to: "settings", label: "Ustawienia" },
@@ -77,6 +81,7 @@ export function AdminPanel() {
       <div className="glass flex-1 overflow-y-auto p-5">
         <Routes>
           <Route path="members" element={<MembersTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
+          <Route path="roles" element={<RolesTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
           <Route path="channels" element={<ChannelsTab orgId={activeOrgId} />} />
           <Route path="audit" element={<AuditTab orgId={activeOrgId} />} />
           <Route path="settings" element={<SettingsTab orgId={activeOrgId} />} />
@@ -91,6 +96,7 @@ export function AdminPanel() {
 // ── Members ────────────────────────────────────────────────────────────
 function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole }) {
   const [members, setMembers] = useState<AdminMemberDto[]>([]);
+  const [roles, setRoles] = useState<RoleDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<string | null>(null);
 
@@ -98,6 +104,11 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
     void apiFetch<AdminMemberDto[]>(`/orgs/${orgId}/admin/members`)
       .then(setMembers)
       .catch((e) => setError(e instanceof ApiError ? e.message : "Błąd"));
+    if (viewerRole === "OWNER") {
+      void apiFetch<RoleDto[]>(`/orgs/${orgId}/roles`)
+        .then(setRoles)
+        .catch(() => setRoles([]));
+    }
   }
 
   useEffect(reload, [orgId]);
@@ -111,6 +122,18 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
       reload();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Błąd zmiany roli");
+    }
+  }
+
+  async function changeCustomRole(userId: string, roleId: string | null) {
+    try {
+      await apiFetch(`/orgs/${orgId}/admin/members/${userId}/custom-role`, {
+        method: "PATCH",
+        body: JSON.stringify({ roleId })
+      });
+      reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Błąd zmiany roli niestandardowej");
     }
   }
 
@@ -161,6 +184,7 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
         <tr className="border-b border-[var(--glass-border)] text-left text-xs uppercase tracking-wide text-[var(--text-dim)]">
           <th className="pb-2">Użytkownik</th>
           <th className="pb-2">Rola</th>
+          {viewerRole === "OWNER" && <th className="pb-2">Rola niestandardowa</th>}
           <th className="pb-2">2FA</th>
           <th className="pb-2">Status</th>
           <th className="pb-2 text-right">Akcje</th>
@@ -188,6 +212,22 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
                 </select>
               )}
             </td>
+            {viewerRole === "OWNER" && (
+              <td>
+                <select
+                  value={m.customRoleId ?? ""}
+                  onChange={(e) => changeCustomRole(m.userId, e.target.value || null)}
+                  className="rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2 py-1 text-xs"
+                >
+                  <option value="">— brak —</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </td>
+            )}
             <td className="text-xs">{m.totpEnabled ? "✅" : "—"}</td>
             <td className="text-xs">
               {m.disabled ? (
@@ -222,6 +262,192 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
         ))}
       </tbody>
     </table>
+  );
+}
+
+// ── Roles (F5-C custom roles) ────────────────────────────────────────────
+const PERMISSION_GROUPS: { label: string; permissions: OrgPermission[] }[] = [
+  { label: "Członkowie", permissions: ["member.invite", "member.remove", "member.changeRole", "member.deactivate"] },
+  { label: "Kanały", permissions: ["channel.manage", "channel.create"] },
+  {
+    label: "Organizacja",
+    permissions: ["org.settings", "org.auditLog", "org.auditLogFull", "org.export", "org.transferOwnership", "role.manage"]
+  },
+  { label: "AI", permissions: ["ai.use"] },
+  { label: "Głos", permissions: ["voice.use"] }
+];
+
+const PERMISSION_LABELS: Record<OrgPermission, string> = {
+  "member.invite": "Zapraszanie członków",
+  "member.remove": "Usuwanie członków",
+  "member.changeRole": "Zmiana ról",
+  "member.deactivate": "Deaktywacja członków",
+  "channel.manage": "Zarządzanie kanałami (rename/archiwizacja)",
+  "channel.create": "Tworzenie kanałów",
+  "org.settings": "Ustawienia organizacji",
+  "org.auditLog": "Podgląd audit logu",
+  "org.auditLogFull": "Pełny audit log (w tym adminów)",
+  "org.export": "Eksport danych RODO",
+  "org.transferOwnership": "Przeniesienie własności",
+  "role.manage": "Zarządzanie rolami",
+  "ai.use": "Korzystanie z asystenta AI",
+  "voice.use": "Korzystanie z rozmów głosowych"
+};
+
+function RolesTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole }) {
+  const [roles, setRoles] = useState<RoleDto[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | "new" | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftColor, setDraftColor] = useState("#8b5cf6");
+  const [draftPermissions, setDraftPermissions] = useState<Set<OrgPermission>>(new Set());
+
+  function reload() {
+    void apiFetch<RoleDto[]>(`/orgs/${orgId}/roles`)
+      .then(setRoles)
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Błąd"));
+  }
+  useEffect(reload, [orgId]);
+
+  if (viewerRole !== "OWNER") {
+    return <p className="text-sm text-[var(--text-dim)]">Tylko właściciel organizacji może zarządzać rolami.</p>;
+  }
+
+  function startCreate() {
+    setEditingId("new");
+    setDraftName("");
+    setDraftColor("#8b5cf6");
+    setDraftPermissions(new Set());
+  }
+
+  function startEdit(role: RoleDto) {
+    setEditingId(role.id);
+    setDraftName(role.name);
+    setDraftColor(role.color);
+    setDraftPermissions(new Set(role.permissions));
+  }
+
+  function togglePermission(p: OrgPermission) {
+    setDraftPermissions((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p);
+      else next.add(p);
+      return next;
+    });
+  }
+
+  async function save() {
+    try {
+      const payload = { name: draftName, color: draftColor, permissions: [...draftPermissions] };
+      if (editingId === "new") {
+        await apiFetch(`/orgs/${orgId}/roles`, { method: "POST", body: JSON.stringify(payload) });
+      } else if (editingId) {
+        await apiFetch(`/orgs/${orgId}/roles/${editingId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      }
+      setEditingId(null);
+      reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Błąd zapisu roli");
+    }
+  }
+
+  async function remove(roleId: string) {
+    try {
+      await apiFetch(`/orgs/${orgId}/roles/${roleId}`, { method: "DELETE" });
+      reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Nie można usunąć roli (być może jest przypisana)");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+
+      {editingId ? (
+        <div className="glass flex flex-col gap-3 p-4">
+          <h2 className="text-sm font-semibold">{editingId === "new" ? "Nowa rola" : "Edytuj rolę"}</h2>
+          <div className="flex items-center gap-3">
+            <input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              placeholder="np. Moderator"
+              className={`${glassInput} flex-1`}
+            />
+            <input
+              type="color"
+              value={draftColor}
+              onChange={(e) => setDraftColor(e.target.value)}
+              className="h-9 w-12 cursor-pointer rounded-lg border border-[var(--glass-border)] bg-transparent"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {PERMISSION_GROUPS.map((group) => (
+              <div key={group.label}>
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-dim)]">
+                  {group.label}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {group.permissions.map((p) => (
+                    <label key={p} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={draftPermissions.has(p)}
+                        onChange={() => togglePermission(p)}
+                      />
+                      {PERMISSION_LABELS[p]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setEditingId(null)} className={glassButtonGhost}>
+              Anuluj
+            </button>
+            <button onClick={() => void save()} disabled={draftName.trim().length < 2} className={glassButtonPrimary}>
+              Zapisz
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={startCreate} className={`${glassButtonPrimary} w-fit`}>
+          + Nowa rola
+        </button>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {roles.map((r) => (
+          <div key={r.id} className="glass flex items-center justify-between p-3">
+            <div className="flex items-center gap-2">
+              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: r.color }} />
+              <span className="text-sm font-medium">{r.name}</span>
+              <span className="text-xs text-[var(--text-dim)]">
+                {r.memberCount} {r.memberCount === 1 ? "członek" : "członków"}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => startEdit(r)}
+                className="rounded-lg px-2 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50"
+              >
+                Edytuj
+              </button>
+              <button
+                onClick={() => void remove(r.id)}
+                disabled={r.memberCount > 0}
+                title={r.memberCount > 0 ? "Odepnij rolę od wszystkich członków przed usunięciem" : undefined}
+                className="rounded-lg px-2 py-1 text-xs text-[var(--danger)] transition-colors hover:bg-[var(--border)]/50 disabled:opacity-40"
+              >
+                Usuń
+              </button>
+            </div>
+          </div>
+        ))}
+        {roles.length === 0 && <p className="text-sm text-[var(--text-dim)]">Brak niestandardowych ról.</p>}
+      </div>
+    </div>
   );
 }
 
