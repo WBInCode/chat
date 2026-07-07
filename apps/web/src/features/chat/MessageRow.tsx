@@ -19,7 +19,8 @@ import {
   AlarmClock,
   Pencil,
   Trash2,
-  Sparkles
+  Sparkles,
+  MoreHorizontal
 } from "lucide-react";
 
 interface MemberLite {
@@ -82,6 +83,10 @@ export function MessageRow({
   const [showPicker, setShowPicker] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(m.content);
+  // Touch devices have no hover, so the action bar is revealed via an
+  // always-visible "⋯" button on mobile (see below); on desktop it appears
+  // on group-hover as before.
+  const [showActions, setShowActions] = useState(false);
   const isTemp = m.id.startsWith("temp-");
   const isDeleted = !m.content && !m.files?.length && m.contentType === "text";
   const avatarUrl = useAvatarStore((s) => s.urls[m.authorId]);
@@ -147,7 +152,22 @@ export function MessageRow({
 
       {/* Hover actions */}
       {!isTemp && !editing && (
-        <div className="absolute -top-3 right-0 z-10 hidden items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 shadow-lg backdrop-blur-md group-hover:flex">
+        <>
+          {/* Mobile: no hover — reveal the action bar with a tap. */}
+          <button
+            type="button"
+            onClick={() => setShowActions((v) => !v)}
+            title="Akcje"
+            className="absolute -top-2 right-0 z-10 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] p-1 shadow-lg backdrop-blur-md md:hidden"
+          >
+            <Icon icon={MoreHorizontal} size={14} />
+          </button>
+          <div
+            className={`absolute -top-3 right-0 z-10 items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 shadow-lg backdrop-blur-md group-hover:flex ${
+              showActions ? "flex" : "hidden"
+            }`}
+            onClick={() => setShowActions(false)}
+          >
           <button
             onClick={() => setShowPicker((v) => !v)}
             title="Dodaj reakcję"
@@ -239,7 +259,8 @@ export function MessageRow({
               </button>
             </>
           )}
-        </div>
+          </div>
+        </>
       )}
 
       {/* Reaction picker */}

@@ -30,7 +30,7 @@ import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -142,6 +142,8 @@ export function ChatLayout() {
   const [aiRewriteLoading, setAiRewriteLoading] = useState(false);
   const [inVoiceChannelId, setInVoiceChannelId] = useState<string | null>(null);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [showComposerActions, setShowComposerActions] = useState(false);
   useIdlePresence(user ? getSocket() : null);
 
   useEffect(() => {
@@ -1133,7 +1135,15 @@ export function ChatLayout() {
                     <Icon icon={Pin} size={12} /> {pinnedMessages.length}
                   </button>
                 )}
-                <form onSubmit={handleSearch} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowMobileSearch((v) => !v)}
+                  title="Szukaj"
+                  className="text-[var(--text-dim)] hover:text-[var(--text)] md:hidden"
+                >
+                  <Icon icon={Search} size={18} />
+                </button>
+                <form onSubmit={handleSearch} className="relative hidden md:block">
                   <input
                     ref={searchInputRef}
                     type="search"
@@ -1145,6 +1155,32 @@ export function ChatLayout() {
                 </form>
               </div>
             </header>
+
+            {showMobileSearch && (
+              <form
+                onSubmit={handleSearch}
+                className="animate-slide-up flex items-center gap-2 border-b border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 backdrop-blur-sm md:hidden"
+              >
+                <input
+                  type="search"
+                  autoFocus
+                  value={searchTerm}
+                  onChange={(e) => handleSearchInput(e.target.value)}
+                  placeholder="Szukaj… from: in: has:file"
+                  className="flex-1 rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileSearch(false);
+                    setSearchResults(null);
+                  }}
+                  className="text-[var(--text-dim)] hover:text-[var(--text)]"
+                >
+                  <Icon icon={X} size={18} />
+                </button>
+              </form>
+            )}
 
             {showPinnedList && pinnedMessages.length > 0 && (
               <div className="animate-slide-up max-h-48 space-y-2 overflow-y-auto border-b border-[var(--glass-border)] bg-[var(--glass)] px-4 py-2 backdrop-blur-sm">
@@ -1369,72 +1405,145 @@ export function ChatLayout() {
                     e.target.value = "";
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Załącz plik"
-                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
-                >
-                  <Icon icon={Paperclip} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPollModal(true)}
-                  title="Utwórz ankietę"
-                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
-                >
-                  <Icon icon={BarChart3} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSchedulePicker(true)}
-                  disabled={!draft.trim()}
-                  title="Wyślij później"
-                  className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
-                >
-                  <Icon icon={Clock} />
-                </button>
-                {aiEnabled && (
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowAiRewriteMenu((v) => !v)}
-                      disabled={!draft.trim() || aiRewriteLoading}
-                      title="AI: przeredaguj tekst"
-                      className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
-                    >
-                      <Icon icon={Sparkles} />
-                    </button>
-                    {showAiRewriteMenu && (
-                      <div className="animate-slide-up absolute bottom-full right-0 z-20 mb-1 w-48 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
-                        {[
-                          { mode: "improve", label: "Popraw ton" },
-                          { mode: "shorten", label: "Skróć" },
-                          { mode: "translate_en", label: "Przetłumacz na EN" },
-                          { mode: "translate_pl", label: "Przetłumacz na PL" },
-                          { mode: "corpo", label: "🤵 Korpo-mowa" }
+
+                {/* Mobile: collapse secondary composer actions into a single "+" menu
+                    so the text input keeps most of the width on narrow screens. */}
+                <div className="relative md:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowComposerActions((v) => !v)}
+                    title="Więcej akcji"
+                    className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
+                  >
+                    <Icon icon={Plus} />
+                  </button>
+                  {showComposerActions && (
+                    <div className="animate-slide-up absolute bottom-full left-0 z-20 mb-1 w-52 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowComposerActions(false);
+                          fileInputRef.current?.click();
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                      >
+                        <Icon icon={Paperclip} size={16} /> Załącz plik
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowComposerActions(false);
+                          setShowPollModal(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                      >
+                        <Icon icon={BarChart3} size={16} /> Utwórz ankietę
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowComposerActions(false);
+                          setShowSchedulePicker(true);
+                        }}
+                        disabled={!draft.trim()}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 disabled:opacity-40"
+                      >
+                        <Icon icon={Clock} size={16} /> Wyślij później
+                      </button>
+                      {aiEnabled &&
+                        [
+                          { mode: "improve", label: "AI: Popraw ton" },
+                          { mode: "shorten", label: "AI: Skróć" },
+                          { mode: "translate_en", label: "AI: Przetłumacz na EN" },
+                          { mode: "translate_pl", label: "AI: Przetłumacz na PL" },
+                          { mode: "corpo", label: "AI: 🤵 Korpo-mowa" }
                         ].map((opt) => (
                           <button
                             key={opt.mode}
                             type="button"
-                            onClick={() => void runAiRewrite(opt.mode)}
-                            className="block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                            onClick={() => {
+                              setShowComposerActions(false);
+                              void runAiRewrite(opt.mode);
+                            }}
+                            disabled={!draft.trim() || aiRewriteLoading}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 disabled:opacity-40"
                           >
-                            {opt.label}
+                            <Icon icon={Sparkles} size={16} /> {opt.label}
                           </button>
                         ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Desktop: keep the action buttons inline. */}
+                <div className="hidden items-center gap-2 md:flex">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Załącz plik"
+                    className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
+                  >
+                    <Icon icon={Paperclip} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPollModal(true)}
+                    title="Utwórz ankietę"
+                    className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
+                  >
+                    <Icon icon={BarChart3} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSchedulePicker(true)}
+                    disabled={!draft.trim()}
+                    title="Wyślij później"
+                    className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
+                  >
+                    <Icon icon={Clock} />
+                  </button>
+                  {aiEnabled && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowAiRewriteMenu((v) => !v)}
+                        disabled={!draft.trim() || aiRewriteLoading}
+                        title="AI: przeredaguj tekst"
+                        className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
+                      >
+                        <Icon icon={Sparkles} />
+                      </button>
+                      {showAiRewriteMenu && (
+                        <div className="animate-slide-up absolute bottom-full right-0 z-20 mb-1 w-48 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
+                          {[
+                            { mode: "improve", label: "Popraw ton" },
+                            { mode: "shorten", label: "Skróć" },
+                            { mode: "translate_en", label: "Przetłumacz na EN" },
+                            { mode: "translate_pl", label: "Przetłumacz na PL" },
+                            { mode: "corpo", label: "🤵 Korpo-mowa" }
+                          ].map((opt) => (
+                            <button
+                              key={opt.mode}
+                              type="button"
+                              onClick={() => void runAiRewrite(opt.mode)}
+                              className="block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <input
                   type="text"
                   value={draft}
                   onChange={(e) => handleDraftChange(e.target.value)}
                   onPaste={handlePaste}
-                  placeholder={`Napisz na ${activeChannel.type === "DM" ? "@" : "#"}${activeChannel.name}  ·  @wzmianka · Ctrl+K szukaj`}
+                  placeholder={`Napisz na ${activeChannel.type === "DM" ? "@" : "#"}${activeChannel.name}`}
                   maxLength={8000}
-                  className="flex-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
+                  className="min-w-0 flex-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
                 />
                 {draft.length > 7000 && (
                   <span className="absolute -top-5 right-24 text-xs text-[var(--warning)]">
@@ -1444,9 +1553,11 @@ export function ChatLayout() {
                 <button
                   type="submit"
                   disabled={!draft.trim() && pending.length === 0}
-                  className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-[0_4px_16px_rgba(91,124,255,0.35)] transition-all duration-150 hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100"
+                  title="Wyślij"
+                  className="flex items-center justify-center rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_rgba(91,124,255,0.35)] transition-all duration-150 hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 sm:px-4"
                 >
-                  Wyślij
+                  <Icon icon={Send} className="sm:hidden" />
+                  <span className="hidden sm:inline">Wyślij</span>
                 </button>
               </div>
             </form>
