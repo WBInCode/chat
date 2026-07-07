@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && cd apps/web && npx vite build",
+  "buildCommand": "pnpm install --frozen-lockfile && cd apps/web && npx vite build --outDir ../../dist",
   "outputDirectory": "dist",
   "installCommand": "echo skip",
   "framework": null,
