@@ -22,7 +22,27 @@ export const createDmSchema = z.object({
 });
 export type CreateDmInput = z.infer<typeof createDmSchema>;
 
+export const createGroupDmSchema = z.object({
+  memberUserIds: z.array(z.string().uuid()).min(2).max(20)
+});
+export type CreateGroupDmInput = z.infer<typeof createGroupDmSchema>;
+
 export const addChannelMemberSchema = z.object({
   userId: z.string().uuid()
 });
 export type AddChannelMemberInput = z.infer<typeof addChannelMemberSchema>;
+
+export const setChannelTopicSchema = z.object({
+  topic: z.string().trim().max(250).nullable()
+});
+export type SetChannelTopicInput = z.infer<typeof setChannelTopicSchema>;
+
+export const setMutedSchema = z.object({
+  muted: z.boolean()
+});
+export type SetMutedInput = z.infer<typeof setMutedSchema>;
+
+export const setFavoriteSchema = z.object({
+  favorite: z.boolean()
+});
+export type SetFavoriteInput = z.infer<typeof setFavoriteSchema>;

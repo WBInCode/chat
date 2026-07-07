@@ -23,10 +23,13 @@ export interface ChannelDto {
   orgId: string;
   type: "PUBLIC" | "PRIVATE" | "DM";
   name: string | null;
+  topic?: string | null;
   createdBy: string;
   createdAt: string;
   unreadCount?: number;
   myRole?: "ADMIN" | "MEMBER";
+  muted?: boolean;
+  favorite?: boolean;
 }
 
 export interface MessageDto {

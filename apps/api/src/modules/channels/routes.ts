@@ -1,5 +1,13 @@
 import type { FastifyInstance } from "fastify";
-import { createChannelSchema, createDmSchema, addChannelMemberSchema } from "@chatv2/shared";
+import {
+  createChannelSchema,
+  createDmSchema,
+  createGroupDmSchema,
+  addChannelMemberSchema,
+  setChannelTopicSchema,
+  setMutedSchema,
+  setFavoriteSchema
+} from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import {
   assertOrgMember,
@@ -41,11 +49,11 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
     return memberships.map((m) => {
       const ch = m.channel;
-      // For DMs, display name = the other participant's name.
+      // For DMs, display name = other participant(s)' name(s) (comma-joined for group DMs).
       let name = ch.name;
       if (ch.type === "DM") {
-        const other = ch.members.find((cm) => cm.userId !== userId);
-        name = other?.user.displayName ?? "DM";
+        const others = ch.members.filter((cm) => cm.userId !== userId);
+        name = others.map((o) => o.user.displayName).join(", ") || "DM";
       }
       // Unread = messages authored by others after our lastReadAt.
       const lastRead = m.lastReadAt?.getTime() ?? 0;
@@ -57,11 +65,14 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         orgId: ch.orgId,
         type: ch.type,
         name,
+        topic: ch.topic,
         createdBy: ch.createdBy,
         createdAt: ch.createdAt.toISOString(),
         lastReadAt: m.lastReadAt?.toISOString() ?? null,
         unreadCount,
-        myRole: m.role
+        myRole: m.role,
+        muted: !!m.mutedAt,
+        favorite: m.favorite
       };
     });
   });
@@ -165,6 +176,39 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       .send({ id: channel.id, orgId, type: "DM", createdAt: channel.createdAt.toISOString() });
   });
 
+  /** Create a group DM (3+ participants, no dedup — each click makes a new group). */
+  fastify.post("/orgs/:orgId/group-dm", async (request, reply) => {
+    const { orgId } = request.params as { orgId: string };
+    const userId = request.user!.id;
+    const input = parseOrThrow(createGroupDmSchema, request.body);
+    await assertOrgMember(fastify, userId, orgId);
+
+    const uniqueTargets = [...new Set(input.memberUserIds)].filter((id) => id !== userId);
+    if (uniqueTargets.length < 2) {
+      return sendError(reply, 400, "GROUP_DM_TOO_SMALL", "Grupa wymaga co najmniej 2 innych osób");
+    }
+    for (const targetId of uniqueTargets) {
+      await assertOrgMember(fastify, targetId, orgId).catch(() =>
+        notFound("Użytkownik nie należy do tej organizacji")
+      );
+    }
+
+    const channel = await fastify.prisma.$transaction(async (tx) => {
+      const created = await tx.channel.create({ data: { orgId, type: "DM", createdBy: userId } });
+      await tx.channelMember.createMany({
+        data: [
+          { channelId: created.id, userId, role: "ADMIN" as const },
+          ...uniqueTargets.map((id) => ({ channelId: created.id, userId: id, role: "MEMBER" as const }))
+        ]
+      });
+      return created;
+    });
+
+    return reply
+      .status(201)
+      .send({ id: channel.id, orgId, type: "DM", createdAt: channel.createdAt.toISOString() });
+  });
+
   /** Add a member to a PRIVATE channel (channel admin only). */
   fastify.post("/channels/:channelId/members", async (request, reply) => {
     const { channelId } = request.params as { channelId: string };
@@ -191,5 +235,110 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     });
 
     return reply.status(201).send({ ok: true });
+  });
+
+  /** List members of a channel (any member can view). */
+  fastify.get("/channels/:channelId/members", async (request) => {
+    const { channelId } = request.params as { channelId: string };
+    await assertChannelMember(fastify, request.user!.id, channelId);
+
+    const members = await fastify.prisma.channelMember.findMany({
+      where: { channelId },
+      include: { user: { select: { id: true, displayName: true, email: true } } },
+      orderBy: { createdAt: "asc" }
+    });
+
+    return members.map((m) => ({
+      userId: m.userId,
+      displayName: m.user.displayName,
+      email: m.user.email,
+      role: m.role
+    }));
+  });
+
+  /** Remove a member from a PUBLIC/PRIVATE channel (channel admin only, not DMs). */
+  fastify.delete("/channels/:channelId/members/:userId", async (request, reply) => {
+    const { channelId, userId: targetUserId } = request.params as { channelId: string; userId: string };
+    const actorId = request.user!.id;
+
+    const membership = await assertChannelMember(fastify, actorId, channelId);
+    if (membership.channel.type === "DM") {
+      return sendError(reply, 400, "DM_IMMUTABLE", "Nie można usuwać osób z rozmowy prywatnej");
+    }
+    if (membership.role !== "ADMIN") {
+      forbidden("Tylko administrator kanału może usuwać członków");
+    }
+    if (targetUserId === actorId) {
+      return sendError(reply, 400, "CANNOT_REMOVE_SELF", "Użyj opcji opuszczenia kanału");
+    }
+
+    await fastify.prisma.channelMember.deleteMany({ where: { channelId, userId: targetUserId } });
+
+    await logAudit(fastify, {
+      orgId: membership.channel.orgId,
+      actorId,
+      action: "channel.member_removed",
+      meta: { channelId, targetUserId },
+      ip: request.ip
+    });
+
+    return reply.status(204).send();
+  });
+
+  /** Channel topic/description (channel admin only). */
+  fastify.patch("/channels/:channelId/topic", async (request) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+    const input = parseOrThrow(setChannelTopicSchema, request.body);
+
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    if (membership.role !== "ADMIN") {
+      forbidden("Tylko administrator kanału może zmienić temat");
+    }
+
+    const updated = await fastify.prisma.channel.update({
+      where: { id: channelId },
+      data: { topic: input.topic }
+    });
+
+    await logAudit(fastify, {
+      orgId: membership.channel.orgId,
+      actorId: userId,
+      action: "channel.topic_changed",
+      meta: { channelId, topic: input.topic },
+      ip: request.ip
+    });
+
+    return { id: updated.id, topic: updated.topic };
+  });
+
+  /** Mute/unmute a channel for the current user only (no notifications/unread emphasis). */
+  fastify.patch("/channels/:channelId/mute", async (request) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+    const input = parseOrThrow(setMutedSchema, request.body);
+    await assertChannelMember(fastify, userId, channelId);
+
+    await fastify.prisma.channelMember.update({
+      where: { channelId_userId: { channelId, userId } },
+      data: { mutedAt: input.muted ? new Date() : null }
+    });
+
+    return { channelId, muted: input.muted };
+  });
+
+  /** Star/unstar a channel for quick access, personal to the current user. */
+  fastify.patch("/channels/:channelId/favorite", async (request) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+    const input = parseOrThrow(setFavoriteSchema, request.body);
+    await assertChannelMember(fastify, userId, channelId);
+
+    await fastify.prisma.channelMember.update({
+      where: { channelId_userId: { channelId, userId } },
+      data: { favorite: input.favorite }
+    });
+
+    return { channelId, favorite: input.favorite };
   });
 }

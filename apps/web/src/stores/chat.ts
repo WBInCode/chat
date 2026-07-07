@@ -6,9 +6,12 @@ export interface ChannelItem {
   orgId: string;
   type: "PUBLIC" | "PRIVATE" | "DM";
   name: string | null;
+  topic?: string | null;
   createdAt: string;
   unreadCount?: number;
   myRole?: "ADMIN" | "MEMBER";
+  muted?: boolean;
+  favorite?: boolean;
 }
 
 interface ChatState {

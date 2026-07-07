@@ -107,6 +107,7 @@ model Channel {
   orgId      String
   type       ChannelType
   name       String?
+  topic      String?
   createdBy  String
   archivedAt DateTime?
   createdAt  DateTime    @default(now())
@@ -125,6 +126,8 @@ model ChannelMember {
   userId     String
   role       ChannelRole @default(MEMBER)
   lastReadAt DateTime?
+  mutedAt    DateTime?
+  favorite   Boolean     @default(false)
   createdAt  DateTime    @default(now())
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)

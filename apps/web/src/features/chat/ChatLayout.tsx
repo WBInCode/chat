@@ -12,6 +12,8 @@ import { ThreadPanel } from "./ThreadPanel.js";
 import { ProfileCard } from "./ProfileCard.js";
 import { SavedPanel } from "./SavedPanel.js";
 import { ForwardPicker } from "./ForwardPicker.js";
+import { ChannelMembersPanel } from "./ChannelMembersPanel.js";
+import { GroupDmPicker } from "./GroupDmPicker.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
 import { PresenceToggle } from "../settings/PresenceToggle.js";
 import { Avatar } from "../../components/Avatar.js";
@@ -107,6 +109,11 @@ export function ChatLayout() {
   const permalinkHandled = useRef(false);
   const permalinkInProgressRef = useRef<string | null>(null);
   const suppressAutoScrollRef = useRef(false);
+  const [editingTopic, setEditingTopic] = useState(false);
+  const [topicDraft, setTopicDraft] = useState("");
+  const [showMembersPanel, setShowMembersPanel] = useState(false);
+  const [showGroupDmPicker, setShowGroupDmPicker] = useState(false);
+  const [groupDmSelection, setGroupDmSelection] = useState<Set<string>>(new Set());
   useIdlePresence(user ? getSocket() : null);
   const [draft, setDraft] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -272,6 +279,44 @@ export function ChatLayout() {
         return next;
       });
     });
+  }
+
+  async function saveTopic() {
+    if (!activeChannelId) return;
+    const updated = await apiFetch<{ topic: string | null }>(`/channels/${activeChannelId}/topic`, {
+      method: "PATCH",
+      body: JSON.stringify({ topic: topicDraft.trim() || null })
+    });
+    setChannels(
+      channels.map((c) => (c.id === activeChannelId ? { ...c, topic: updated.topic } : c))
+    );
+    setEditingTopic(false);
+  }
+
+  async function toggleMute(channelId: string, muted: boolean) {
+    await apiFetch(`/channels/${channelId}/mute`, { method: "PATCH", body: JSON.stringify({ muted }) });
+    setChannels(channels.map((c) => (c.id === channelId ? { ...c, muted } : c)));
+  }
+
+  async function toggleFavorite(channelId: string, favorite: boolean) {
+    await apiFetch(`/channels/${channelId}/favorite`, {
+      method: "PATCH",
+      body: JSON.stringify({ favorite })
+    });
+    setChannels(channels.map((c) => (c.id === channelId ? { ...c, favorite } : c)));
+  }
+
+  async function createGroupDm() {
+    if (!activeOrgId || groupDmSelection.size < 2) return;
+    const dm = await apiFetch<{ id: string }>(`/orgs/${activeOrgId}/group-dm`, {
+      method: "POST",
+      body: JSON.stringify({ memberUserIds: [...groupDmSelection] })
+    });
+    const refreshed = await apiFetch<ChannelItem[]>(`/orgs/${activeOrgId}/channels`);
+    setChannels(refreshed);
+    setActiveChannel(dm.id);
+    setShowGroupDmPicker(false);
+    setGroupDmSelection(new Set());
   }
 
   const channelMessages = useMemo(
@@ -622,6 +667,38 @@ export function ChatLayout() {
           <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
             Kanały
           </p>
+          {channels.some((c) => c.favorite) && (
+            <>
+              <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--warning)]">
+                ⭐ Ulubione
+              </p>
+              {channels
+                .filter((c) => c.favorite)
+                .map((c) => (
+                  <button
+                    key={`fav-${c.id}`}
+                    onClick={() => setActiveChannel(c.id)}
+                    className={`nav-item mb-1 flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
+                      c.id === activeChannelId
+                        ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
+                        : "text-[var(--text)] hover:bg-[var(--border)]/50"
+                    }`}
+                  >
+                    <span>
+                      {c.type === "DM" ? "@" : c.type === "PRIVATE" ? "🔒" : "#"} {c.name}
+                    </span>
+                    {(c.unreadCount ?? 0) > 0 && !c.muted && (
+                      <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
+                        {c.unreadCount}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              <p className="mt-2 px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
+                Kanały
+              </p>
+            </>
+          )}
           {channels
             .filter((c) => c.type !== "DM")
             .map((c) => (
@@ -631,13 +708,15 @@ export function ChatLayout() {
                 className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
                   c.id === activeChannelId
                     ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
-                    : "text-[var(--text)] hover:bg-[var(--border)]/50"
+                    : c.muted
+                      ? "text-[var(--text-dim)] hover:bg-[var(--border)]/50"
+                      : "text-[var(--text)] hover:bg-[var(--border)]/50"
                 }`}
               >
-                <span>
-                  {c.type === "PRIVATE" ? "🔒" : "#"} {c.name}
+                <span className="flex items-center gap-1">
+                  {c.type === "PRIVATE" ? "🔒" : "#"} {c.name} {c.muted && "🔕"}
                 </span>
-                {(c.unreadCount ?? 0) > 0 && (
+                {(c.unreadCount ?? 0) > 0 && !c.muted && (
                   <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
                     {c.unreadCount}
                   </span>
@@ -645,9 +724,18 @@ export function ChatLayout() {
               </button>
             ))}
 
-          <p className="mt-4 px-2 py-1 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
-            Wiadomości bezpośrednie
-          </p>
+          <div className="mt-4 flex items-center justify-between px-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
+              Wiadomości bezpośrednie
+            </p>
+            <button
+              onClick={() => setShowGroupDmPicker(true)}
+              title="Nowa grupa"
+              className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)]"
+            >
+              + Grupa
+            </button>
+          </div>
           {channels
             .filter((c) => c.type === "DM")
             .map((c) => (
@@ -660,8 +748,10 @@ export function ChatLayout() {
                     : "text-[var(--text)] hover:bg-[var(--border)]/50"
                 }`}
               >
-                <span>@ {c.name}</span>
-                {(c.unreadCount ?? 0) > 0 && (
+                <span>
+                  @ {c.name} {c.muted && "🔕"}
+                </span>
+                {(c.unreadCount ?? 0) > 0 && !c.muted && (
                   <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
                     {c.unreadCount}
                   </span>
@@ -726,10 +816,67 @@ export function ChatLayout() {
         {activeChannel ? (
           <>
             <header className="flex items-center justify-between gap-4 border-b border-[var(--glass-border)] px-4 py-3">
-              <h1 className="text-sm font-semibold">
-                {activeChannel.type === "DM" ? "@" : activeChannel.type === "PRIVATE" ? "🔒" : "#"}{" "}
-                {activeChannel.name}
-              </h1>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => toggleFavorite(activeChannel.id, !activeChannel.favorite)}
+                    title={activeChannel.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
+                    className={`text-sm ${activeChannel.favorite ? "text-[var(--warning)]" : "text-[var(--text-dim)] hover:text-[var(--warning)]"}`}
+                  >
+                    {activeChannel.favorite ? "★" : "☆"}
+                  </button>
+                  <h1 className="truncate text-sm font-semibold">
+                    {activeChannel.type === "DM" ? "@" : activeChannel.type === "PRIVATE" ? "🔒" : "#"}{" "}
+                    {activeChannel.name}
+                  </h1>
+                  <button
+                    onClick={() => toggleMute(activeChannel.id, !activeChannel.muted)}
+                    title={activeChannel.muted ? "Wyłącz wyciszenie" : "Wycisz kanał"}
+                    className="text-xs text-[var(--text-dim)] hover:text-[var(--text)]"
+                  >
+                    {activeChannel.muted ? "🔕" : "🔔"}
+                  </button>
+                  {activeChannel.type !== "DM" && (
+                    <button
+                      onClick={() => setShowMembersPanel(true)}
+                      title="Członkowie kanału"
+                      className="text-xs text-[var(--text-dim)] hover:text-[var(--text)]"
+                    >
+                      👥
+                    </button>
+                  )}
+                </div>
+                {editingTopic ? (
+                  <div className="mt-0.5 flex items-center gap-1">
+                    <input
+                      autoFocus
+                      value={topicDraft}
+                      onChange={(e) => setTopicDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void saveTopic();
+                        if (e.key === "Escape") setEditingTopic(false);
+                      }}
+                      placeholder="Ustaw temat kanału…"
+                      maxLength={250}
+                      className="w-72 rounded border border-[var(--glass-border)] bg-[var(--glass)] px-1.5 py-0.5 text-xs outline-none"
+                    />
+                    <button onClick={saveTopic} className="text-xs text-[var(--accent)]">
+                      Zapisz
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (activeChannel.myRole !== "ADMIN") return;
+                      setTopicDraft(activeChannel.topic ?? "");
+                      setEditingTopic(true);
+                    }}
+                    className={`truncate text-left text-xs text-[var(--text-dim)] ${activeChannel.myRole === "ADMIN" ? "hover:text-[var(--text)]" : ""}`}
+                  >
+                    {activeChannel.topic || (activeChannel.myRole === "ADMIN" ? "+ Dodaj temat kanału" : "")}
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 {pinnedMessages.length > 0 && (
                   <button
@@ -1036,6 +1183,34 @@ export function ChatLayout() {
           channels={channels}
           onClose={() => setForwardMessage(null)}
           onSubmit={(channelId, comment) => void submitForward(channelId, comment)}
+        />
+      )}
+
+      {showMembersPanel && activeChannelId && (
+        <ChannelMembersPanel
+          channelId={activeChannelId}
+          isAdmin={activeChannel?.myRole === "ADMIN"}
+          orgMembers={members}
+          onClose={() => setShowMembersPanel(false)}
+        />
+      )}
+
+      {showGroupDmPicker && (
+        <GroupDmPicker
+          members={members.filter((m) => m.userId !== user?.id)}
+          selection={groupDmSelection}
+          onToggle={(userId) =>
+            setGroupDmSelection((prev) => {
+              const next = new Set(prev);
+              next.has(userId) ? next.delete(userId) : next.add(userId);
+              return next;
+            })
+          }
+          onClose={() => {
+            setShowGroupDmPicker(false);
+            setGroupDmSelection(new Set());
+          }}
+          onSubmit={() => void createGroupDm()}
         />
       )}
     </div>
