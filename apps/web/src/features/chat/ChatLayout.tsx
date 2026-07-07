@@ -1002,6 +1002,15 @@ export function ChatLayout() {
             myPresenceDotClass={presenceDotClass(user ? presenceStatus[user.id] : undefined) || "bg-[var(--accent-2)]"}
           />
           <div className="mt-1 flex items-center justify-end gap-3 px-1.5">
+            {user?.isSuperAdmin && (
+              <Link
+                to="/super-admin"
+                title="Panel super-admina"
+                className="text-xs text-[var(--warning)] transition-colors hover:opacity-80"
+              >
+                Super-admin
+              </Link>
+            )}
             {["OWNER", "ADMIN", "HR"].includes(
               orgs.find((o) => o.id === activeOrgId)?.role ?? ""
             ) && (

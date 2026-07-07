@@ -4,6 +4,7 @@ interface AuthUser {
   id: string;
   email: string;
   displayName: string;
+  isSuperAdmin?: boolean;
 }
 
 interface AuthState {

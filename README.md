@@ -89,6 +89,7 @@ packages/config  Bazowe tsconfig/eslint
   - [x] F5-E — Rozmowy głosowe: WebRTC P2P mesh, sygnalizacja Socket.IO, darmowy STUN (TURN nieskonfigurowany — ograniczenie udokumentowane)
   - [x] F5-F — Jakość: E2E Playwright, /metrics Prometheus, web-vitals, health checks per-zależność
   - [x] F5-G — Dopracowanie: responsywność mobilna (sidebar-drawer), a11y (focus-visible), przegląd bezpieczeństwa AI (prompt injection), .env.example
+  - [x] F5-H — Panel super-admina: zarządzanie użytkownikami/organizacjami ponad podziałem na organizacje (`/super-admin`)
 
 ## Konta testowe (seed)
 

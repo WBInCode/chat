@@ -5,6 +5,7 @@ import { RegisterPage } from "./features/auth/RegisterPage.js";
 import { ChatLayout } from "./features/chat/ChatLayout.js";
 import { SettingsPage } from "./features/settings/SettingsPage.js";
 import { AdminPanel } from "./features/admin/AdminPanel.js";
+import { SuperAdminPanel } from "./features/admin/SuperAdminPanel.js";
 import { useAuthStore } from "./stores/auth.js";
 import { apiFetch } from "./lib/api.js";
 
@@ -16,10 +17,19 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireSuperAdmin({ children }: { children: React.ReactNode }) {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const isSuperAdmin = useAuthStore((s) => s.user?.isSuperAdmin);
+  if (!accessToken) return <Navigate to="/login" replace />;
+  if (!isSuperAdmin) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 interface MeResponse {
   id: string;
   email: string;
   displayName: string;
+  isSuperAdmin?: boolean;
 }
 
 export function App() {
@@ -82,6 +92,14 @@ export function App() {
           <RequireAuth>
             <AdminPanel />
           </RequireAuth>
+        }
+      />
+      <Route
+        path="/super-admin"
+        element={
+          <RequireSuperAdmin>
+            <SuperAdminPanel />
+          </RequireSuperAdmin>
         }
       />
       <Route

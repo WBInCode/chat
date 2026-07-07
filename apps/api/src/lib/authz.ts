@@ -19,6 +19,19 @@ export function forbidden(message = "Brak uprawnień"): never {
 }
 
 /**
+ * Platform-level "god mode" — completely independent of any org's role
+ * matrix (see F5-C). Used only by the super-admin panel (cross-org user/org
+ * management, e.g. assigning a freshly-registered user to an organization).
+ * Deny-by-default: absence of the flag (the default for every account)
+ * means 403, never a silent bypass.
+ */
+export async function assertSuperAdmin(fastify: FastifyInstance, userId: string) {
+  const user = await fastify.prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isSuperAdmin) forbidden("Wymagane uprawnienia super-admina");
+  return user;
+}
+
+/**
  * Central authorization helpers — every resource access verifies the
  * membership chain (user ∈ org, user ∈ channel) server-side, deny-by-default.
  * 404 is intentionally returned instead of 403 for resources the user

@@ -6,7 +6,7 @@ import { glassInput, glassButtonPrimary, glassCard } from "../../styles/glass.js
 
 interface LoginResponse {
   accessToken: string;
-  user: { id: string; email: string; displayName: string };
+  user: { id: string; email: string; displayName: string; isSuperAdmin?: boolean };
 }
 
 export function LoginPage() {

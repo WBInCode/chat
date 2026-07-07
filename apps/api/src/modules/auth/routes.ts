@@ -80,7 +80,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
         user: {
           id: result.user.id,
           email: result.user.email,
-          displayName: result.user.displayName
+          displayName: result.user.displayName,
+          isSuperAdmin: result.user.isSuperAdmin
         }
       });
     }
@@ -116,7 +117,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
       email: user.email,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
-      totpEnabled: user.totpEnabled
+      totpEnabled: user.totpEnabled,
+      isSuperAdmin: user.isSuperAdmin
     });
   });
 

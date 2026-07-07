@@ -59,6 +59,7 @@ model User {
   totpSecret   String? // AES-256-GCM ciphertext, never plaintext
   totpEnabled  Boolean   @default(false)
   publicKey    String? // X25519 identity key, E2EE phase 2
+  isSuperAdmin Boolean   @default(false) // platform-level god-mode (F5-H): manage orgs/memberships across the whole install, independent of any single org's roles
   deletedAt    DateTime? // account deletion: user row kept (anonymized) for referential integrity of past messages
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

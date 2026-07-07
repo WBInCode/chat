@@ -11,3 +11,4 @@ export * from "./schemas/export.js";
 export * from "./schemas/profile.js";
 export * from "./schemas/notifications.js";
 export * from "./schemas/productivity.js";
+export * from "./schemas/platform-admin.js";
