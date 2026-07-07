@@ -41,6 +41,10 @@ jobs:
       JWT_PUBLIC_KEY_PATH: ./keys/jwt_public.pem
       COOKIE_SECRET: ci-only-cookie-secret-not-for-production-use
       FIELD_ENCRYPTION_KEY: ${{ secrets.CI_FIELD_ENCRYPTION_KEY || 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=' }}
+      # Dummy key only enables the AI feature flag so F5-D tests exercise the
+      # mocked provider path; all provider HTTP calls are stubbed in the tests,
+      # so no real Groq/Gemini request is ever made in CI.
+      GROQ_API_KEY: ci-dummy-key-not-used-fetch-is-mocked
 
     steps:
       - uses: actions/checkout@v4
