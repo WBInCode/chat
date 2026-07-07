@@ -18,7 +18,8 @@ import {
   Link2,
   AlarmClock,
   Pencil,
-  Trash2
+  Trash2,
+  Sparkles
 } from "lucide-react";
 
 interface MemberLite {
@@ -121,6 +122,12 @@ export function MessageRow({
           >
             {authorName}
           </button>
+          {authorName === "Asystent AI" && (
+            <span className="flex items-center gap-0.5 rounded-full bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]">
+              <Icon icon={Sparkles} size={10} />
+              AI
+            </span>
+          )}
           <span
             className="text-xs text-[var(--text-dim)]"
             title={new Date(m.createdAt).toLocaleString("pl-PL")}

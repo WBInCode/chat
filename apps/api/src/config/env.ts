@@ -26,7 +26,10 @@ const envSchema = z.object({
   GOTENBERG_URL: z.string().default("http://localhost:3012"),
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
-  VAPID_SUBJECT: z.string().default("mailto:admin@chatv2.local")
+  VAPID_SUBJECT: z.string().default("mailto:admin@chatv2.local"),
+  GROQ_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  AI_DAILY_LIMIT: z.coerce.number().int().positive().default(300)
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -85,7 +85,7 @@ packages/config  Bazowe tsconfig/eslint
   - [x] F5-A — Fundament designu: ikony (lucide), liquid glass v2, przebudowa sidebara, status na dole
   - [x] F5-B — Zarządzanie kanałami: tworzenie/edycja/przeglądanie/archiwizacja z UI
   - [x] F5-C — Role i uprawnienia: custom role z panelu admina
-  - [ ] F5-D — Asystent AI: Groq + Gemini fallback (100% darmowo), podsumowania, @AI, przeredagowanie
+  - [x] F5-D — Asystent AI: Groq + Gemini fallback (100% darmowo), podsumowania, @AI, przeredagowanie
   - [ ] F5-E — Rozmowy głosowe: WebRTC P2P mesh, sygnalizacja Socket.IO, darmowy STUN/TURN
   - [ ] F5-F — Jakość: E2E Playwright w CI, /metrics Prometheus, web-vitals, health
 

@@ -4,6 +4,7 @@ import { assertChannelMember, HttpError, forbidden, notFound } from "../../lib/a
 import { createFileService } from "../files/service.js";
 import { enqueueLinkUnfurl } from "../../lib/queue.js";
 import { sendPushToUser } from "../../lib/push.js";
+import { mentionsAiBot, triggerAiBotReply } from "../../lib/ai-bot.js";
 
 // Only the first few links per message are unfurled — avoids a single
 // message with a wall of URLs fanning out into dozens of outbound
@@ -238,6 +239,14 @@ export function createMessageService(fastify: FastifyInstance) {
     void notifyRecipients(userId, channelId, message.id, content).catch((err) =>
       fastify.log.warn({ err }, "notifyRecipients failed")
     );
+
+    // Fire-and-forget: "@AI" mentions trigger the assistant bot (F5-D) —
+    // never delays or fails the human's own send.
+    if (mentionsAiBot(content)) {
+      void triggerAiBotReply(fastify, channelId, message.id, parentId ?? null).catch((err) =>
+        fastify.log.warn({ err }, "triggerAiBotReply failed")
+      );
+    }
 
     return dto;
   }

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type DragEvent, type ClipboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
 import type { MessageDto } from "@chatv2/shared";
-import { apiFetch } from "../../lib/api.js";
+import { apiFetch, ApiError } from "../../lib/api.js";
 import { uploadFile, isAllowedFileType, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
 import { connectSocket, disconnectSocket, getSocket } from "../../lib/socket.js";
 import { useAuthStore } from "../../stores/auth.js";
@@ -27,7 +28,8 @@ import { useIdlePresence } from "../../lib/idlePresence.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus } from "lucide-react";
+import { glassButtonGhost } from "../../styles/glass.js";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -132,7 +134,18 @@ export function ChatLayout() {
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
   const [reminderMessageId, setReminderMessageId] = useState<string | null>(null);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [showAiRewriteMenu, setShowAiRewriteMenu] = useState(false);
+  const [aiRewriteLoading, setAiRewriteLoading] = useState(false);
   useIdlePresence(user ? getSocket() : null);
+
+  useEffect(() => {
+    void apiFetch<{ enabled: boolean }>("/ai/status")
+      .then((r) => setAiEnabled(r.enabled))
+      .catch(() => setAiEnabled(false));
+  }, []);
   const [draft, setDraft] = useState("");
   const [draftChannels, setDraftChannels] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -355,6 +368,39 @@ export function ChatLayout() {
       body: JSON.stringify({ favorite })
     });
     setChannels(channels.map((c) => (c.id === channelId ? { ...c, favorite } : c)));
+  }
+
+  async function runAiSummary() {
+    if (!activeChannelId) return;
+    setAiSummaryLoading(true);
+    setAiSummary(null);
+    try {
+      const res = await apiFetch<{ summary: string }>(`/channels/${activeChannelId}/ai/summarize`, {
+        method: "POST"
+      });
+      setAiSummary(res.summary);
+    } catch (e) {
+      setAiSummary(e instanceof ApiError ? e.message : "Nie udało się podsumować kanału.");
+    } finally {
+      setAiSummaryLoading(false);
+    }
+  }
+
+  async function runAiRewrite(mode: string) {
+    if (!activeOrgId || !draft.trim()) return;
+    setShowAiRewriteMenu(false);
+    setAiRewriteLoading(true);
+    try {
+      const res = await apiFetch<{ result: string }>(`/ai/rewrite?orgId=${activeOrgId}`, {
+        method: "POST",
+        body: JSON.stringify({ text: draft, mode })
+      });
+      setDraft(res.result);
+    } catch (e) {
+      setAiSummary(e instanceof ApiError ? e.message : "AI nie odpowiedziało — spróbuj ponownie.");
+    } finally {
+      setAiRewriteLoading(false);
+    }
   }
 
   async function createGroupDm() {
@@ -996,6 +1042,16 @@ export function ChatLayout() {
                       <Icon icon={Users} size={15} />
                     </button>
                   )}
+                  {aiEnabled && (
+                    <button
+                      onClick={() => void runAiSummary()}
+                      disabled={aiSummaryLoading}
+                      title="Podsumuj czego nie przeczytałeś (AI)"
+                      className="text-[var(--text-dim)] hover:text-[var(--accent)] disabled:opacity-40"
+                    >
+                      <Icon icon={Sparkles} size={15} />
+                    </button>
+                  )}
                 </div>
                 {editingTopic ? (
                   <div className="mt-0.5 flex items-center gap-1">
@@ -1298,6 +1354,38 @@ export function ChatLayout() {
                 >
                   <Icon icon={Clock} />
                 </button>
+                {aiEnabled && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowAiRewriteMenu((v) => !v)}
+                      disabled={!draft.trim() || aiRewriteLoading}
+                      title="AI: przeredaguj tekst"
+                      className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
+                    >
+                      <Icon icon={Sparkles} />
+                    </button>
+                    {showAiRewriteMenu && (
+                      <div className="animate-slide-up absolute bottom-full right-0 z-20 mb-1 w-48 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
+                        {[
+                          { mode: "improve", label: "Popraw ton" },
+                          { mode: "shorten", label: "Skróć" },
+                          { mode: "translate_en", label: "Przetłumacz na EN" },
+                          { mode: "translate_pl", label: "Przetłumacz na PL" }
+                        ].map((opt) => (
+                          <button
+                            key={opt.mode}
+                            type="button"
+                            onClick={() => void runAiRewrite(opt.mode)}
+                            className="block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <input
                   type="text"
                   value={draft}
@@ -1439,6 +1527,33 @@ export function ChatLayout() {
           onSubmit={(iso) => void submitReminder(iso)}
         />
       )}
+
+      {(aiSummaryLoading || aiSummary) &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAiSummary(null)}>
+            <div
+              className="glass-strong max-h-[70vh] w-full max-w-md overflow-y-auto rounded-2xl p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center gap-2">
+                <Icon icon={Sparkles} size={16} className="text-[var(--accent)]" />
+                <h2 className="text-sm font-semibold">Podsumowanie AI</h2>
+              </div>
+              {aiSummaryLoading ? (
+                <p className="text-sm text-[var(--text-dim)]">Generowanie podsumowania…</p>
+              ) : (
+                <div className="whitespace-pre-line text-sm">{aiSummary}</div>
+              )}
+              <p className="mt-4 text-xs text-[var(--text-dim)]">
+                Treść wygenerowana przez darmowy model AI — może zawierać nieścisłości.
+              </p>
+              <button onClick={() => setAiSummary(null)} className={`${glassButtonGhost} mt-3 w-full`}>
+                Zamknij
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {showCreateChannel && activeOrgId && (
         <CreateChannelModal
