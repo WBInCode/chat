@@ -17,7 +17,6 @@ services:
       pnpm --filter @chatv2/shared build &&
       pnpm --filter @chatv2/api exec prisma generate &&
       pnpm --filter @chatv2/api build &&
-      (node apps/api/scripts/generate-jwt-keys.mjs || true) &&
       pnpm --filter @chatv2/api exec prisma migrate deploy
     startCommand: node apps/api/dist/server.js
     envVars:
@@ -38,10 +37,10 @@ services:
           property: connectionString
       - key: CORS_ORIGIN
         sync: false
-      - key: JWT_PRIVATE_KEY_PATH
-        value: ./apps/api/keys/jwt_private.pem
-      - key: JWT_PUBLIC_KEY_PATH
-        value: ./apps/api/keys/jwt_public.pem
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
       - key: COOKIE_SECRET
         generateValue: true
       - key: FIELD_ENCRYPTION_KEY
