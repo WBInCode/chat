@@ -30,6 +30,7 @@ export interface ChannelDto {
   myRole?: "ADMIN" | "MEMBER";
   muted?: boolean;
   favorite?: boolean;
+  lastReadAt?: string | null;
 }
 
 export interface MessageDto {

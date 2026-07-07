@@ -33,6 +33,8 @@ interface MessageRowProps {
   isSaved?: boolean;
   /** Highlighted briefly after navigating in via a permalink. */
   highlighted?: boolean;
+  /** Renders a "New messages" divider above this row. */
+  isFirstUnread?: boolean;
   /** Hide the thread button inside a thread panel (no nesting). */
   inThread?: boolean;
 }
@@ -57,6 +59,7 @@ export function MessageRow({
   canPin = false,
   isSaved = false,
   highlighted = false,
+  isFirstUnread = false,
   inThread = false
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
@@ -79,6 +82,13 @@ export function MessageRow({
         highlighted ? "bg-[var(--accent)]/15 ring-1 ring-[var(--accent)]/40" : ""
       }`}
     >
+      {isFirstUnread && !inThread && (
+        <div className="my-2 flex items-center gap-2">
+          <span className="h-px flex-1 bg-[var(--danger)]/40" />
+          <span className="text-xs font-medium text-[var(--danger)]">Nowe wiadomości</span>
+          <span className="h-px flex-1 bg-[var(--danger)]/40" />
+        </div>
+      )}
       {!grouped && (
         <div className="flex items-center gap-2">
           <button

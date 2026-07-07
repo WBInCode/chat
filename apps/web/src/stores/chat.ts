@@ -12,6 +12,7 @@ export interface ChannelItem {
   myRole?: "ADMIN" | "MEMBER";
   muted?: boolean;
   favorite?: boolean;
+  lastReadAt?: string | null;
 }
 
 interface ChatState {

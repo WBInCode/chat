@@ -14,11 +14,13 @@ import { SavedPanel } from "./SavedPanel.js";
 import { ForwardPicker } from "./ForwardPicker.js";
 import { ChannelMembersPanel } from "./ChannelMembersPanel.js";
 import { GroupDmPicker } from "./GroupDmPicker.js";
+import { QuickSwitcher } from "./QuickSwitcher.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
 import { PresenceToggle } from "../settings/PresenceToggle.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { useIdlePresence } from "../../lib/idlePresence.js";
+import { parseSearchFilters } from "../../lib/searchFilters.js";
 
 interface OrgItem {
   id: string;
@@ -115,6 +117,7 @@ export function ChatLayout() {
   const [showGroupDmPicker, setShowGroupDmPicker] = useState(false);
   const [groupDmSelection, setGroupDmSelection] = useState<Set<string>>(new Set());
   const [digestToast, setDigestToast] = useState<string | null>(null);
+  const [showQuickSwitcher, setShowQuickSwitcher] = useState(false);
   useIdlePresence(user ? getSocket() : null);
   const [draft, setDraft] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -128,16 +131,21 @@ export function ChatLayout() {
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Keyboard shortcut: Ctrl/Cmd+K focuses message search.
+  // Keyboard shortcut: Ctrl/Cmd+K focuses message search, Ctrl/Cmd+P opens the quick switcher.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setShowQuickSwitcher(true);
+      }
       if (e.key === "Escape") {
         setSearchResults(null);
         setOpenThread(null);
+        setShowQuickSwitcher(false);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -373,6 +381,28 @@ export function ChatLayout() {
   }, [members]);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
+
+  // First unread message in the active channel, snapshotted against the
+  // lastReadAt captured when the channel list was loaded (not re-fetched
+  // per message, so it stays stable as a "since you last looked" boundary
+  // for the whole session instead of vanishing the instant read:mark fires).
+  const firstUnreadId = useMemo(() => {
+    if (!activeChannel) return null;
+    const boundary = activeChannel.lastReadAt ? new Date(activeChannel.lastReadAt).getTime() : 0;
+    const firstNew = channelMessages.find(
+      (m) => m.authorId !== user?.id && new Date(m.createdAt).getTime() > boundary
+    );
+    return firstNew?.id ?? null;
+  }, [activeChannel, channelMessages, user?.id]);
+
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  function handleScrollList() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJumpToLatest(distanceFromBottom > 400);
+  }
+
   const typingNames = [...(typingUsers[activeChannelId ?? ""] ?? [])]
     .filter((id) => id !== user?.id)
     .map((id) => memberById.get(id)?.displayName ?? "Ktoś");
@@ -617,21 +647,36 @@ export function ChatLayout() {
   }
 
   async function runSearch(term: string) {
-    const q = term.trim();
-    if (q.length < 2 || !activeOrgId) {
+    const parsed = parseSearchFilters(term);
+    if (parsed.text.length < 2 && !parsed.fromToken && !parsed.inToken && !parsed.hasFile && !parsed.before && !parsed.after) {
       setSearchResults(null);
       return;
     }
-    const data = await apiFetch<{ results: SearchResult[] }>(
-      `/search?orgId=${activeOrgId}&q=${encodeURIComponent(q)}`
-    );
+    if (!activeOrgId) return;
+
+    const params = new URLSearchParams({ orgId: activeOrgId });
+    if (parsed.text.length >= 2) params.set("q", parsed.text);
+    if (parsed.fromToken) {
+      const match = members.find((m) => m.displayName.toLowerCase().includes(parsed.fromToken!.toLowerCase()));
+      if (match) params.set("fromUserId", match.userId);
+    }
+    if (parsed.inToken) {
+      const match = channels.find((c) => (c.name ?? "").toLowerCase().includes(parsed.inToken!.toLowerCase()));
+      if (match) params.set("channelId", match.id);
+    }
+    if (parsed.hasFile) params.set("hasFile", "true");
+    if (parsed.before) params.set("before", new Date(parsed.before).toISOString());
+    if (parsed.after) params.set("after", new Date(parsed.after).toISOString());
+
+    const data = await apiFetch<{ results: SearchResult[] }>(`/search?${params.toString()}`);
     setSearchResults(data.results);
   }
 
   function handleSearchInput(value: string) {
     setSearchTerm(value);
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
-    if (value.trim().length < 2) {
+    const parsed = parseSearchFilters(value);
+    if (parsed.text.trim().length < 2 && !parsed.fromToken && !parsed.inToken && !parsed.hasFile && !parsed.before && !parsed.after) {
       setSearchResults(null);
       return;
     }
@@ -913,7 +958,7 @@ export function ChatLayout() {
                     type="search"
                     value={searchTerm}
                     onChange={(e) => handleSearchInput(e.target.value)}
-                    placeholder="Szukaj wiadomości...  (Ctrl+K)"
+                    placeholder="Szukaj (Ctrl+K)… from: in: has:file"
                     className="w-56 rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-1.5 text-xs outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
                   />
                 </form>
@@ -984,6 +1029,7 @@ export function ChatLayout() {
               ref={scrollRef}
               className="relative flex-1 overflow-y-auto px-4 py-3"
               aria-live="polite"
+              onScroll={handleScrollList}
               onDragOver={(e) => {
                 e.preventDefault();
                 setIsDragOver(true);
@@ -995,6 +1041,17 @@ export function ChatLayout() {
                 <div className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--accent)] bg-[var(--accent)]/10 text-sm font-medium text-[var(--accent)]">
                   Upuść, aby wysłać
                 </div>
+              )}
+              {showJumpToLatest && (
+                <button
+                  onClick={() => {
+                    rowVirtualizer.scrollToIndex(channelMessages.length - 1, { align: "end" });
+                    setShowJumpToLatest(false);
+                  }}
+                  className="animate-spring-in glass-strong sticky top-2 z-20 float-right flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--accent)] shadow-lg"
+                >
+                  ↓ Najnowsze
+                </button>
               )}
               <div
                 style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}
@@ -1050,6 +1107,7 @@ export function ChatLayout() {
                         highlighted={m.id === highlightedMessageId}
                         canPin={activeChannel?.myRole === "ADMIN"}
                         isSaved={savedIds.has(m.id)}
+                        isFirstUnread={m.id === firstUnreadId}
                       />
                     </div>
                   );
@@ -1239,6 +1297,22 @@ export function ChatLayout() {
         <div className="animate-toast-in glass-strong fixed bottom-6 left-1/2 z-50 -translate-x-1/2 px-4 py-2.5 text-sm shadow-xl">
           {digestToast}
         </div>
+      )}
+
+      {showQuickSwitcher && (
+        <QuickSwitcher
+          channels={channels}
+          members={members}
+          onSelectChannel={(channelId) => {
+            setActiveChannel(channelId);
+            setShowQuickSwitcher(false);
+          }}
+          onSelectMember={(userId) => {
+            void handleStartDm(userId);
+            setShowQuickSwitcher(false);
+          }}
+          onClose={() => setShowQuickSwitcher(false)}
+        />
       )}
     </div>
   );
