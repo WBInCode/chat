@@ -27,10 +27,13 @@ const GENERIC_LOGIN_ERROR = "Nieprawidłowy email lub hasło";
 
 export function createAuthService(fastify: FastifyInstance, repo: AuthRepo) {
   function refreshCookieOptions() {
+    const isProd = env.NODE_ENV === "production";
     return {
       httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: "strict" as const,
+      secure: isProd,
+      // Cross-site (frontend i backend na różnych domenach, np. Vercel + Render)
+      // wymaga SameSite=None; w dev zostaje Strict.
+      sameSite: (isProd ? "none" : "strict") as "none" | "strict",
       path: "/api/v1/auth",
       maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60
     };
