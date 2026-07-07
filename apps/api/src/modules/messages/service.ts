@@ -3,6 +3,7 @@ import type { MessageDto, FileDto, LinkEmbedDto, ReactionGroupDto } from "@chatv
 import { assertChannelMember, HttpError, forbidden, notFound } from "../../lib/authz.js";
 import { createFileService } from "../files/service.js";
 import { enqueueLinkUnfurl } from "../../lib/queue.js";
+import { sendPushToUser } from "../../lib/push.js";
 
 // Only the first few links per message are unfurled — avoids a single
 // message with a wall of URLs fanning out into dozens of outbound
@@ -230,7 +231,55 @@ export function createMessageService(fastify: FastifyInstance) {
     }
 
     const filesByMessage = await files.listForMessages([message.id]);
-    return toDto(message, filesByMessage.get(message.id));
+    const dto = toDto(message, filesByMessage.get(message.id));
+
+    // Fire-and-forget: notification delivery must never delay/replace the
+    // message-send response or WS broadcast.
+    void notifyRecipients(userId, channelId, message.id, content).catch((err) =>
+      fastify.log.warn({ err }, "notifyRecipients failed")
+    );
+
+    return dto;
+  }
+
+  /**
+   * Web Push fan-out for a newly sent message. Respects: per-channel mute,
+   * per-user notification mode (ALL/MENTIONS/NONE — DMs always count as a
+   * "mention" since they're inherently 1:1 directed), and skips users
+   * currently in Do Not Disturb presence.
+   */
+  async function notifyRecipients(authorId: string, channelId: string, messageId: string, content: string) {
+    const channel = await fastify.prisma.channel.findUnique({ where: { id: channelId } });
+    if (!channel) return;
+
+    const author = await fastify.prisma.user.findUnique({ where: { id: authorId } });
+    const recipients = await fastify.prisma.channelMember.findMany({
+      where: { channelId, userId: { not: authorId } },
+      include: { user: true }
+    });
+
+    const preview = content.length > 120 ? `${content.slice(0, 120)}…` : content;
+
+    await Promise.all(
+      recipients.map(async (member) => {
+        if (member.mutedAt) return;
+        if (member.user.notifyMode === "NONE") return;
+
+        const isMentioned = content.includes(`@${member.user.displayName}`);
+        const isDm = channel.type === "DM";
+        if (member.user.notifyMode === "MENTIONS" && !isMentioned && !isDm) return;
+
+        const dndStatus = await fastify.redis.get(`presence:${member.userId}`);
+        if (dndStatus === "dnd") return;
+
+        await sendPushToUser(fastify, member.userId, {
+          title: isDm ? `${author?.displayName ?? "Wiadomość"}` : `${author?.displayName ?? "Ktoś"} w #${channel.name ?? "kanale"}`,
+          body: preview || "📎 Załącznik",
+          channelId,
+          messageId
+        });
+      })
+    );
   }
 
   /** Idempotent toggle: same user+emoji again removes the reaction. */

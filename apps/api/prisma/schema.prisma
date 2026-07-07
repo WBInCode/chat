@@ -53,6 +53,7 @@ model User {
   phone        String?
   statusText   String?
   statusEmoji  String?
+  notifyMode   NotifyMode @default(ALL)
   totpSecret   String? // AES-256-GCM ciphertext, never plaintext
   totpEnabled  Boolean   @default(false)
   publicKey    String? // X25519 identity key, E2EE phase 2
@@ -66,8 +67,29 @@ model User {
   sessions       Session[]
   recoveryCodes  RecoveryCode[]
   dataExports    DataExport[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
+}
+
+enum NotifyMode {
+  ALL
+  MENTIONS
+  NONE
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 model Membership {

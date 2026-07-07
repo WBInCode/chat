@@ -17,6 +17,7 @@ import adminRoutes from "./modules/admin/routes.js";
 import exportRoutes from "./modules/exports/routes.js";
 import accountRoutes from "./modules/account/routes.js";
 import profileRoutes from "./modules/profile/routes.js";
+import notificationRoutes from "./modules/notifications/routes.js";
 import wsGateway from "./ws/gateway.js";
 import { ensureBucket } from "./lib/s3.js";
 import { HttpError } from "./lib/authz.js";
@@ -95,6 +96,7 @@ export async function buildApp() {
   await fastify.register(exportRoutes, { prefix: "/api/v1" });
   await fastify.register(accountRoutes, { prefix: "/api/v1" });
   await fastify.register(profileRoutes, { prefix: "/api/v1" });
+  await fastify.register(notificationRoutes, { prefix: "/api/v1" });
   await fastify.register(wsGateway);
 
   // Skipped under NODE_ENV=test: integration tests don't depend on async

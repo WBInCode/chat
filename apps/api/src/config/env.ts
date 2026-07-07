@@ -23,7 +23,10 @@ const envSchema = z.object({
   MAX_FILE_SIZE_BYTES: z.coerce.number().int().positive().default(25 * 1024 * 1024),
   CLAMAV_HOST: z.string().default("localhost"),
   CLAMAV_PORT: z.coerce.number().int().positive().default(3311),
-  GOTENBERG_URL: z.string().default("http://localhost:3012")
+  GOTENBERG_URL: z.string().default("http://localhost:3012"),
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default("mailto:admin@chatv2.local")
 });
 
 const parsed = envSchema.safeParse(process.env);

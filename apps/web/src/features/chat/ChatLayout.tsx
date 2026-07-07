@@ -114,6 +114,7 @@ export function ChatLayout() {
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const [showGroupDmPicker, setShowGroupDmPicker] = useState(false);
   const [groupDmSelection, setGroupDmSelection] = useState<Set<string>>(new Set());
+  const [digestToast, setDigestToast] = useState<string | null>(null);
   useIdlePresence(user ? getSocket() : null);
   const [draft, setDraft] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -150,6 +151,26 @@ export function ChatLayout() {
       if (data[0]) setActiveOrg(data[0].id);
     });
   }, [setActiveOrg]);
+
+  // ── unread digest toast: shown once right after the app loads ──────────
+  useEffect(() => {
+    void apiFetch<{ totalUnread: number; mentionCount: number; channelCount: number }>(
+      "/me/unread-summary"
+    ).then((summary) => {
+      if (summary.mentionCount > 0) {
+        setDigestToast(
+          `📬 ${summary.mentionCount} ${summary.mentionCount === 1 ? "nowa wzmianka" : "nowe wzmianki"} w ${summary.channelCount} ${summary.channelCount === 1 ? "kanale" : "kanałach"}`
+        );
+        setTimeout(() => setDigestToast(null), 6000);
+      }
+    });
+  }, []);
+
+  // ── document title badge: total unread across non-muted channels ──────
+  useEffect(() => {
+    const total = channels.reduce((sum, c) => (c.muted ? sum : sum + (c.unreadCount ?? 0)), 0);
+    document.title = total > 0 ? `(${total}) chatv2` : "chatv2";
+  }, [channels]);
 
   useEffect(() => {
     if (!activeOrgId) return;
@@ -1212,6 +1233,12 @@ export function ChatLayout() {
           }}
           onSubmit={() => void createGroupDm()}
         />
+      )}
+
+      {digestToast && (
+        <div className="animate-toast-in glass-strong fixed bottom-6 left-1/2 z-50 -translate-x-1/2 px-4 py-2.5 text-sm shadow-xl">
+          {digestToast}
+        </div>
       )}
     </div>
   );
