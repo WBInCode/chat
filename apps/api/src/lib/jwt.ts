@@ -8,16 +8,26 @@ const ALG = "EdDSA";
 let cachedPrivateKey: KeyLike | null = null;
 let cachedPublicKey: KeyLike | null = null;
 
+// Env-provided PEM may arrive with escaped "\n" sequences (common when pasting
+// a multi-line key into a single-line env field); normalise them to real newlines.
+function normalizePem(pem: string): string {
+  return pem.includes("\\n") ? pem.replace(/\\n/g, "\n") : pem;
+}
+
 async function loadPrivateKey(): Promise<KeyLike> {
   if (cachedPrivateKey) return cachedPrivateKey;
-  const pem = readFileSync(resolve(env.JWT_PRIVATE_KEY_PATH), "utf8");
+  const pem = env.JWT_PRIVATE_KEY
+    ? normalizePem(env.JWT_PRIVATE_KEY)
+    : readFileSync(resolve(env.JWT_PRIVATE_KEY_PATH), "utf8");
   cachedPrivateKey = await importPKCS8(pem, ALG);
   return cachedPrivateKey;
 }
 
 async function loadPublicKey(): Promise<KeyLike> {
   if (cachedPublicKey) return cachedPublicKey;
-  const pem = readFileSync(resolve(env.JWT_PUBLIC_KEY_PATH), "utf8");
+  const pem = env.JWT_PUBLIC_KEY
+    ? normalizePem(env.JWT_PUBLIC_KEY)
+    : readFileSync(resolve(env.JWT_PUBLIC_KEY_PATH), "utf8");
   cachedPublicKey = await importSPKI(pem, ALG);
   return cachedPublicKey;
 }

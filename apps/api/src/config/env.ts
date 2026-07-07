@@ -8,8 +8,12 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   CORS_ORIGIN: z.string().min(1),
-  JWT_PRIVATE_KEY_PATH: z.string().min(1),
-  JWT_PUBLIC_KEY_PATH: z.string().min(1),
+  // Prefer inline PEM keys (works reliably on ephemeral hosts like Render);
+  // fall back to reading from a file path when the inline vars are absent.
+  JWT_PRIVATE_KEY: z.string().optional(),
+  JWT_PUBLIC_KEY: z.string().optional(),
+  JWT_PRIVATE_KEY_PATH: z.string().default("./apps/api/keys/jwt_private.pem"),
+  JWT_PUBLIC_KEY_PATH: z.string().default("./apps/api/keys/jwt_public.pem"),
   JWT_ACCESS_TTL: z.string().default("10m"),
   JWT_ISSUER: z.string().default("chatv2"),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(14),
