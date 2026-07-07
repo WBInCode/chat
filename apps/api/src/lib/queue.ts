@@ -3,9 +3,14 @@ import { env } from "../config/env.js";
 
 // BullMQ needs its own ioredis-compatible connection options (not the
 // shared client instance) so it can manage blocking commands independently.
+const parsedUrl = new URL(env.REDIS_URL);
 export const queueConnection = {
-  host: new URL(env.REDIS_URL).hostname,
-  port: Number(new URL(env.REDIS_URL).port || 6379)
+  host: parsedUrl.hostname,
+  port: Number(parsedUrl.port || 6379),
+  password: parsedUrl.password ? decodeURIComponent(parsedUrl.password) : undefined,
+  username: parsedUrl.username || undefined,
+  tls: parsedUrl.protocol === "rediss:" ? {} : undefined,
+  maxRetriesPerRequest: null
 };
 
 export const FILE_SCAN_QUEUE = "file-scan";

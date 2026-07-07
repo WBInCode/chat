@@ -55,7 +55,8 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
   );
 
   // Redis adapter → horizontal scaling (pub/sub between API instances).
-  const pubClient = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3 });
+  const redisTls = env.REDIS_URL.startsWith("rediss:") ? { tls: {} } : {};
+  const pubClient = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3, ...redisTls });
   const subClient = pubClient.duplicate();
   // Swallow late errors during shutdown (ioredis rejects in-flight commands).
   pubClient.on("error", (err: Error) => fastify.log.debug({ err }, "ws pub redis error"));

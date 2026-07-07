@@ -10,8 +10,10 @@ declare module "fastify" {
 }
 
 export default fp(async function redisPlugin(fastify: FastifyInstance) {
+  const parsedUrl = new URL(env.REDIS_URL);
   const redis = new Redis(env.REDIS_URL, {
-    maxRetriesPerRequest: 3
+    maxRetriesPerRequest: 3,
+    tls: parsedUrl.protocol === "rediss:" ? {} : undefined
   });
 
   redis.on("error", (err: Error) => {
