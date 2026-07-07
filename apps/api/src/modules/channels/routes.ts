@@ -7,7 +7,8 @@ import {
   setChannelTopicSchema,
   renameChannelSchema,
   setMutedSchema,
-  setFavoriteSchema
+  setFavoriteSchema,
+  reorderChannelsSchema
 } from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import {
@@ -45,7 +46,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
           }
         }
       },
-      orderBy: { channel: { createdAt: "asc" } }
+      orderBy: [{ sortOrder: "asc" }, { channel: { createdAt: "asc" } }]
     });
 
     return memberships.map((m) => {
@@ -77,6 +78,39 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         archivedAt: ch.archivedAt?.toISOString() ?? null
       };
     });
+  });
+
+  /**
+   * Persist the user's custom sidebar ordering for their channels in this
+   * org (F5-I) — per-user (ChannelMember.sortOrder), never affects other
+   * members. Only touches memberships that both belong to the caller AND
+   * are in the given org, so a caller cannot reorder (or probe) another
+   * org's channels by id.
+   */
+  fastify.patch("/orgs/:orgId/channels/reorder", async (request, reply) => {
+    const { orgId } = request.params as { orgId: string };
+    const userId = request.user!.id;
+    await assertOrgMember(fastify, userId, orgId);
+    const input = parseOrThrow(reorderChannelsSchema, request.body);
+
+    const memberships = await fastify.prisma.channelMember.findMany({
+      where: { userId, channelId: { in: input.orderedChannelIds }, channel: { orgId } },
+      select: { channelId: true }
+    });
+    const ownedIds = new Set(memberships.map((m) => m.channelId));
+
+    await fastify.prisma.$transaction(
+      input.orderedChannelIds
+        .filter((id) => ownedIds.has(id))
+        .map((channelId, index) =>
+          fastify.prisma.channelMember.update({
+            where: { channelId_userId: { channelId, userId } },
+            data: { sortOrder: index }
+          })
+        )
+    );
+
+    return reply.send({ ok: true });
   });
 
   /** Create a channel (PUBLIC joins everyone in org; PRIVATE only creator). */

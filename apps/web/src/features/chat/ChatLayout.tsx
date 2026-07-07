@@ -145,6 +145,7 @@ export function ChatLayout() {
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showComposerActions, setShowComposerActions] = useState(false);
   const [showChannelMenu, setShowChannelMenu] = useState(false);
+  const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
   useIdlePresence(user ? getSocket() : null);
 
   useEffect(() => {
@@ -374,6 +375,29 @@ export function ChatLayout() {
       body: JSON.stringify({ favorite })
     });
     setChannels(channels.map((c) => (c.id === channelId ? { ...c, favorite } : c)));
+  }
+
+  // Drag-and-drop reordering of the "Kanały" list (F5-I). Optimistic
+  // reorder in local state first, then persist per-user via PATCH — a
+  // failure just leaves the sidebar order out of sync with the server
+  // until next reload, never breaks anything, so no rollback needed.
+  function moveNonDmChannel(draggedId: string, targetId: string) {
+    if (draggedId === targetId || !activeOrgId) return;
+    const nonDm = channels.filter((c) => c.type !== "DM");
+    const dmAndFav = channels.filter((c) => c.type === "DM");
+    const fromIdx = nonDm.findIndex((c) => c.id === draggedId);
+    const toIdx = nonDm.findIndex((c) => c.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const reordered = [...nonDm];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved!);
+    setChannels([...reordered, ...dmAndFav]);
+    void apiFetch(`/orgs/${activeOrgId}/channels/reorder`, {
+      method: "PATCH",
+      body: JSON.stringify({ orderedChannelIds: reordered.map((c) => c.id) })
+    }).catch(() => {
+      // Non-fatal — sidebar order just won't persist across reload this time.
+    });
   }
 
   async function runAiSummary() {
@@ -915,8 +939,30 @@ export function ChatLayout() {
               .map((c) => (
                 <button
                   key={c.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedChannelId(c.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    // Source of truth for the drop handler — reading via
+                    // dataTransfer (not React state) avoids any risk of a
+                    // stale closure if drop fires before a re-render.
+                    e.dataTransfer.setData("text/chatv2-channel-id", c.id);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const sourceId = e.dataTransfer.getData("text/chatv2-channel-id");
+                    if (sourceId) moveNonDmChannel(sourceId, c.id);
+                    setDraggedChannelId(null);
+                  }}
+                  onDragEnd={() => setDraggedChannelId(null)}
                   onClick={() => setActiveChannel(c.id)}
-                  className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
+                  title="Przeciągnij, aby zmienić kolejność"
+                  className={`nav-item flex w-full cursor-grab items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 active:cursor-grabbing ${
+                    draggedChannelId === c.id ? "opacity-40" : ""
+                  } ${
                     c.id === activeChannelId
                       ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
                       : c.muted

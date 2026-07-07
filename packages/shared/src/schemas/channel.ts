@@ -66,3 +66,8 @@ export const setFavoriteSchema = z.object({
   favorite: z.boolean()
 });
 export type SetFavoriteInput = z.infer<typeof setFavoriteSchema>;
+
+export const reorderChannelsSchema = z.object({
+  orderedChannelIds: z.array(z.string().uuid()).min(1).max(500)
+});
+export type ReorderChannelsInput = z.infer<typeof reorderChannelsSchema>;

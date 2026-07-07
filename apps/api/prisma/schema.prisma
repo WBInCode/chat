@@ -248,6 +248,7 @@ model ChannelMember {
   lastReadAt DateTime?
   mutedAt    DateTime?
   favorite   Boolean     @default(false)
+  sortOrder  Int         @default(0) // per-user custom ordering in the sidebar channel list (F5-I)
   createdAt  DateTime    @default(now())
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
