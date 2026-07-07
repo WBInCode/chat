@@ -1,6 +1,6 @@
 {
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @chatv2/web exec vite build",
+  "buildCommand": "pnpm --filter @chatv2/shared build && pnpm --filter @chatv2/web exec vite build",
   "outputDirectory": "apps/web/dist",
   "framework": null,
   "rewrites": [
