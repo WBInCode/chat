@@ -27,7 +27,9 @@ import { useIdlePresence } from "../../lib/idlePresence.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus } from "lucide-react";
+import { CreateChannelModal } from "./CreateChannelModal.js";
+import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
 interface OrgItem {
   id: string;
@@ -123,6 +125,8 @@ export function ChatLayout() {
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const [showGroupDmPicker, setShowGroupDmPicker] = useState(false);
   const [groupDmSelection, setGroupDmSelection] = useState<Set<string>>(new Set());
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [showBrowseChannels, setShowBrowseChannels] = useState(false);
   const [digestToast, setDigestToast] = useState<string | null>(null);
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
@@ -819,7 +823,28 @@ export function ChatLayout() {
             </SidebarSection>
           )}
 
-          <SidebarSection id="channels" title="Kanały">
+          <SidebarSection
+            id="channels"
+            title="Kanały"
+            action={
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowBrowseChannels(true)}
+                  title="Przeglądaj kanały publiczne"
+                  className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)]"
+                >
+                  Przeglądaj
+                </button>
+                <button
+                  onClick={() => setShowCreateChannel(true)}
+                  title="Utwórz kanał"
+                  className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)]"
+                >
+                  <Icon icon={Plus} size={14} />
+                </button>
+              </div>
+            }
+          >
             {channels
               .filter((c) => c.type !== "DM")
               .map((c) => (
@@ -1346,9 +1371,13 @@ export function ChatLayout() {
       {showMembersPanel && activeChannelId && (
         <ChannelMembersPanel
           channelId={activeChannelId}
+          channelName={activeChannel?.name ?? null}
+          isDm={activeChannel?.type === "DM"}
           isAdmin={activeChannel?.myRole === "ADMIN"}
           orgMembers={members}
           onClose={() => setShowMembersPanel(false)}
+          onRenamed={(name) => setChannels(channels.map((c) => (c.id === activeChannelId ? { ...c, name } : c)))}
+          onArchived={() => setChannels(channels.filter((c) => c.id !== activeChannelId))}
         />
       )}
 
@@ -1408,6 +1437,33 @@ export function ChatLayout() {
         <ReminderPicker
           onClose={() => setReminderMessageId(null)}
           onSubmit={(iso) => void submitReminder(iso)}
+        />
+      )}
+
+      {showCreateChannel && activeOrgId && (
+        <CreateChannelModal
+          orgId={activeOrgId}
+          onClose={() => setShowCreateChannel(false)}
+          onCreated={(channelId) => {
+            setShowCreateChannel(false);
+            void apiFetch<ChannelItem[]>(`/orgs/${activeOrgId}/channels`).then((data) => {
+              setChannels(data);
+              setActiveChannel(channelId);
+            });
+          }}
+        />
+      )}
+
+      {showBrowseChannels && activeOrgId && (
+        <BrowseChannelsModal
+          orgId={activeOrgId}
+          onClose={() => setShowBrowseChannels(false)}
+          onJoined={(channelId) => {
+            void apiFetch<ChannelItem[]>(`/orgs/${activeOrgId}/channels`).then((data) => {
+              setChannels(data);
+              setActiveChannel(channelId);
+            });
+          }}
         />
       )}
     </div>

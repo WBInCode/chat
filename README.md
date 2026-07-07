@@ -83,7 +83,7 @@ packages/config  Bazowe tsconfig/eslint
   - [x] F4-E — Codzienna praca: szkice, wyślij później, przypomnienia, ankiety, auto-statusy
 - [ ] Faza 5 — redesign UI/UX + zarządzanie + AI + głos + jakość: [PLAN-FAZA5.md](./PLAN-FAZA5.md)
   - [x] F5-A — Fundament designu: ikony (lucide), liquid glass v2, przebudowa sidebara, status na dole
-  - [ ] F5-B — Zarządzanie kanałami: tworzenie/edycja/przeglądanie/archiwizacja z UI
+  - [x] F5-B — Zarządzanie kanałami: tworzenie/edycja/przeglądanie/archiwizacja z UI
   - [ ] F5-C — Role i uprawnienia: custom role z panelu admina
   - [ ] F5-D — Asystent AI: Groq + Gemini fallback (100% darmowo), podsumowania, @AI, przeredagowanie
   - [ ] F5-E — Rozmowy głosowe: WebRTC P2P mesh, sygnalizacja Socket.IO, darmowy STUN/TURN

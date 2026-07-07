@@ -31,6 +31,7 @@ export interface ChannelDto {
   muted?: boolean;
   favorite?: boolean;
   lastReadAt?: string | null;
+  archivedAt?: string | null;
 }
 
 export interface MessageDto {

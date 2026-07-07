@@ -5,6 +5,7 @@ import {
   createGroupDmSchema,
   addChannelMemberSchema,
   setChannelTopicSchema,
+  renameChannelSchema,
   setMutedSchema,
   setFavoriteSchema
 } from "@chatv2/shared";
@@ -72,7 +73,8 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         unreadCount,
         myRole: m.role,
         muted: !!m.mutedAt,
-        favorite: m.favorite
+        favorite: m.favorite,
+        archivedAt: ch.archivedAt?.toISOString() ?? null
       };
     });
   });
@@ -340,5 +342,132 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     });
 
     return { channelId, favorite: input.favorite };
+  });
+
+  /** Rename a channel (channel admin only, PUBLIC/PRIVATE only). */
+  fastify.patch("/channels/:channelId", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+    const input = parseOrThrow(renameChannelSchema, request.body);
+
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    if (membership.channel.type === "DM") {
+      return sendError(reply, 400, "DM_IMMUTABLE", "Nie można zmienić nazwy rozmowy prywatnej");
+    }
+    if (membership.role !== "ADMIN") {
+      forbidden("Tylko administrator kanału może zmienić nazwę");
+    }
+
+    const duplicate = await fastify.prisma.channel.findFirst({
+      where: { orgId: membership.channel.orgId, name: input.name, type: { not: "DM" }, id: { not: channelId } }
+    });
+    if (duplicate) {
+      return sendError(reply, 409, "CHANNEL_EXISTS", "Kanał o tej nazwie już istnieje");
+    }
+
+    const updated = await fastify.prisma.channel.update({ where: { id: channelId }, data: { name: input.name } });
+
+    await logAudit(fastify, {
+      orgId: membership.channel.orgId,
+      actorId: userId,
+      action: "channel.renamed",
+      meta: { channelId, name: input.name },
+      ip: request.ip
+    });
+
+    return { id: updated.id, name: updated.name };
+  });
+
+  /** Archive/unarchive a channel (channel admin only). Archived channels stay readable but hidden by default. */
+  fastify.post("/channels/:channelId/archive", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    if (membership.channel.type === "DM") {
+      return sendError(reply, 400, "DM_IMMUTABLE", "Nie można zarchiwizować rozmowy prywatnej");
+    }
+    if (membership.role !== "ADMIN") {
+      forbidden("Tylko administrator kanału może archiwizować");
+    }
+
+    await fastify.prisma.channel.update({ where: { id: channelId }, data: { archivedAt: new Date() } });
+    await logAudit(fastify, {
+      orgId: membership.channel.orgId,
+      actorId: userId,
+      action: "channel.archived",
+      meta: { channelId },
+      ip: request.ip
+    });
+
+    return reply.send({ ok: true });
+  });
+
+  fastify.post("/channels/:channelId/unarchive", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    if (membership.role !== "ADMIN") {
+      forbidden("Tylko administrator kanału może przywrócić kanał");
+    }
+
+    await fastify.prisma.channel.update({ where: { id: channelId }, data: { archivedAt: null } });
+    await logAudit(fastify, {
+      orgId: membership.channel.orgId,
+      actorId: userId,
+      action: "channel.unarchived",
+      meta: { channelId },
+      ip: request.ip
+    });
+
+    return reply.send({ ok: true });
+  });
+
+  /** Browse every PUBLIC channel in the org (including ones the user hasn't joined yet), to discover and join. */
+  fastify.get("/orgs/:orgId/channels/browse", async (request) => {
+    const { orgId } = request.params as { orgId: string };
+    const userId = request.user!.id;
+    await assertOrgMember(fastify, userId, orgId);
+
+    const channels = await fastify.prisma.channel.findMany({
+      where: { orgId, type: "PUBLIC" },
+      include: {
+        members: { select: { userId: true } },
+        _count: { select: { members: true } }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+
+    return channels.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      topic: c.topic,
+      memberCount: c._count.members,
+      isMember: c.members.some((m) => m.userId === userId),
+      archivedAt: c.archivedAt?.toISOString() ?? null
+    }));
+  });
+
+  /** Self-service join for a PUBLIC channel (no admin action needed). */
+  fastify.post("/channels/:channelId/join", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+
+    const channel = await fastify.prisma.channel.findUnique({ where: { id: channelId } });
+    if (!channel) notFound("Kanał nie istnieje");
+    if (channel.type !== "PUBLIC") {
+      return sendError(reply, 400, "NOT_JOINABLE", "Można dołączać tylko do kanałów publicznych");
+    }
+    await assertOrgMember(fastify, userId, channel.orgId);
+
+    await fastify.prisma.channelMember.upsert({
+      where: { channelId_userId: { channelId, userId } },
+      create: { channelId, userId, role: "MEMBER" },
+      update: {}
+    });
+
+    return reply.status(201).send({ ok: true });
   });
 }

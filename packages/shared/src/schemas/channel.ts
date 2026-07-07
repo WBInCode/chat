@@ -37,6 +37,26 @@ export const setChannelTopicSchema = z.object({
 });
 export type SetChannelTopicInput = z.infer<typeof setChannelTopicSchema>;
 
+export const renameChannelSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9-]+$/, "Tylko małe litery, cyfry i myślniki")
+});
+export type RenameChannelInput = z.infer<typeof renameChannelSchema>;
+
+export interface BrowseChannelDto {
+  id: string;
+  name: string | null;
+  type: "PUBLIC" | "PRIVATE";
+  topic: string | null;
+  memberCount: number;
+  isMember: boolean;
+  archivedAt: string | null;
+}
+
 export const setMutedSchema = z.object({
   muted: z.boolean()
 });

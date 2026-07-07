@@ -13,6 +13,7 @@ export interface ChannelItem {
   muted?: boolean;
   favorite?: boolean;
   lastReadAt?: string | null;
+  archivedAt?: string | null;
 }
 
 interface ChatState {
