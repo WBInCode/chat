@@ -33,6 +33,7 @@ import { registerRetentionPurgeWorker } from "./workers/retention-purge.worker.j
 import { registerDueSweepWorker } from "./workers/due-sweep.worker.js";
 import { scheduleRetentionPurge } from "./lib/queue.js";
 import { scheduleDueSweep } from "./lib/queue.js";
+import { instrumentHttp } from "./lib/metrics.js";
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -77,6 +78,10 @@ export async function buildApp() {
   await fastify.register(redisPlugin);
   await fastify.register(securityPlugin);
   await fastify.register(authGuardPlugin);
+
+  if (env.NODE_ENV !== "test") {
+    instrumentHttp(fastify);
+  }
 
   // MinIO may be temporarily unreachable in minimal demo deployments (e.g.
   // a quick preview environment without object storage configured yet) —

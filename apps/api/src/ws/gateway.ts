@@ -20,6 +20,7 @@ import { env } from "../config/env.js";
 import { verifyAccessToken } from "../lib/jwt.js";
 import { createMessageService } from "../modules/messages/service.js";
 import { HttpError, assertChannelMember, assertOrgPermission } from "../lib/authz.js";
+import { setWsConnectionCount } from "../lib/metrics.js";
 
 interface SocketData {
   userId: string;
@@ -135,6 +136,7 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
 
   io.on("connection", async (socket) => {
     const { userId } = socket.data;
+    setWsConnectionCount(io.engine.clientsCount);
 
     // Join rooms for every channel the user belongs to (server-decided).
     const memberships = await fastify.prisma.channelMember.findMany({
@@ -330,6 +332,7 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
 
     socket.on("disconnect", async () => {
       clearInterval(heartbeat);
+      setWsConnectionCount(io.engine.clientsCount);
       // Only mark offline when the user has no other open sockets.
       const remaining = await io.in(`user:${userId}`).fetchSockets();
       if (remaining.length === 0) {
