@@ -35,12 +35,26 @@ export const markReadSchema = z.object({
 });
 export type MarkReadInput = z.infer<typeof markReadSchema>;
 
-// Curated palette — avoids arbitrary unicode abuse while covering the
-// standard set of workplace reactions.
+// Curated palette shown in the quick-reaction bar. The full picker allows
+// any single emoji, but this stays the fast default set.
 export const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "👀", "✅", "🚀", "🔥"] as const;
+
+// Validates that a string is exactly ONE emoji grapheme (base pictographic
+// with optional variation selectors / ZWJ sequences / skin-tone modifiers,
+// a two-char regional-indicator flag, or a keycap sequence). This keeps the
+// original "no arbitrary unicode abuse" guarantee while allowing the full
+// emoji palette instead of a fixed list.
+const SINGLE_EMOJI =
+  /^(?:\p{Regional_Indicator}\p{Regional_Indicator}|\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}]|\u20E3)*|[0-9#*]\uFE0F?\u20E3)$/u;
+
+export const reactionEmojiSchema = z
+  .string()
+  .min(1)
+  .max(24)
+  .refine((s) => SINGLE_EMOJI.test(s), "must be a single emoji");
 
 export const toggleReactionSchema = z.object({
   messageId: z.string().uuid(),
-  emoji: z.enum(ALLOWED_REACTIONS)
+  emoji: reactionEmojiSchema
 });
 export type ToggleReactionInput = z.infer<typeof toggleReactionSchema>;

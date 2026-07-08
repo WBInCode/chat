@@ -7,6 +7,7 @@ import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { renderMarkdown } from "./markdown.js";
 import { PollCard } from "./PollCard.js";
+import { EmojiPicker } from "./EmojiPicker.js";
 import { Icon } from "../../components/Icon.js";
 import {
   SmilePlus,
@@ -81,6 +82,7 @@ export function MessageRow({
   inThread = false
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
+  const [showFullPicker, setShowFullPicker] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(m.content);
   // Touch devices have no hover, so the action bar is revealed via an
@@ -265,7 +267,7 @@ export function MessageRow({
 
       {/* Reaction picker */}
       {showPicker && (
-        <div className="animate-spring-in absolute -top-11 right-0 z-20 flex gap-0.5 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1.5 py-1 shadow-xl backdrop-blur-lg">
+        <div className="animate-spring-in absolute -top-11 right-0 z-20 flex items-center gap-0.5 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1.5 py-1 shadow-xl backdrop-blur-lg">
           {ALLOWED_REACTIONS.map((emoji) => (
             <button
               key={emoji}
@@ -278,7 +280,29 @@ export function MessageRow({
               {emoji}
             </button>
           ))}
+          <span className="mx-0.5 h-4 w-px bg-[var(--glass-border)]" />
+          <button
+            title="Więcej emoji"
+            onClick={() => {
+              setShowFullPicker(true);
+              setShowPicker(false);
+            }}
+            className="rounded-lg px-1 py-0.5 text-[var(--text-dim)] transition-transform hover:scale-125 hover:text-[var(--text)]"
+          >
+            <Icon icon={SmilePlus} size={16} />
+          </button>
         </div>
+      )}
+
+      {/* Full emoji picker */}
+      {showFullPicker && (
+        <EmojiPicker
+          onPick={(emoji) => {
+            onReact(m.id, emoji);
+            setShowFullPicker(false);
+          }}
+          onClose={() => setShowFullPicker(false)}
+        />
       )}
 
       {/* Content / edit form */}
