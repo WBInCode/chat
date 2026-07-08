@@ -31,6 +31,7 @@ export const WS_SERVER_EVENTS = {
   FilePreview: "file:preview",
   MessageEmbeds: "message:embeds",
   ReactionUpdate: "reaction:update",
+  ReadUpdate: "read:update",
   PollUpdate: "poll:update",
   VoiceParticipants: "voice:participants",
   VoiceOffer: "voice:offer",
@@ -114,6 +115,11 @@ export interface ServerToClientEvents {
     messageId: string;
     channelId: string;
     poll: import("./schemas/productivity.js").PollDto;
+  }) => void;
+  [WS_SERVER_EVENTS.ReadUpdate]: (payload: {
+    channelId: string;
+    userId: string;
+    readAt: string;
   }) => void;
   [WS_SERVER_EVENTS.VoiceParticipants]: (payload: {
     channelId: string;

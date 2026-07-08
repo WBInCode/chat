@@ -90,6 +90,7 @@ export function ChatLayout() {
     messages,
     typingUsers,
     presenceStatus,
+    readState,
     setActiveOrg,
     setActiveChannel,
     setChannels,
@@ -106,7 +107,9 @@ export function ChatLayout() {
     openThreadId,
     setOpenThread,
     setTyping,
-    setPresence
+    setPresence,
+    setReadState,
+    applyReadUpdate
   } = useChatStore();
 
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
@@ -272,6 +275,9 @@ export function ChatLayout() {
     socket.on("reaction:update", ({ channelId, messageId, reactions }) =>
       updateReactions(channelId, messageId, reactions)
     );
+    socket.on("read:update", ({ channelId, userId, readAt }) =>
+      applyReadUpdate(channelId, userId, readAt)
+    );
 
     // Connection-state banner (F6-A.3): silence on network drops was
     // confusing — users kept typing into a dead socket.
@@ -290,6 +296,7 @@ export function ChatLayout() {
       socket.off("file:preview");
       socket.off("message:embeds");
       socket.off("reaction:update");
+      socket.off("read:update");
       socket.off("disconnect", onDisconnect);
       socket.off("connect", onConnect);
       disconnectSocket();
@@ -304,7 +311,8 @@ export function ChatLayout() {
     updatePreviewStatus,
     addEmbeds,
     updateReactions,
-    incrementReplyCount
+    incrementReplyCount,
+    applyReadUpdate
   ]);
 
   // ── history for the active channel ─────────────────────────────────────
@@ -327,7 +335,15 @@ export function ChatLayout() {
       }
       clearUnread(activeChannelId);
     });
-  }, [activeChannelId, setMessages, clearUnread]);
+    // Load per-member read receipts for this channel.
+    void apiFetch<{ userId: string; lastReadAt: string | null }[]>(
+      `/channels/${activeChannelId}/read-state`
+    )
+      .then((entries) => setReadState(activeChannelId, entries))
+      .catch(() => {
+        /* read receipts are best-effort */
+      });
+  }, [activeChannelId, setMessages, clearUnread, setReadState]);
 
   // ── pinned messages banner for the active channel ──────────────────────
   useEffect(() => {
@@ -470,6 +486,31 @@ export function ChatLayout() {
     () => (activeChannelId ? (messages[activeChannelId] ?? []) : []),
     [messages, activeChannelId]
   );
+
+  // Read receipts (F6-C): find the current user's latest own message and the
+  // members (excluding self) who have read at least up to it. Shown as a
+  // compact "seen by" row under the conversation.
+  const readReceipt = useMemo(() => {
+    if (!activeChannelId || !user?.id) return null;
+    // DMs and small channels benefit most; skip if there are no other members.
+    let lastOwn: (typeof channelMessages)[number] | undefined;
+    for (let i = channelMessages.length - 1; i >= 0; i--) {
+      if (channelMessages[i]!.authorId === user.id) {
+        lastOwn = channelMessages[i];
+        break;
+      }
+    }
+    if (!lastOwn) return null;
+    const sentAt = new Date(lastOwn.createdAt).getTime();
+    const perChannel = readState[activeChannelId] ?? {};
+    const readers = members.filter(
+      (mem) =>
+        mem.userId !== user.id &&
+        perChannel[mem.userId] != null &&
+        new Date(perChannel[mem.userId]!).getTime() >= sentAt
+    );
+    return readers.length > 0 ? { messageId: lastOwn.id, readers } : null;
+  }, [activeChannelId, user?.id, channelMessages, readState, members]);
 
   // Virtualized list: only visible rows (+ overscan) are mounted, so a
   // channel with thousands of messages stays smooth to scroll. Row heights
@@ -1538,7 +1579,7 @@ export function ChatLayout() {
             </div>
 
             <div className="flex h-5 items-center gap-1.5 px-4 text-xs text-[var(--text-dim)]">
-              {typingNames.length > 0 && (
+              {typingNames.length > 0 ? (
                 <>
                   <span className="flex gap-0.5">
                     <span className="typing-dot h-1 w-1 rounded-full bg-[var(--text-dim)]" />
@@ -1547,7 +1588,24 @@ export function ChatLayout() {
                   </span>
                   {typingNames.join(", ")} pisze...
                 </>
-              )}
+              ) : readReceipt ? (
+                <span className="flex items-center gap-1.5" title={`Przeczytane przez: ${readReceipt.readers.map((r) => r.displayName).join(", ")}`}>
+                  <span>Przeczytane</span>
+                  <span className="flex -space-x-1.5">
+                    {readReceipt.readers.slice(0, 5).map((r) => (
+                      <Avatar
+                        key={r.userId}
+                        userId={r.userId}
+                        displayName={r.displayName}
+                        url={avatarUrls[r.userId]}
+                        size={16}
+                        className="ring-1 ring-[var(--bg)]"
+                      />
+                    ))}
+                  </span>
+                  {readReceipt.readers.length > 5 && <span>+{readReceipt.readers.length - 5}</span>}
+                </span>
+              ) : null}
             </div>
 
             <form onSubmit={handleSend} className="border-t border-[var(--glass-border)] p-3">

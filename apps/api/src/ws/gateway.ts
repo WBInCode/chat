@@ -243,7 +243,13 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
     socket.on(WS_CLIENT_EVENTS.ReadMark, async (payload) => {
       try {
         const input = markReadSchema.parse(payload);
-        await messages.markRead(userId, input.channelId, input.messageId);
+        const readAt = await messages.markRead(userId, input.channelId, input.messageId);
+        // Broadcast to others in the channel so they can render read receipts.
+        socket.to(`channel:${input.channelId}`).emit(WS_SERVER_EVENTS.ReadUpdate, {
+          channelId: input.channelId,
+          userId,
+          readAt: readAt.toISOString()
+        });
       } catch {
         // read-marking failures are non-critical; ignore
       }

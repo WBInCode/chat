@@ -356,6 +356,7 @@ export function createMessageService(fastify: FastifyInstance) {
       where: { channelId_userId: { channelId, userId } },
       data: { lastReadAt: message.createdAt }
     });
+    return message.createdAt;
   }
 
   /** Pin/unpin require channel-level ADMIN (moderator) role, same bar as deleting others' messages. */

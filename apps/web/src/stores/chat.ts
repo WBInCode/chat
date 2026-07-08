@@ -25,6 +25,8 @@ interface ChatState {
   typingUsers: Record<string, Set<string>>;
   /** Per-user presence status: online / away / dnd / offline (absent = never seen / offline). */
   presenceStatus: Record<string, "online" | "away" | "dnd" | "offline">;
+  /** Per-channel read receipts: channelId -> (userId -> ISO lastReadAt). */
+  readState: Record<string, Record<string, string>>;
 
   setActiveOrg: (orgId: string | null) => void;
   setActiveChannel: (channelId: string | null) => void;
@@ -44,6 +46,10 @@ interface ChatState {
   setOpenThread: (messageId: string | null) => void;
   setTyping: (channelId: string, userId: string, isTyping: boolean) => void;
   setPresence: (userId: string, status: "online" | "away" | "dnd" | "offline") => void;
+  /** Replace the full read state for a channel (on load). */
+  setReadState: (channelId: string, entries: { userId: string; lastReadAt: string | null }[]) => void;
+  /** Apply a single live read update (WS). */
+  applyReadUpdate: (channelId: string, userId: string, readAt: string) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -53,6 +59,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: {},
   typingUsers: {},
   presenceStatus: {},
+  readState: {},
 
   setActiveOrg: (orgId) => set({ activeOrgId: orgId, activeChannelId: null, channels: [] }),
   setActiveChannel: (channelId) => set({ activeChannelId: channelId }),
@@ -176,5 +183,20 @@ export const useChatStore = create<ChatState>((set) => ({
     }),
 
   setPresence: (userId, status) =>
-    set((s) => ({ presenceStatus: { ...s.presenceStatus, [userId]: status } }))
+    set((s) => ({ presenceStatus: { ...s.presenceStatus, [userId]: status } })),
+
+  setReadState: (channelId, entries) =>
+    set((s) => {
+      const map: Record<string, string> = {};
+      for (const e of entries) if (e.lastReadAt) map[e.userId] = e.lastReadAt;
+      return { readState: { ...s.readState, [channelId]: map } };
+    }),
+
+  applyReadUpdate: (channelId, userId, readAt) =>
+    set((s) => ({
+      readState: {
+        ...s.readState,
+        [channelId]: { ...(s.readState[channelId] ?? {}), [userId]: readAt }
+      }
+    }))
 }));

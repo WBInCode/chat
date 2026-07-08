@@ -292,6 +292,26 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     }));
   });
 
+  /**
+   * Per-member read state for a channel (read receipts, F6-C). Returns each
+   * member's lastReadAt so clients can render "seen by" indicators. Only
+   * accessible to channel members.
+   */
+  fastify.get("/channels/:channelId/read-state", async (request) => {
+    const { channelId } = request.params as { channelId: string };
+    await assertChannelMember(fastify, request.user!.id, channelId);
+
+    const members = await fastify.prisma.channelMember.findMany({
+      where: { channelId },
+      select: { userId: true, lastReadAt: true }
+    });
+
+    return members.map((m) => ({
+      userId: m.userId,
+      lastReadAt: m.lastReadAt?.toISOString() ?? null
+    }));
+  });
+
   /** Remove a member from a PUBLIC/PRIVATE channel (channel admin only, not DMs). */
   fastify.delete("/channels/:channelId/members/:userId", async (request, reply) => {
     const { channelId, userId: targetUserId } = request.params as { channelId: string; userId: string };
