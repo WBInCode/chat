@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { MessageDto } from "@chatv2/shared";
 import { ALLOWED_REACTIONS } from "@chatv2/shared";
 import { FileAttachment } from "./FileAttachment.js";
@@ -55,6 +55,8 @@ interface MessageRowProps {
   isFirstUnread?: boolean;
   /** Hide the thread button inside a thread panel (no nesting). */
   inThread?: boolean;
+  /** Bumped to request opening inline edit (↑ in an empty composer). */
+  autoEditNonce?: number;
 }
 
 export function MessageRow({
@@ -79,7 +81,8 @@ export function MessageRow({
   isSaved = false,
   highlighted = false,
   isFirstUnread = false,
-  inThread = false
+  inThread = false,
+  autoEditNonce = 0
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
@@ -98,6 +101,15 @@ export function MessageRow({
     if (v && v !== m.content) onEdit(m.id, v);
     setEditing(false);
   }
+
+  // Open inline edit when the composer requests it (↑ on last own message).
+  useEffect(() => {
+    if (autoEditNonce > 0) {
+      setEditValue(m.content);
+      setEditing(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoEditNonce]);
 
   return (
     <div

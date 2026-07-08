@@ -151,6 +151,8 @@ export function ChatLayout() {
     null
   );
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  // Signal to open inline edit on a specific message (↑ in an empty composer).
+  const [editRequest, setEditRequest] = useState<{ id: string; nonce: number } | null>(null);
   const permalinkHandled = useRef(false);
   const permalinkInProgressRef = useRef<string | null>(null);
   const suppressAutoScrollRef = useRef(false);
@@ -1682,6 +1684,7 @@ export function ChatLayout() {
                         canPin={activeChannel?.myRole === "ADMIN"}
                         isSaved={savedIds.has(m.id)}
                         isFirstUnread={m.id === firstUnreadId}
+                        autoEditNonce={editRequest?.id === m.id ? editRequest.nonce : 0}
                       />
                     </div>
                   );
@@ -2029,6 +2032,33 @@ export function ChatLayout() {
                       e.preventDefault();
                       e.currentTarget.form?.requestSubmit();
                       e.currentTarget.style.height = "auto";
+                    }
+                    // ↑ in an empty composer edits your last message.
+                    if (
+                      e.key === "ArrowUp" &&
+                      !e.shiftKey &&
+                      !e.ctrlKey &&
+                      !e.metaKey &&
+                      draft.length === 0
+                    ) {
+                      const own = [...channelMessages]
+                        .reverse()
+                        .find(
+                          (msg) =>
+                            msg.authorId === user?.id &&
+                            msg.contentType === "text" &&
+                            !!msg.content &&
+                            !msg.id.startsWith("temp-")
+                        );
+                      if (own) {
+                        e.preventDefault();
+                        const idx = channelMessages.findIndex((msg) => msg.id === own.id);
+                        if (idx >= 0) rowVirtualizer.scrollToIndex(idx, { align: "center" });
+                        setEditRequest((prev) => ({ id: own.id, nonce: (prev?.nonce ?? 0) + 1 }));
+                        // Clear the signal shortly after so scrolling the row
+                        // out and back in doesn't re-open the editor.
+                        window.setTimeout(() => setEditRequest(null), 1500);
+                      }
                     }
                   }}
                   onPaste={handlePaste}
