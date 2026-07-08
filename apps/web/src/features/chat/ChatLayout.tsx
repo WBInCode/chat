@@ -152,6 +152,7 @@ export function ChatLayout() {
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showComposerActions, setShowComposerActions] = useState(false);
   const [showComposerEmoji, setShowComposerEmoji] = useState(false);
+  const [showComposerMenu, setShowComposerMenu] = useState(false);
   const [showChannelMenu, setShowChannelMenu] = useState(false);
   const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
   const [wsDisconnected, setWsDisconnected] = useState(false);
@@ -1698,92 +1699,97 @@ export function ChatLayout() {
                   )}
                 </div>
 
-                {/* Desktop: keep the action buttons inline. */}
-                <div className="hidden items-center gap-2 md:flex">
-                  {/* Markdown formatting toolbar (wraps the current selection). */}
-                  <div className="flex items-center gap-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-1 py-1">
-                    <button
-                      type="button"
-                      onClick={() => applyMarkdown("**", "**", "pogrubienie")}
-                      title="Pogrubienie (Ctrl+B)"
-                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
-                    >
-                      <Icon icon={Bold} size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyMarkdown("_", "_", "kursywa")}
-                      title="Kursywa (Ctrl+I)"
-                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
-                    >
-                      <Icon icon={Italic} size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyMarkdown("~~", "~~", "przekreślenie")}
-                      title="Przekreślenie"
-                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
-                    >
-                      <Icon icon={Strikethrough} size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyMarkdown("`", "`", "kod")}
-                      title="Kod (Ctrl+E)"
-                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
-                    >
-                      <Icon icon={Code} size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyMarkdown("[", "](url)", "tekst")}
-                      title="Link"
-                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
-                    >
-                      <Icon icon={Link2} size={16} />
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowComposerEmoji((v) => !v)}
-                      title="Emoji"
-                      className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
-                    >
-                      <Icon icon={Smile} />
-                    </button>
-                    {showComposerEmoji && (
-                      <EmojiPicker
-                        onPick={(emoji) => insertEmoji(emoji)}
-                        onClose={() => setShowComposerEmoji(false)}
-                      />
-                    )}
-                  </div>
+                {/* Desktop: secondary actions live in a single designed dropdown
+                    to keep the composer bar uncluttered as features grow. */}
+                <div className="relative hidden items-center gap-2 md:flex">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Załącz plik"
-                    className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
+                    onClick={() => setShowComposerMenu((v) => !v)}
+                    title="Formatowanie i załączniki"
+                    className={`rounded-xl border border-[var(--glass-border)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] ${
+                      showComposerMenu ? "bg-[var(--accent)]/20" : "bg-[var(--glass)]"
+                    }`}
                   >
-                    <Icon icon={Paperclip} />
+                    <Icon icon={Plus} />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowPollModal(true)}
-                    title="Utwórz ankietę"
-                    className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
-                  >
-                    <Icon icon={BarChart3} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowSchedulePicker(true)}
-                    disabled={!draft.trim()}
-                    title="Wyślij później"
-                    className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96] disabled:opacity-40"
-                  >
-                    <Icon icon={Clock} />
-                  </button>
+                  {showComposerMenu && (
+                    <>
+                      {/* Click-away backdrop */}
+                      <div className="fixed inset-0 z-10" onClick={() => setShowComposerMenu(false)} />
+                      <div className="animate-slide-up absolute bottom-full left-0 z-20 mb-2 w-60 overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-2xl backdrop-blur-lg">
+                        <div className="px-3 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-dim)]">
+                          Formatowanie
+                        </div>
+                        <div className="flex items-center gap-1 px-2 pb-2">
+                          {[
+                            { icon: Bold, title: "Pogrubienie (Ctrl+B)", act: () => applyMarkdown("**", "**", "pogrubienie") },
+                            { icon: Italic, title: "Kursywa (Ctrl+I)", act: () => applyMarkdown("_", "_", "kursywa") },
+                            { icon: Strikethrough, title: "Przekreślenie", act: () => applyMarkdown("~~", "~~", "przekreślenie") },
+                            { icon: Code, title: "Kod (Ctrl+E)", act: () => applyMarkdown("`", "`", "kod") },
+                            { icon: Link2, title: "Link", act: () => applyMarkdown("[", "](url)", "tekst") }
+                          ].map((f, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              title={f.title}
+                              onClick={() => f.act()}
+                              className="flex-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] py-1.5 transition-colors hover:bg-[var(--accent)]/20 active:scale-[0.94]"
+                            >
+                              <Icon icon={f.icon} size={15} />
+                            </button>
+                          ))}
+                        </div>
+                        <div className="border-t border-[var(--glass-border)]" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowComposerMenu(false);
+                            setShowComposerEmoji(true);
+                          }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                        >
+                          <Icon icon={Smile} size={16} /> Emoji
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowComposerMenu(false);
+                            fileInputRef.current?.click();
+                          }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                        >
+                          <Icon icon={Paperclip} size={16} /> Załącz plik
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowComposerMenu(false);
+                            setShowPollModal(true);
+                          }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                        >
+                          <Icon icon={BarChart3} size={16} /> Utwórz ankietę
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!draft.trim()}
+                          onClick={() => {
+                            setShowComposerMenu(false);
+                            setShowSchedulePicker(true);
+                          }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 disabled:opacity-40"
+                        >
+                          <Icon icon={Clock} size={16} /> Wyślij później
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {showComposerEmoji && (
+                    <EmojiPicker
+                      onPick={(emoji) => insertEmoji(emoji)}
+                      onClose={() => setShowComposerEmoji(false)}
+                    />
+                  )}
                   {aiEnabled && (
                     <div className="relative">
                       <button

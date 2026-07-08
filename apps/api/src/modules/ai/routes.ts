@@ -26,16 +26,28 @@ const CORPO_RULES =
   "3. DŁUGOŚĆ PROPORCJONALNA: krótka wiadomość = krótki wynik (max ~2x oryginału). Nie dopisuj zdań o KPI/roadmapie/stakeholderach jeśli oryginał był jednym zdaniem.\n" +
   "4. USUŃ wulgaryzmy i obelgi, zachowując uprzejmie sens (ton profesjonalny).\n" +
   "5. Wpleć 2-3 korpo-frazesy naturalnie, NIE upychaj ich w każde słowo.\n" +
+  "6. ZACHOWAJ WYDŹWIĘK i faktyczną decyzję: jeśli ktoś jest sfrustrowany lub coś odrzuca ('mam dość', 'rezygnuję', 'nie zrobię tego'), wynik ma to komunikować UPRZEJMIE i ASERTYWNIE, ale NIE odwracaj sensu na entuzjazm ani zgodę.\n" +
+  "7. ROZUMIEJ POLSKIE REALIA PRACOWNICZE i skróty — NIE interpretuj ich dosłownie ani jako nazw stanowisk/projektów.\n" +
   "Zwróć TYLKO przetłumaczony tekst, bez komentarzy, bez cudzysłowów.";
 
+// Domain glossary so the model doesn't misread Polish HR shorthand (e.g. it
+// once turned "biorę L4" — going on sick leave — into "przejęcie roli L4").
+const CORPO_GLOSSARY =
+  "Słownik polskich realiów pracowniczych (interpretuj ZGODNIE z tym):\n" +
+  "- L4 / „idę na L4\" / „biorę L4\" = zwolnienie lekarskie (nieobecność chorobowa), NIE stanowisko ani projekt.\n" +
+  "- „biorę urlop\", UoP = umowa o pracę, B2B = kontrakt, „nadgodziny\", „wypłata\", „premia\", „okres wypowiedzenia\".\n" +
+  "- „mam dość / pierdolę tę robotę\" = silna frustracja / chęć odejścia lub odpuszczenia — zachowaj ten wydźwięk, tylko ubierz go w uprzejmy, asertywny ton.";
+
 const CORPO_EXAMPLES =
-  "Przykłady (zwróć uwagę na długość i zachowanie typu):\n" +
+  "Przykłady (zwróć uwagę na długość, zachowanie typu, wydźwięku i kontekstu):\n" +
   "Wejście: „kiedy będzie wypłata?\"\n" +
   "Wyjście: „Czy moglibyśmy zsynchronizować się co do terminu realizacji wypłaty? Chciałbym mieć widoczność na ten touchpoint.\"\n" +
   "Wejście: „zrób to szybko\"\n" +
   "Wyjście: „Czy możemy potraktować to jako quick win i domknąć w trybie priorytetowym?\"\n" +
   "Wejście: „nie zdążę na spotkanie\"\n" +
-  "Wyjście: „Niestety pojawił się konflikt w kalendarzu — będę musiał zdefaultować z tego touchpointu.\"";
+  "Wyjście: „Niestety pojawił się konflikt w kalendarzu — będę musiał zdefaultować z tego touchpointu.\"\n" +
+  "Wejście: „pierdolę tę robotę, biorę L4\"\n" +
+  "Wyjście: „Sygnalizuję, że mój aktualny bandwidth osiągnął czerwony status — korzystam ze zwolnienia lekarskiego (L4) i wracam do dyspozycji po rekonwalescencji.\"";
 
 const REWRITE_INSTRUCTIONS: Record<
   "improve" | "shorten" | "translate_en" | "translate_pl" | "corpo" | "corpo_hard",
@@ -50,12 +62,15 @@ const REWRITE_INSTRUCTIONS: Record<
     "(synergia, touchpoint, quick win, action item, value-added, deep dive, leverage, stakeholder, KPI, roadmapa). " +
     CORPO_RULES +
     "\n" +
+    CORPO_GLOSSARY +
+    "\n" +
     CORPO_EXAMPLES,
   corpo_hard:
     "Przekształć poniższą wiadomość na PRZERYSOWANY, satyryczny korpo-bełkot naszpikowany frazesami " +
     "(synergia, touchpoint, quick win, action items, value-added, deep dive, leverage, stakeholder, KPI, roadmapa, " +
     "na koniec dnia, win-win, poziom wysoki). Ma być zabawnie przesadzone. " +
-    "ALE nadal: ZACHOWAJ TYP wiadomości (pytanie->pytanie), ZACHOWAJ konkretną intencję, USUŃ wulgaryzmy. " +
+    "ALE nadal: ZACHOWAJ TYP wiadomości (pytanie->pytanie), ZACHOWAJ konkretną intencję i WYDŹWIĘK (nie odwracaj sensu), USUŃ wulgaryzmy. " +
+    "Rozumiej polskie realia: L4 = zwolnienie lekarskie, nie stanowisko. " +
     "Długość: max ~3x oryginału (nie całe eseje z pojedynczego zdania). Zwróć TYLKO tekst, bez komentarzy."
 };
 
