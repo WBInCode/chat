@@ -165,6 +165,7 @@ export function ChatLayout() {
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   // Keyboard shortcut: Ctrl/Cmd+K focuses message search, Ctrl/Cmd+P opens the quick switcher.
   useEffect(() => {
@@ -532,7 +533,7 @@ export function ChatLayout() {
     });
   }
 
-  function handlePaste(e: ClipboardEvent<HTMLInputElement>) {
+  function handlePaste(e: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const items = Array.from(e.clipboardData?.items ?? []);
     const files = items
       .filter((i) => i.kind === "file")
@@ -610,6 +611,7 @@ export function ChatLayout() {
     getSocket().emit("message:send", { channelId: activeChannelId, tempId, content, fileIds });
     getSocket().emit("typing:stop", { channelId: activeChannelId });
     setDraft("");
+    if (composerRef.current) composerRef.current.style.height = "auto";
     clearDraftPersisted(activeChannelId);
     setDraftChannels((prev) => {
       const next = new Set(prev);
@@ -1658,14 +1660,28 @@ export function ChatLayout() {
                     </div>
                   )}
                 </div>
-                <input
-                  type="text"
+                <textarea
+                  ref={composerRef}
+                  rows={1}
                   value={draft}
-                  onChange={(e) => handleDraftChange(e.target.value)}
+                  onChange={(e) => {
+                    handleDraftChange(e.target.value);
+                    // Auto-grow up to ~6 lines, then scroll inside.
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 144)}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    // Enter = send, Shift+Enter = newline (F6-C.3).
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                      e.currentTarget.style.height = "auto";
+                    }
+                  }}
                   onPaste={handlePaste}
                   placeholder={`Napisz na ${activeChannel.type === "DM" ? "@" : "#"}${activeChannel.name}`}
                   maxLength={8000}
-                  className="min-w-0 flex-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
+                  className="min-w-0 flex-1 resize-none rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm leading-snug outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
                 />
                 {draft.length > 7000 && (
                   <span className="absolute -top-5 right-24 text-xs text-[var(--warning)]">
