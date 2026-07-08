@@ -35,6 +35,30 @@ import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark,
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
+/** True when two dates fall on the same calendar day (local time). */
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/** Human day label for a message divider: "Dzisiaj" / "Wczoraj" / full date. */
+function formatDayLabel(date: Date): string {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(date, now)) return "Dzisiaj";
+  if (isSameDay(date, yesterday)) return "Wczoraj";
+  return date.toLocaleDateString("pl-PL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric"
+  });
+}
+
 interface OrgItem {
   id: string;
   name: string;
@@ -1521,7 +1545,13 @@ export function ChatLayout() {
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                   const m = channelMessages[virtualRow.index]!;
                   const prev = channelMessages[virtualRow.index - 1];
+                  // Day divider when the calendar day changes (or at the very
+                  // top of the history) so messages jumping e.g. 17:22 -> 10:45
+                  // are clearly attributed to their day.
+                  const newDay =
+                    !prev || !isSameDay(new Date(prev.createdAt), new Date(m.createdAt));
                   const grouped =
+                    !newDay &&
                     prev &&
                     prev.authorId === m.authorId &&
                     new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() <
@@ -1549,6 +1579,15 @@ export function ChatLayout() {
                          border-box, which excludes margins. */
                       className={grouped ? "pt-0.5 pb-0.5" : "pt-3 pb-0.5"}
                     >
+                      {newDay && (
+                        <div className="my-2 flex items-center gap-3 px-1 select-none">
+                          <span className="h-px flex-1 bg-[var(--glass-border)]" />
+                          <span className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-0.5 text-[11px] font-medium text-[var(--text-dim)]">
+                            {formatDayLabel(new Date(m.createdAt))}
+                          </span>
+                          <span className="h-px flex-1 bg-[var(--glass-border)]" />
+                        </div>
+                      )}
                       <MessageRow
                         message={m}
                         authorName={author?.displayName ?? "Nieznany"}
