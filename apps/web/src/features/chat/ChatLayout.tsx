@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type DragEvent, type ClipboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type DragEvent, type ClipboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
@@ -115,10 +115,13 @@ export function ChatLayout() {
     typingUsers,
     presenceStatus,
     readState,
+    hasMoreOlder,
     setActiveOrg,
     setActiveChannel,
     setChannels,
     setMessages,
+    prependMessages,
+    setHasMoreOlder,
     clearUnread,
     addMessage,
     updateMessage,
@@ -151,6 +154,11 @@ export function ChatLayout() {
   const permalinkHandled = useRef(false);
   const permalinkInProgressRef = useRef<string | null>(null);
   const suppressAutoScrollRef = useRef(false);
+  const loadingOlderRef = useRef(false);
+  // Distance from the current scroll position to the bottom of the content,
+  // captured right before prepending older messages so we can re-anchor the
+  // viewport (the content below the prepend is unchanged).
+  const restoreBottomGapRef = useRef<number | null>(null);
   const [editingTopic, setEditingTopic] = useState(false);
   const [topicDraft, setTopicDraft] = useState("");
   const [showMembersPanel, setShowMembersPanel] = useState(false);
@@ -349,6 +357,8 @@ export function ChatLayout() {
       // API returns newest-first; store keeps oldest-first.
       const ordered = [...data.messages].reverse();
       setMessages(activeChannelId, ordered);
+      // A full page (50) implies older history may exist for infinite scroll.
+      setHasMoreOlder(activeChannelId, data.messages.length >= 50);
       // Mark the newest message read and clear the unread badge.
       const newest = ordered[ordered.length - 1];
       if (newest) {
@@ -367,7 +377,7 @@ export function ChatLayout() {
       .catch(() => {
         /* read receipts are best-effort */
       });
-  }, [activeChannelId, setMessages, clearUnread, setReadState]);
+  }, [activeChannelId, setMessages, clearUnread, setReadState, setHasMoreOlder]);
 
   // ── pinned messages banner for the active channel ──────────────────────
   useEffect(() => {
@@ -557,6 +567,17 @@ export function ChatLayout() {
     }
   }, [channelMessages.length, rowVirtualizer]);
 
+  // After older messages are prepended, re-anchor the viewport so the reader
+  // stays on the same message (the content below the prepend is unchanged, so
+  // preserving the gap-to-bottom keeps the position stable). Runs before paint.
+  useLayoutEffect(() => {
+    const gap = restoreBottomGapRef.current;
+    if (gap == null) return;
+    restoreBottomGapRef.current = null;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight - gap;
+  }, [channelMessages.length]);
+
   const memberById = useMemo(() => {
     const map = new Map<string, MemberItem>();
     for (const m of members) map.set(m.userId, m);
@@ -579,11 +600,54 @@ export function ChatLayout() {
   }, [activeChannel, channelMessages, user?.id]);
 
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
+  // Infinite scroll up: when the user nears the top, fetch the previous page
+  // (cursor = oldest loaded message) and prepend it, preserving the viewport
+  // by re-anchoring scrollTop after the new rows are laid out.
+  async function loadOlderMessages() {
+    if (!activeChannelId) return;
+    if (loadingOlderRef.current) return;
+    if (!hasMoreOlder[activeChannelId]) return;
+    const current = messages[activeChannelId] ?? [];
+    const oldest = current[0];
+    if (!oldest) return;
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    const el = scrollRef.current;
+    // Preserve the gap between the viewport top and the content bottom.
+    restoreBottomGapRef.current = el ? el.scrollHeight - el.scrollTop : null;
+    try {
+      const data = await apiFetch<{ messages: MessageDto[]; nextCursor: string | null }>(
+        `/channels/${activeChannelId}/messages?limit=50&cursor=${oldest.id}`
+      );
+      const older = [...data.messages].reverse();
+      if (older.length > 0) {
+        suppressAutoScrollRef.current = true;
+        prependMessages(activeChannelId, older);
+      } else {
+        restoreBottomGapRef.current = null;
+      }
+      setHasMoreOlder(activeChannelId, data.messages.length >= 50);
+    } catch {
+      restoreBottomGapRef.current = null;
+      /* pagination is best-effort */
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }
+
   function handleScrollList() {
     const el = scrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     setShowJumpToLatest(distanceFromBottom > 400);
+    // Near the top → pull in older history.
+    if (el.scrollTop < 160 && activeChannelId && hasMoreOlder[activeChannelId]) {
+      void loadOlderMessages();
+    }
   }
 
   const typingNames = [...(typingUsers[activeChannelId ?? ""] ?? [])]
@@ -1526,6 +1590,14 @@ export function ChatLayout() {
                     Napisz pierwszą wiadomość poniżej. Możesz też przeciągnąć plik, wkleić obrazek,
                     utworzyć ankietę (+) albo wspomnieć kogoś przez @.
                   </p>
+                </div>
+              )}
+              {loadingOlder && (
+                <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center">
+                  <span className="glass-strong flex items-center gap-2 rounded-full px-3 py-1 text-xs text-[var(--text-dim)] shadow-lg">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                    Ładowanie starszych wiadomości…
+                  </span>
                 </div>
               )}
               {showJumpToLatest && (

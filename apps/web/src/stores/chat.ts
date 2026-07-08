@@ -27,12 +27,18 @@ interface ChatState {
   presenceStatus: Record<string, "online" | "away" | "dnd" | "offline">;
   /** Per-channel read receipts: channelId -> (userId -> ISO lastReadAt). */
   readState: Record<string, Record<string, string>>;
+  /** Whether older history remains to be loaded (infinite scroll up). */
+  hasMoreOlder: Record<string, boolean>;
 
   setActiveOrg: (orgId: string | null) => void;
   setActiveChannel: (channelId: string | null) => void;
   setChannels: (channels: ChannelItem[]) => void;
   clearUnread: (channelId: string) => void;
   setMessages: (channelId: string, messages: MessageDto[]) => void;
+  /** Prepend older messages (oldest-first) to the top of the channel. */
+  prependMessages: (channelId: string, older: MessageDto[]) => void;
+  /** Record whether more older history remains for a channel. */
+  setHasMoreOlder: (channelId: string, hasMore: boolean) => void;
   addMessage: (message: MessageDto & { tempId?: string }) => void;
   updateMessage: (message: MessageDto) => void;
   removeMessage: (channelId: string, messageId: string) => void;
@@ -60,6 +66,7 @@ export const useChatStore = create<ChatState>((set) => ({
   typingUsers: {},
   presenceStatus: {},
   readState: {},
+  hasMoreOlder: {},
 
   setActiveOrg: (orgId) => set({ activeOrgId: orgId, activeChannelId: null, channels: [] }),
   setActiveChannel: (channelId) => set({ activeChannelId: channelId }),
@@ -74,6 +81,17 @@ export const useChatStore = create<ChatState>((set) => ({
 
   setMessages: (channelId, messages) =>
     set((s) => ({ messages: { ...s.messages, [channelId]: messages } })),
+
+  prependMessages: (channelId, older) =>
+    set((s) => {
+      const existing = s.messages[channelId] ?? [];
+      const seen = new Set(existing.map((m) => m.id));
+      const deduped = older.filter((m) => !seen.has(m.id));
+      return { messages: { ...s.messages, [channelId]: [...deduped, ...existing] } };
+    }),
+
+  setHasMoreOlder: (channelId, hasMore) =>
+    set((s) => ({ hasMoreOlder: { ...s.hasMoreOlder, [channelId]: hasMore } })),
 
   addMessage: (message) =>
     set((s) => {
