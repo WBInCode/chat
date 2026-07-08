@@ -5,6 +5,7 @@ import { apiFetch } from "../../lib/api.js";
 import { PdfViewer } from "./PdfViewer.js";
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg", "video/quicktime"]);
 const PREVIEWABLE_TYPES = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -31,9 +32,11 @@ function fileIcon(mimeType: string): string {
 export function FileAttachment({ file }: { file: FileDto }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const isImage = IMAGE_TYPES.has(file.mimeType);
+  const isVideo = VIDEO_TYPES.has(file.mimeType);
   const isPreviewable = PREVIEWABLE_TYPES.has(file.mimeType);
 
   useEffect(() => {
@@ -46,6 +49,17 @@ export function FileAttachment({ file }: { file: FileDto }) {
       cancelled = true;
     };
   }, [file.id, file.hasThumb, isImage]);
+
+  useEffect(() => {
+    if (!isVideo || file.status !== "CLEAN") return;
+    let cancelled = false;
+    void apiFetch<{ url: string }>(`/files/${file.id}/url`).then((r) => {
+      if (!cancelled) setVideoUrl(r.url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [file.id, isVideo, file.status]);
 
   async function openLightbox() {
     const r = await apiFetch<{ url: string }>(`/files/${file.id}/url`);
@@ -110,6 +124,32 @@ export function FileAttachment({ file }: { file: FileDto }) {
             document.body
           )}
       </>
+    );
+  }
+
+  if (isVideo) {
+    if (file.status !== "CLEAN") {
+      return (
+        <div className="mt-1 flex h-32 w-48 items-center justify-center rounded-lg border border-[var(--border)] text-xs text-[var(--text-dim)]">
+          {file.status === "PENDING" ? "Skanowanie..." : "Wideo niedostępne"}
+        </div>
+      );
+    }
+    return (
+      <div className="mt-1 max-w-sm overflow-hidden rounded-lg border border-[var(--border)]">
+        {videoUrl ? (
+          <video
+            src={videoUrl}
+            controls
+            preload="metadata"
+            className="max-h-72 w-full bg-black"
+          />
+        ) : (
+          <div className="flex h-40 w-64 items-center justify-center text-xs text-[var(--text-dim)]">
+            Ładowanie wideo...
+          </div>
+        )}
+      </div>
     );
   }
 

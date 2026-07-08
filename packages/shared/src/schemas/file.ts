@@ -5,6 +5,8 @@ export const ALLOWED_FILE_MIME_TYPES = [
   "image/png",
   "image/webp",
   "image/gif",
+  "video/mp4",
+  "video/webm",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // xlsx
