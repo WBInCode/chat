@@ -13,6 +13,7 @@ import { ThreadPanel } from "./ThreadPanel.js";
 import { ProfileCard } from "./ProfileCard.js";
 import { SavedPanel } from "./SavedPanel.js";
 import { ForwardPicker } from "./ForwardPicker.js";
+import { EmojiPicker } from "./EmojiPicker.js";
 import { ChannelMembersPanel } from "./ChannelMembersPanel.js";
 import { GroupDmPicker } from "./GroupDmPicker.js";
 import { QuickSwitcher } from "./QuickSwitcher.js";
@@ -30,7 +31,7 @@ import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -150,6 +151,7 @@ export function ChatLayout() {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showComposerActions, setShowComposerActions] = useState(false);
+  const [showComposerEmoji, setShowComposerEmoji] = useState(false);
   const [showChannelMenu, setShowChannelMenu] = useState(false);
   const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
   const [wsDisconnected, setWsDisconnected] = useState(false);
@@ -779,6 +781,23 @@ export function ChatLayout() {
       el.focus();
       const selStart = start + before.length;
       el.setSelectionRange(selStart, selStart + selected.length);
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+    });
+  }
+
+  // Insert an emoji at the current caret position in the composer.
+  function insertEmoji(emoji: string) {
+    const el = composerRef.current;
+    const start = el?.selectionStart ?? draft.length;
+    const end = el?.selectionEnd ?? draft.length;
+    const next = draft.slice(0, start) + emoji + draft.slice(end);
+    handleDraftChange(next);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const caret = start + emoji.length;
+      el.setSelectionRange(caret, caret);
       el.style.height = "auto";
       el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
     });
@@ -1607,6 +1626,16 @@ export function ChatLayout() {
                         type="button"
                         onClick={() => {
                           setShowComposerActions(false);
+                          setShowComposerEmoji(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                      >
+                        <Icon icon={Smile} size={16} /> Emoji
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowComposerActions(false);
                           fileInputRef.current?.click();
                         }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
@@ -1658,6 +1687,15 @@ export function ChatLayout() {
                         ))}
                     </div>
                   )}
+                  {/* Mobile emoji picker (opened from the "+" menu). */}
+                  {showComposerEmoji && (
+                    <div className="md:hidden">
+                      <EmojiPicker
+                        onPick={(emoji) => insertEmoji(emoji)}
+                        onClose={() => setShowComposerEmoji(false)}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Desktop: keep the action buttons inline. */}
@@ -1704,6 +1742,22 @@ export function ChatLayout() {
                     >
                       <Icon icon={Link2} size={16} />
                     </button>
+                  </div>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowComposerEmoji((v) => !v)}
+                      title="Emoji"
+                      className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 transition-all duration-150 hover:bg-[var(--border)]/40 active:scale-[0.96]"
+                    >
+                      <Icon icon={Smile} />
+                    </button>
+                    {showComposerEmoji && (
+                      <EmojiPicker
+                        onPick={(emoji) => insertEmoji(emoji)}
+                        onClose={() => setShowComposerEmoji(false)}
+                      />
+                    )}
                   </div>
                   <button
                     type="button"
