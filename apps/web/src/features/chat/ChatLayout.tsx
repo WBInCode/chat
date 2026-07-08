@@ -940,6 +940,11 @@ export function ChatLayout() {
     setMentionQuery(null);
   }
 
+  function insertBroadcastMention(token: string) {
+    setDraft((d) => d.replace(/@([\p{L}\d ]{0,30})$/u, `@${token} `));
+    setMentionQuery(null);
+  }
+
   const mentionCandidates =
     mentionQuery !== null
       ? members
@@ -949,6 +954,22 @@ export function ChatLayout() {
               m.displayName.toLowerCase().startsWith(mentionQuery.toLowerCase())
           )
           .slice(0, 5)
+      : [];
+
+  // Broadcast mentions offered in the @-autocomplete (channels only, not DMs).
+  const mentionBroadcasts =
+    mentionQuery !== null && activeChannel && activeChannel.type !== "DM"
+      ? (
+          [
+            { token: "channel", label: "@channel", desc: "Powiadom wszystkich w kanale" },
+            { token: "here", label: "@here", desc: "Powiadom obecnych online" }
+          ] as const
+        ).filter(
+          (b) =>
+            mentionQuery === "" ||
+            b.token.startsWith(mentionQuery.toLowerCase()) ||
+            (b.token === "channel" && "wszyscy".startsWith(mentionQuery.toLowerCase()))
+        )
       : [];
 
   // ── message actions ────────────────────────────────────────────────
@@ -1754,8 +1775,22 @@ export function ChatLayout() {
                 </div>
               )}
               <div className="relative flex gap-2">
-                {mentionCandidates.length > 0 && (
-                  <div className="animate-slide-up absolute bottom-full left-12 z-20 mb-1 w-56 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-xl backdrop-blur-lg">
+                {(mentionCandidates.length > 0 || mentionBroadcasts.length > 0) && (
+                  <div className="animate-slide-up absolute bottom-full left-12 z-20 mb-1 w-64 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-xl backdrop-blur-lg">
+                    {mentionBroadcasts.map((b) => (
+                      <button
+                        key={b.token}
+                        type="button"
+                        onClick={() => insertBroadcastMention(b.token)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                      >
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--warning)]/25 text-[10px] text-[var(--warning)]">
+                          @
+                        </span>
+                        <span className="font-medium text-[var(--warning)]">{b.label}</span>
+                        <span className="ml-auto text-[11px] text-[var(--text-dim)]">{b.desc}</span>
+                      </button>
+                    ))}
                     {mentionCandidates.map((m) => (
                       <button
                         key={m.userId}

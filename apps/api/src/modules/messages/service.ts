@@ -269,17 +269,27 @@ export function createMessageService(fastify: FastifyInstance) {
 
     const preview = content.length > 120 ? `${content.slice(0, 120)}…` : content;
 
+    // Broadcast mentions: @channel / @wszyscy notify every member; @here
+    // notifies only members currently online. Word-boundary matched so
+    // "@channels" doesn't count.
+    const hasAtChannel = /(^|\s)@(channel|wszyscy|kanał)(?![\p{L}\p{N}])/iu.test(content);
+    const hasAtHere = /(^|\s)@here(?![\p{L}\p{N}])/iu.test(content);
+
     await Promise.all(
       recipients.map(async (member) => {
         if (member.mutedAt) return;
         if (member.user.notifyMode === "NONE") return;
 
-        const isMentioned = content.includes(`@${member.user.displayName}`);
-        const isDm = channel.type === "DM";
-        if (member.user.notifyMode === "MENTIONS" && !isMentioned && !isDm) return;
-
         const dndStatus = await fastify.redis.get(`presence:${member.userId}`);
         if (dndStatus === "dnd") return;
+
+        const isOnline = dndStatus === "online" || dndStatus === "away";
+        const isMentioned =
+          content.includes(`@${member.user.displayName}`) ||
+          hasAtChannel ||
+          (hasAtHere && isOnline);
+        const isDm = channel.type === "DM";
+        if (member.user.notifyMode === "MENTIONS" && !isMentioned && !isDm) return;
 
         await sendPushToUser(fastify, member.userId, {
           title: isDm ? `${author?.displayName ?? "Wiadomość"}` : `${author?.displayName ?? "Ktoś"} w #${channel.name ?? "kanale"}`,

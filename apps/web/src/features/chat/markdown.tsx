@@ -56,6 +56,9 @@ export function renderMentions(
 ): ReactNode[] {
   if (!content.includes("@")) return renderLinks(content, keyPrefix);
 
+  // Broadcast mentions notify everyone in the channel (@channel / @wszyscy) or
+  // just the online members (@here). Highlighted for all readers.
+  const BROADCAST = ["channel", "here", "wszyscy", "kanał"];
   const sorted = [...members].sort((a, b) => b.displayName.length - a.displayName.length);
   const nodes: ReactNode[] = [];
   let rest = content;
@@ -66,6 +69,26 @@ export function renderMentions(
     if (at === -1) {
       nodes.push(...renderLinks(rest, `${keyPrefix}e${key++}-`));
       break;
+    }
+    const afterAt = rest.slice(at + 1);
+    const broadcast = BROADCAST.find((b) => {
+      if (!afterAt.toLowerCase().startsWith(b)) return false;
+      const nextChar = afterAt[b.length] ?? "";
+      // Word boundary so "@channels" / "@herevé" don't match.
+      return !/[\p{L}\p{N}]/u.test(nextChar);
+    });
+    if (broadcast) {
+      if (at > 0) nodes.push(...renderLinks(rest.slice(0, at), `${keyPrefix}e${key++}-`));
+      nodes.push(
+        <span
+          key={`${keyPrefix}bc-${key++}`}
+          className="rounded px-1 font-semibold bg-[var(--warning)]/25 text-[var(--warning)]"
+        >
+          @{afterAt.slice(0, broadcast.length)}
+        </span>
+      );
+      rest = afterAt.slice(broadcast.length);
+      continue;
     }
     const match = sorted.find((m) =>
       rest.slice(at + 1).toLowerCase().startsWith(m.displayName.toLowerCase())
