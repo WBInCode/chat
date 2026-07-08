@@ -152,6 +152,18 @@ describe("AI assistant (F5-D)", () => {
     expect(res.json().result).toContain("synergie");
   });
 
+  it("supports the 'corpo_hard' rewrite mode (over-the-top corpo satire)", async () => {
+    mockGroqOnce("Czy moglibyśmy zsynchronizować deep dive w temacie touchpointu?");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/ai/rewrite?orgId=${orgId}`,
+      headers: auth(owner.token),
+      payload: { text: "kiedy będzie wypłata?", mode: "corpo_hard" }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result).toContain("touchpointu");
+  });
+
   it("rejects an unknown rewrite mode (zod validation)", async () => {
     const res = await app.inject({
       method: "POST",

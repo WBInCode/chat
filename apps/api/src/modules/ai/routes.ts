@@ -10,15 +10,53 @@ const summarizeSchema = z.object({
 
 const rewriteSchema = z.object({
   text: z.string().trim().min(1).max(4000),
-  mode: z.enum(["improve", "shorten", "translate_en", "translate_pl", "corpo"])
+  mode: z.enum(["improve", "shorten", "translate_en", "translate_pl", "corpo", "corpo_hard"])
 });
 
-const REWRITE_INSTRUCTIONS: Record<"improve" | "shorten" | "translate_en" | "translate_pl" | "corpo", string> = {
+// The corpo translator kept over-generating (a one-line question became a
+// 6-sentence essay) and dropping the actual intent. These instructions
+// enforce: preserve message TYPE (pytanie→pytanie), keep length
+// PROPORTIONAL (max ~2×), strip wulgaryzmy while keeping the real ask, and
+// use only a few buzzwords instead of stuffing every clause. Few-shot
+// examples anchor the length/tone far better than rules alone.
+const CORPO_RULES =
+  "Zasady BEZWZGLĘDNE:\n" +
+  "1. ZACHOWAJ TYP wiadomości: pytanie zostaje pytaniem (ze znakiem ?), prośba prośbą, stwierdzenie stwierdzeniem. NIGDY nie zamieniaj pytania w oświadczenie.\n" +
+  "2. ZACHOWAJ INTENCJĘ i konkret: jeśli ktoś pyta 'kiedy wypłata', wynik MUSI nadal pytać o termin wypłaty.\n" +
+  "3. DŁUGOŚĆ PROPORCJONALNA: krótka wiadomość = krótki wynik (max ~2x oryginału). Nie dopisuj zdań o KPI/roadmapie/stakeholderach jeśli oryginał był jednym zdaniem.\n" +
+  "4. USUŃ wulgaryzmy i obelgi, zachowując uprzejmie sens (ton profesjonalny).\n" +
+  "5. Wpleć 2-3 korpo-frazesy naturalnie, NIE upychaj ich w każde słowo.\n" +
+  "Zwróć TYLKO przetłumaczony tekst, bez komentarzy, bez cudzysłowów.";
+
+const CORPO_EXAMPLES =
+  "Przykłady (zwróć uwagę na długość i zachowanie typu):\n" +
+  "Wejście: „kiedy będzie wypłata?\"\n" +
+  "Wyjście: „Czy moglibyśmy zsynchronizować się co do terminu realizacji wypłaty? Chciałbym mieć widoczność na ten touchpoint.\"\n" +
+  "Wejście: „zrób to szybko\"\n" +
+  "Wyjście: „Czy możemy potraktować to jako quick win i domknąć w trybie priorytetowym?\"\n" +
+  "Wejście: „nie zdążę na spotkanie\"\n" +
+  "Wyjście: „Niestety pojawił się konflikt w kalendarzu — będę musiał zdefaultować z tego touchpointu.\"";
+
+const REWRITE_INSTRUCTIONS: Record<
+  "improve" | "shorten" | "translate_en" | "translate_pl" | "corpo" | "corpo_hard",
+  string
+> = {
   improve: "Popraw ton i gramatykę poniższego tekstu, zachowując jego sens i długość. Zwróć TYLKO poprawiony tekst, bez komentarzy.",
   shorten: "Skróć poniższy tekst do najważniejszej treści, zachowując sens. Zwróć TYLKO skrócony tekst, bez komentarzy.",
   translate_en: "Przetłumacz poniższy tekst na angielski. Zwróć TYLKO tłumaczenie, bez komentarzy.",
   translate_pl: "Przetłumacz poniższy tekst na polski. Zwróć TYLKO tłumaczenie, bez komentarzy.",
-  corpo: "Przetłumacz poniższy prosty tekst na korporacyjny żargon pełen frazesów biznesowych (np. 'synergia', 'value-added', 'touchpoint', 'action items', 'deep dive', 'leverage', 'poziom wysoki', 'na koniec dnia', 'win-win', 'quick win', 'stakeholder', 'roadmapa', 'KPI'). Zachowaj ogólny sens wiadomości, ale zrewnij ją w nadmiernie korporacyjny, buzzwordowy styl (możesz mieszać polski z angielskimi terminami korpo, tak jak mówi się w typowych firmach). Zwróć TYLKO przetłumaczony tekst, bez komentarzy."
+  corpo:
+    "Przekształć poniższą wiadomość na uprzejmy, korporacyjny styl z lekką dawką biznesowych frazesów " +
+    "(synergia, touchpoint, quick win, action item, value-added, deep dive, leverage, stakeholder, KPI, roadmapa). " +
+    CORPO_RULES +
+    "\n" +
+    CORPO_EXAMPLES,
+  corpo_hard:
+    "Przekształć poniższą wiadomość na PRZERYSOWANY, satyryczny korpo-bełkot naszpikowany frazesami " +
+    "(synergia, touchpoint, quick win, action items, value-added, deep dive, leverage, stakeholder, KPI, roadmapa, " +
+    "na koniec dnia, win-win, poziom wysoki). Ma być zabawnie przesadzone. " +
+    "ALE nadal: ZACHOWAJ TYP wiadomości (pytanie->pytanie), ZACHOWAJ konkretną intencję, USUŃ wulgaryzmy. " +
+    "Długość: max ~3x oryginału (nie całe eseje z pojedynczego zdania). Zwróć TYLKO tekst, bez komentarzy."
 };
 
 export default async function aiRoutes(fastify: FastifyInstance) {

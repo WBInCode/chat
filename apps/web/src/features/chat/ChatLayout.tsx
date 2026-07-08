@@ -1621,7 +1621,8 @@ export function ChatLayout() {
                           { mode: "shorten", label: "AI: Skróć" },
                           { mode: "translate_en", label: "AI: Przetłumacz na EN" },
                           { mode: "translate_pl", label: "AI: Przetłumacz na PL" },
-                          { mode: "corpo", label: "AI: 🤵 Korpo-mowa" }
+                          { mode: "corpo", label: "AI: 🤵 Korpo-mowa" },
+                          { mode: "corpo_hard", label: "AI: 🤡 Korpo-mowa (hard)" }
                         ].map((opt) => (
                           <button
                             key={opt.mode}
@@ -1685,7 +1686,8 @@ export function ChatLayout() {
                             { mode: "shorten", label: "Skróć" },
                             { mode: "translate_en", label: "Przetłumacz na EN" },
                             { mode: "translate_pl", label: "Przetłumacz na PL" },
-                            { mode: "corpo", label: "🤵 Korpo-mowa" }
+                            { mode: "corpo", label: "🤵 Korpo-mowa" },
+                            { mode: "corpo_hard", label: "🤡 Korpo-mowa (hard)" }
                           ].map((opt) => (
                             <button
                               key={opt.mode}
