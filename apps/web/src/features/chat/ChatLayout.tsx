@@ -1860,7 +1860,7 @@ export function ChatLayout() {
                         <Icon icon={Sparkles} />
                       </button>
                       {showAiRewriteMenu && (
-                        <div className="animate-slide-up absolute bottom-full right-0 z-20 mb-1 w-48 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
+                        <div className="animate-slide-up absolute bottom-full left-0 z-20 mb-1 w-48 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
                           {[
                             { mode: "improve", label: "Popraw ton" },
                             { mode: "shorten", label: "Skróć" },
