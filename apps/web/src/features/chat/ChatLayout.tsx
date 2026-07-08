@@ -30,7 +30,7 @@ import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -763,6 +763,25 @@ export function ChatLayout() {
     typingTimeout.current = setTimeout(() => {
       if (activeChannelId) getSocket().emit("typing:stop", { channelId: activeChannelId });
     }, 2000);
+  }
+
+  // Wrap the current textarea selection with markdown markers (bold/italic/etc.).
+  // If nothing is selected, inserts the markers with a placeholder and selects it.
+  function applyMarkdown(before: string, after: string = before, placeholder = "") {
+    const el = composerRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? draft.length;
+    const end = el.selectionEnd ?? draft.length;
+    const selected = draft.slice(start, end) || placeholder;
+    const next = draft.slice(0, start) + before + selected + after + draft.slice(end);
+    handleDraftChange(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const selStart = start + before.length;
+      el.setSelectionRange(selStart, selStart + selected.length);
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
+    });
   }
 
   function insertMention(displayName: string) {
@@ -1643,6 +1662,49 @@ export function ChatLayout() {
 
                 {/* Desktop: keep the action buttons inline. */}
                 <div className="hidden items-center gap-2 md:flex">
+                  {/* Markdown formatting toolbar (wraps the current selection). */}
+                  <div className="flex items-center gap-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-1 py-1">
+                    <button
+                      type="button"
+                      onClick={() => applyMarkdown("**", "**", "pogrubienie")}
+                      title="Pogrubienie (Ctrl+B)"
+                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
+                    >
+                      <Icon icon={Bold} size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyMarkdown("_", "_", "kursywa")}
+                      title="Kursywa (Ctrl+I)"
+                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
+                    >
+                      <Icon icon={Italic} size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyMarkdown("~~", "~~", "przekreślenie")}
+                      title="Przekreślenie"
+                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
+                    >
+                      <Icon icon={Strikethrough} size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyMarkdown("`", "`", "kod")}
+                      title="Kod (Ctrl+E)"
+                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
+                    >
+                      <Icon icon={Code} size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyMarkdown("[", "](url)", "tekst")}
+                      title="Link"
+                      className="rounded-lg px-1.5 py-1 transition-colors hover:bg-[var(--border)]/40 active:scale-[0.94]"
+                    >
+                      <Icon icon={Link2} size={16} />
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
@@ -1714,6 +1776,25 @@ export function ChatLayout() {
                     e.target.style.height = `${Math.min(e.target.scrollHeight, 144)}px`;
                   }}
                   onKeyDown={(e) => {
+                    // Markdown formatting shortcuts (F6-C).
+                    if (e.ctrlKey || e.metaKey) {
+                      const k = e.key.toLowerCase();
+                      if (k === "b") {
+                        e.preventDefault();
+                        applyMarkdown("**", "**", "pogrubienie");
+                        return;
+                      }
+                      if (k === "i") {
+                        e.preventDefault();
+                        applyMarkdown("_", "_", "kursywa");
+                        return;
+                      }
+                      if (k === "e") {
+                        e.preventDefault();
+                        applyMarkdown("`", "`", "kod");
+                        return;
+                      }
+                    }
                     // Enter = send, Shift+Enter = newline (F6-C.3).
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
