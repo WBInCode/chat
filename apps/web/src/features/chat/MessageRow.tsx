@@ -314,10 +314,20 @@ export function MessageRow({
       ) : (
         m.content &&
         m.contentType !== "poll" && (
-          <div className={`text-[13px] leading-relaxed ${isTemp ? "opacity-50" : ""}`}>
+          <div className={`relative text-[13px] leading-relaxed ${isTemp ? "opacity-50" : ""}`}>
             {renderMarkdown(m.content, members, currentUserId)}
             {m.editedAt && (
               <span className="ml-1 text-xs text-[var(--text-dim)]">(edytowano)</span>
+            )}
+            {/* Grouped rows hide the header (author+time) — surface the
+                timestamp on hover so the send time is still discoverable. */}
+            {grouped && (
+              <span
+                className="ml-1.5 hidden text-[10px] text-[var(--text-dim)] group-hover:inline"
+                title={new Date(m.createdAt).toLocaleString("pl-PL")}
+              >
+                {new Date(m.createdAt).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}
+              </span>
             )}
           </div>
         )

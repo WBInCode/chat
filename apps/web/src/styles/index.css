@@ -49,6 +49,41 @@
   --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.05) inset;
 }
 
+/* ── Midnight: czysta czeŕń OLED, bez mesh-gradientu i blurów (F6-A.2) ── */
+:root.midnight {
+  --bg-base: #000000;
+  --mesh-1: transparent;
+  --mesh-2: transparent;
+  --mesh-3: transparent;
+
+  --glass: #0b0d12;
+  --glass-strong: #12151c;
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-highlight: rgba(255, 255, 255, 0.04);
+
+  --bg: var(--bg-base);
+  --surface: var(--glass);
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #e9ecf2;
+  --text-dim: #8f97a8;
+  --accent: #6e8bff;
+  --accent-2: #34c88a;
+  --danger: #ff6369;
+
+  --shadow-glass: none;
+}
+
+:root.midnight .glass,
+:root.midnight .glass-strong {
+  /* Solid surfaces — no backdrop blur on OLED (battery + pure black). */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root.midnight body {
+  background-image: none;
+}
+
 /* ── Base ─────────────────────────────────────────────────────────────── */
 html,
 body,
@@ -98,6 +133,18 @@ textarea::placeholder {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* ── Density: compact mode (F6-A.1) ──────────────────────────────── */
+:root.compact .nav-item {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+:root.compact [id^="message-"] {
+  font-size: 13px;
+}
+:root.compact main .overflow-y-auto {
+  line-height: 1.35;
 }
 
 /* ── Mobile sidebar drawer ─────────────────────────────────────────────

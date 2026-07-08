@@ -131,6 +131,12 @@ export function ChatLayout() {
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [showBrowseChannels, setShowBrowseChannels] = useState(false);
   const [digestToast, setDigestToast] = useState<string | null>(null);
+
+  // Generic short-lived feedback toast (F6-A.4) — reuses the digest toast UI.
+  function showToast(text: string, ms = 2500) {
+    setDigestToast(text);
+    setTimeout(() => setDigestToast(null), ms);
+  }
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
@@ -146,6 +152,7 @@ export function ChatLayout() {
   const [showComposerActions, setShowComposerActions] = useState(false);
   const [showChannelMenu, setShowChannelMenu] = useState(false);
   const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
+  const [wsDisconnected, setWsDisconnected] = useState(false);
   useIdlePresence(user ? getSocket() : null);
 
   useEffect(() => {
@@ -263,6 +270,13 @@ export function ChatLayout() {
       updateReactions(channelId, messageId, reactions)
     );
 
+    // Connection-state banner (F6-A.3): silence on network drops was
+    // confusing — users kept typing into a dead socket.
+    const onDisconnect = () => setWsDisconnected(true);
+    const onConnect = () => setWsDisconnected(false);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect", onConnect);
+
     return () => {
       socket.off("message:new");
       socket.off("message:updated");
@@ -273,6 +287,8 @@ export function ChatLayout() {
       socket.off("file:preview");
       socket.off("message:embeds");
       socket.off("reaction:update");
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect", onConnect);
       disconnectSocket();
     };
   }, [
@@ -665,6 +681,7 @@ export function ChatLayout() {
     const url = new URL(window.location.href);
     url.search = `?channel=${activeChannelId}&msg=${messageId}`;
     void navigator.clipboard.writeText(url.toString());
+    showToast("Skopiowano link do wiadomości");
   }
 
   async function submitSchedule(sendAtIso: string) {
@@ -676,6 +693,7 @@ export function ChatLayout() {
     setDraft("");
     clearDraftPersisted(activeChannelId);
     setShowSchedulePicker(false);
+    showToast("Wiadomość zaplanowana ⏰");
   }
 
   async function submitPoll(question: string, options: string[], allowMultiple: boolean) {
@@ -694,6 +712,7 @@ export function ChatLayout() {
       body: JSON.stringify({ messageId: reminderMessageId, remindAt })
     });
     setReminderMessageId(null);
+    showToast("Przypomnienie ustawione 🔔");
   }
 
   // ── permalink navigation: ?channel=X&msg=Y jumps straight to a message ──
@@ -846,6 +865,12 @@ export function ChatLayout() {
   // ── render ─────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full gap-0 p-0 md:gap-3 md:p-3">
+      {wsDisconnected && (
+        <div className="fixed left-1/2 top-2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[var(--warning)]/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-black/60" />
+          Utracono połączenie — łączenie ponownie…
+        </div>
+      )}
       {showMobileSidebar && (
         <div
           className="fixed inset-0 z-30 bg-black/50 md:hidden"
@@ -1381,6 +1406,22 @@ export function ChatLayout() {
               {isDragOver && (
                 <div className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--accent)] bg-[var(--accent)]/10 text-sm font-medium text-[var(--accent)]">
                   Upuść, aby wysłać
+                </div>
+              )}
+              {channelMessages.length === 0 && (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                  <span className="text-4xl">
+                    {activeChannel.type === "DM" ? "👋" : "✨"}
+                  </span>
+                  <p className="text-sm font-medium">
+                    {activeChannel.type === "DM"
+                      ? `To początek rozmowy z ${activeChannel.name}`
+                      : `Witaj na #${activeChannel.name}!`}
+                  </p>
+                  <p className="max-w-xs text-xs text-[var(--text-dim)]">
+                    Napisz pierwszą wiadomość poniżej. Możesz też przeciągnąć plik, wkleić obrazek,
+                    utworzyć ankietę (+) albo wspomnieć kogoś przez @.
+                  </p>
                 </div>
               )}
               {showJumpToLatest && (

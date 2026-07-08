@@ -4,6 +4,7 @@ import { ThemeToggle } from "./ThemeToggle.js";
 import { DataPrivacySection } from "./DataPrivacySection.js";
 import { ProfileSettings } from "./ProfileSettings.js";
 import { NotificationSettings } from "./NotificationSettings.js";
+import { AppearanceSettings } from "./AppearanceSettings.js";
 
 export function SettingsPage() {
   return (
@@ -22,6 +23,7 @@ export function SettingsPage() {
       </div>
       <div className="animate-float-in space-y-6">
         <ProfileSettings />
+        <AppearanceSettings />
         <NotificationSettings />
         <TotpSettings />
         <DataPrivacySection />
