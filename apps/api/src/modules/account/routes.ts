@@ -68,4 +68,56 @@ export default async function accountRoutes(fastify: FastifyInstance) {
 
     return reply.send({ ok: true });
   });
+
+  // ── Active sessions (F6-E) ───────────────────────────────────────────
+  /** List the user's active (non-revoked, non-expired) sessions/devices. */
+  fastify.get("/me/sessions", async (request) => {
+    const userId = request.user!.id;
+    const sessions = await fastify.prisma.session.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, userAgent: true, ip: true, createdAt: true, expiresAt: true }
+    });
+    return sessions.map((s) => ({
+      id: s.id,
+      userAgent: s.userAgent,
+      ip: s.ip,
+      createdAt: s.createdAt.toISOString(),
+      expiresAt: s.expiresAt.toISOString(),
+      current: s.id === request.user!.sessionId
+    }));
+  });
+
+  /** Revoke a single session (remote logout of one device). */
+  fastify.delete("/me/sessions/:sessionId", async (request, reply) => {
+    const userId = request.user!.id;
+    const { sessionId } = request.params as { sessionId: string };
+    const session = await fastify.prisma.session.findUnique({ where: { id: sessionId } });
+    if (!session || session.userId !== userId) {
+      return reply.notFound("Sesja nie istnieje");
+    }
+    if (!session.revokedAt) {
+      await fastify.prisma.session.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
+      await revokeSession(fastify, sessionId, env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60);
+    }
+    return reply.send({ ok: true });
+  });
+
+  /** Revoke every session except the current one ("log out everywhere else"). */
+  fastify.post("/me/sessions/revoke-others", async (request, reply) => {
+    const userId = request.user!.id;
+    const current = request.user!.sessionId;
+    const others = await fastify.prisma.session.findMany({
+      where: { userId, revokedAt: null, id: { not: current } },
+      select: { id: true }
+    });
+    await fastify.prisma.session.updateMany({
+      where: { userId, revokedAt: null, id: { not: current } },
+      data: { revokedAt: new Date() }
+    });
+    await Promise.all(
+      others.map((s) => revokeSession(fastify, s.id, env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60))
+    );
+    return reply.send({ ok: true, revoked: others.length });
+  });
 }

@@ -5,6 +5,7 @@ import { DataPrivacySection } from "./DataPrivacySection.js";
 import { ProfileSettings } from "./ProfileSettings.js";
 import { NotificationSettings } from "./NotificationSettings.js";
 import { AppearanceSettings } from "./AppearanceSettings.js";
+import { SessionsSettings } from "./SessionsSettings.js";
 
 export function SettingsPage() {
   return (
@@ -26,6 +27,7 @@ export function SettingsPage() {
         <AppearanceSettings />
         <NotificationSettings />
         <TotpSettings />
+        <SessionsSettings />
         <DataPrivacySection />
       </div>
     </div>

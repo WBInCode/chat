@@ -3,6 +3,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { signAccessToken } from "../../lib/jwt.js";
 import { generateRefreshToken, generateFamilyId, hashToken } from "../../lib/tokens.js";
 import { hashPassword } from "../../lib/password.js";
+import { revokeSession } from "../../plugins/auth-guard.js";
 import { env } from "../../config/env.js";
 import { randomBytes } from "node:crypto";
 import type { OrgRole } from "@prisma/client";
@@ -147,5 +148,69 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
     reply.setCookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
     request.log.info({ email, org: orgSlug }, "Hub SSO: zalogowano");
     return reply.redirect(cfg.webUrl);
+  });
+
+  /**
+   * Webhook z Huba (entitlements.updated / suspend). Nie ufamy treści — pobieramy
+   * autorytatywny stan z Entitlements API. Gdy instancja zawieszona, NATYCHMIAST
+   * unieważniamy sesje członków organizacji (blocklist Redis + revokedAt).
+   */
+  fastify.post("/webhook", async (request, reply) => {
+    let config: { status: string; orgSlug: string } | null = null;
+    try {
+      const res = await fetch(`${cfg.url}/api/v1/instances/${cfg.instanceId}/config`, {
+        headers: { "x-sso-client-id": cfg.clientId, "x-sso-secret": cfg.clientSecret },
+      });
+      if (res.ok) config = (await res.json()) as { status: string; orgSlug: string };
+    } catch (err) {
+      request.log.warn({ err }, "Hub webhook: nie udało się pobrać konfiguracji");
+    }
+    if (!config) return reply.send({ ok: true });
+
+    if (config.status === "suspended") {
+      const org = await fastify.prisma.organization.findUnique({ where: { slug: config.orgSlug } });
+      if (org) {
+        const members = await fastify.prisma.membership.findMany({ where: { orgId: org.id }, select: { userId: true } });
+        const userIds = members.map((m) => m.userId);
+        const sessions = await fastify.prisma.session.findMany({
+          where: { userId: { in: userIds }, revokedAt: null },
+          select: { id: true },
+        });
+        for (const s of sessions) {
+          await fastify.prisma.session.update({ where: { id: s.id }, data: { revokedAt: new Date() } });
+          await revokeSession(fastify, s.id, 3600); // blokada > TTL access tokena
+        }
+        request.log.info({ org: config.orgSlug, revoked: sessions.length }, "Hub: zawieszenie — unieważniono sesje");
+      }
+    }
+    return reply.send({ ok: true });
+  });
+
+  /**
+   * Single logout (back-channel). Hub podpisuje token logout, my weryfikujemy go
+   * przez JWKS i unieważniamy WSZYSTKIE sesje danego użytkownika (Redis + revokedAt).
+   */
+  fastify.post("/logout", async (request, reply) => {
+    const token = (request.body as { token?: string })?.token;
+    if (!token) return reply.code(400).send({ error: "MISSING_TOKEN" });
+    let email: string;
+    try {
+      const { payload } = await jwtVerify(token, jwks, { issuer: cfg.issuer, audience: cfg.productKey });
+      if ((payload as { typ?: string }).typ !== "logout") throw new Error("not logout");
+      email = String(payload.email);
+    } catch {
+      return reply.code(401).send({ error: "INVALID_TOKEN" });
+    }
+
+    const user = await fastify.prisma.user.findUnique({ where: { email } });
+    if (user) {
+      const sessions = await fastify.prisma.session.findMany({ where: { userId: user.id, revokedAt: null }, select: { id: true } });
+      for (const s of sessions) {
+        await fastify.prisma.session.update({ where: { id: s.id }, data: { revokedAt: new Date() } });
+        await revokeSession(fastify, s.id, 3600);
+      }
+      request.log.info({ email, revoked: sessions.length }, "Hub: single logout — unieważniono sesje");
+    }
+    return reply.send({ ok: true });
   });
 }
