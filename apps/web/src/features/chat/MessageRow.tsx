@@ -357,7 +357,30 @@ export function MessageRow({
         )
       )}
 
-      {m.files?.map((f) => <FileAttachment key={f.id} file={f} />)}
+      {(() => {
+        const files = m.files ?? [];
+        if (files.length === 0) return null;
+        const IMAGE = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+        const images = files.filter((f) => IMAGE.has(f.mimeType));
+        const others = files.filter((f) => !IMAGE.has(f.mimeType));
+        return (
+          <>
+            {/* 2+ images tile into a gallery grid; a single image stays large. */}
+            {images.length >= 2 ? (
+              <div className="mt-1 grid max-w-sm grid-cols-2 gap-1">
+                {images.map((f) => (
+                  <FileAttachment key={f.id} file={f} gallery />
+                ))}
+              </div>
+            ) : (
+              images.map((f) => <FileAttachment key={f.id} file={f} />)
+            )}
+            {others.map((f) => (
+              <FileAttachment key={f.id} file={f} />
+            ))}
+          </>
+        );
+      })()}
       {m.embeds?.map((e) => <EmbedCard key={e.id} embed={e} />)}
       {m.contentType === "poll" && <PollCard messageId={m.id} />}
 

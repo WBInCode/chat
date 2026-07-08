@@ -29,7 +29,7 @@ function fileIcon(mimeType: string): string {
 }
 
 /** One attachment row: image → thumbnail + lightbox; other → download card. */
-export function FileAttachment({ file }: { file: FileDto }) {
+export function FileAttachment({ file, gallery = false }: { file: FileDto; gallery?: boolean }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -99,10 +99,22 @@ export function FileAttachment({ file }: { file: FileDto }) {
       <>
         <button
           onClick={openLightbox}
-          className="mt-1 block max-w-xs overflow-hidden rounded-lg border border-[var(--border)]"
+          className={
+            gallery
+              ? "block aspect-square overflow-hidden rounded-lg border border-[var(--border)]"
+              : "mt-1 block max-w-xs overflow-hidden rounded-lg border border-[var(--border)]"
+          }
         >
           {thumbUrl ? (
-            <img src={thumbUrl} alt={file.name} className="max-h-64 w-auto object-cover" />
+            <img
+              src={thumbUrl}
+              alt={file.name}
+              className={
+                gallery
+                  ? "h-full w-full object-cover"
+                  : "max-h-64 w-auto object-cover"
+              }
+            />
           ) : (
             <div className="flex h-32 w-48 items-center justify-center text-xs text-[var(--text-dim)]">
               {file.status === "PENDING" ? "Przetwarzanie..." : "Podgląd niedostępny"}
