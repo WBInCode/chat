@@ -28,50 +28,101 @@ const CORPO_RULES =
   "5. Wpleć 2-3 korpo-frazesy naturalnie, NIE upychaj ich w każde słowo.\n" +
   "6. ZACHOWAJ WYDŹWIĘK i faktyczną decyzję: jeśli ktoś jest sfrustrowany lub coś odrzuca ('mam dość', 'rezygnuję', 'nie zrobię tego'), wynik ma to komunikować UPRZEJMIE i ASERTYWNIE, ale NIE odwracaj sensu na entuzjazm ani zgodę.\n" +
   "7. ROZUMIEJ POLSKIE REALIA PRACOWNICZE i skróty — NIE interpretuj ich dosłownie ani jako nazw stanowisk/projektów.\n" +
+  "8. RÓŻNORODNOŚĆ: za każdym razem sformułuj to INACZEJ — inne zdanie, inny dobór frazesów i szyk. Nie powielaj utartych, tych samych fraz dla tego samego wejścia.\n" +
   "Zwróć TYLKO przetłumaczony tekst, bez komentarzy, bez cudzysłowów.";
 
-// Domain glossary so the model doesn't misread Polish HR shorthand (e.g. it
-// once turned "biorę L4" — going on sick leave — into "przejęcie roli L4").
+// Domain glossary so the model doesn't misread Polish HR / office shorthand
+// (e.g. it once turned "biorę L4" — going on sick leave — into "przejęcie
+// roli L4"). Expanded so context like urlopy, umowy, procesy HR jest łapany.
 const CORPO_GLOSSARY =
-  "Słownik polskich realiów pracowniczych (interpretuj ZGODNIE z tym):\n" +
-  "- L4 / „idę na L4\" / „biorę L4\" = zwolnienie lekarskie (nieobecność chorobowa), NIE stanowisko ani projekt.\n" +
-  "- „biorę urlop\", UoP = umowa o pracę, B2B = kontrakt, „nadgodziny\", „wypłata\", „premia\", „okres wypowiedzenia\".\n" +
-  "- „mam dość / pierdolę tę robotę\" = silna frustracja / chęć odejścia lub odpuszczenia — zachowaj ten wydźwięk, tylko ubierz go w uprzejmy, asertywny ton.";
+  "Słownik polskich realiów pracowniczych i biurowych (interpretuj ZGODNIE z tym):\n" +
+  "- L4 / „idę na L4\" / „biorę L4\" / „lecę na L4\" = zwolnienie lekarskie (nieobecność chorobowa). NIE stanowisko, NIE projekt.\n" +
+  "- Zwolnienia/nieobecności: „urlop wypoczynkowy\", „urlop na żądanie\" (UŻ), „urlop bezpłatny\", „zwolnienie lekarskie\", „opieka nad dzieckiem\" (kod 313), „macierzyński/tacierzyński\", „wolne za nadgodziny\", „home office / praca zdalna\", „delegacja\".\n" +
+  "- Umowy i rozliczenia: UoP = umowa o pracę, UZ/UoD = umowa zlecenie/o dzieło, B2B = kontrakt/samozatrudnienie, „faktura\", „wypłata\", „przelew\", „premia\", „prowizja\", „podwyżka\", „widełki\", „stawka\", „netto/brutto\", „PIT\", „ZUS\".\n" +
+  "- Zatrudnienie: „okres próbny\", „okres wypowiedzenia\", „wypowiedzenie\", „zwolnienie/wylew\", „redukcja/zwolnienia grupowe\", „onboarding\", „offboarding\", „feedback\", „ocena okresowa\", „awans\", „rekrutacja\", „widełki\".\n" +
+  "- Praca i procesy: „nadgodziny\", „deadline\", „ASAP\", „fakap\" (błąd/wpadka), „ogarnąć\", „dowieźć/dowozić\" (dostarczyć), „spiąć\", „na już\", „priorytet\", „eskalacja\", „daily/stand-up\", „retro\", „mityng\", „call\", „PTO\", „cover\" (zastępstwo).\n" +
+  "- Ton potoczny do złagodzenia (zachowaj wydźwięk, ubierz w uprzejmość): „mam dość\", „pierdolę tę robotę\", „olewam to\", „nie moja działka\", „to nie ma sensu\", „kto to wymyślił\", „znowu zmiany\", „ile można\", „szef się czepia\", „mam tego po dziurki w nosie\".";
 
-const CORPO_EXAMPLES =
-  "Przykłady (zwróć uwagę na długość, zachowanie typu, wydźwięku i kontekstu):\n" +
-  "Wejście: „kiedy będzie wypłata?\"\n" +
-  "Wyjście: „Czy moglibyśmy zsynchronizować się co do terminu realizacji wypłaty? Chciałbym mieć widoczność na ten touchpoint.\"\n" +
-  "Wejście: „zrób to szybko\"\n" +
-  "Wyjście: „Czy możemy potraktować to jako quick win i domknąć w trybie priorytetowym?\"\n" +
-  "Wejście: „nie zdążę na spotkanie\"\n" +
-  "Wyjście: „Niestety pojawił się konflikt w kalendarzu — będę musiał zdefaultować z tego touchpointu.\"\n" +
-  "Wejście: „pierdolę tę robotę, biorę L4\"\n" +
-  "Wyjście: „Sygnalizuję, że mój aktualny bandwidth osiągnął czerwony status — korzystam ze zwolnienia lekarskiego (L4) i wracam do dyspozycji po rekonwalescencji.\"";
+// Pools that rotate per request so the same input yields fresh phrasing.
+const CORPO_TONES = [
+  "uprzejmie-dyplomatyczny (miękki, ostrożny)",
+  "energiczno-proaktywny (można-zrobić, do przodu)",
+  "chłodno-profesjonalny (rzeczowy, dystans)",
+  "entuzjastyczny growth-mindset (rozwojowo, pozytywnie)",
+  "asertywny partnerski (uprzejmie, ale stawia granicę)",
+  "konsultingowy (framework, struktura, rekomendacja)"
+];
+const CORPO_FOCUS = [
+  "synergia, touchpoint, alignment, sync",
+  "quick win, low-hanging fruit, action item, deliverable",
+  "value-added, added value, biznesowo, ROI",
+  "deep dive, leverage, unpack, drill down",
+  "stakeholder, buy-in, ownership, akountabilność",
+  "roadmapa, milestone, timeline, kamień milowy",
+  "KPI, metryki, insight, data-driven",
+  "na koniec dnia, win-win, big picture, poziom wysoki",
+  "bandwidth, capacity, priorytetyzacja, backlog",
+  "feedback loop, iteracja, follow-up, next steps"
+];
+
+const CORPO_EXAMPLES = [
+  'Wejście: „kiedy będzie wypłata?" → Wyjście: „Czy moglibyśmy zsynchronizować się co do terminu realizacji wypłaty? Chciałbym mieć widoczność na ten touchpoint."',
+  'Wejście: „zrób to szybko" → Wyjście: „Czy możemy potraktować to jako quick win i domknąć w trybie priorytetowym?"',
+  'Wejście: „nie zdążę na spotkanie" → Wyjście: „Niestety pojawił się konflikt w kalendarzu — będę musiał zdefaultować z tego touchpointu."',
+  'Wejście: „pierdolę tę robotę, biorę L4" → Wyjście: „Sygnalizuję, że mój bandwidth osiągnął czerwony status — korzystam ze zwolnienia lekarskiego (L4) i wracam do dyspozycji po rekonwalescencji."',
+  'Wejście: „kto to znowu wymyślił?" → Wyjście: „Czy moglibyśmy zrobić deep dive w genezę tej decyzji i zaalignować się co do ownershipu?"',
+  'Wejście: „nie moja działka" → Wyjście: „To wykracza poza mój obecny scope — sugeruję zaadresować to z właściwym stakeholderem."'
+];
+
+function pickOne<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]!;
+}
+function pickSome<T>(arr: readonly T[], n: number): T[] {
+  return [...arr].sort(() => Math.random() - 0.5).slice(0, n);
+}
+
+/**
+ * Builds a randomized corpo system prompt so repeated runs on the same input
+ * produce varied output. Rotates tone, buzzword focus and few-shot examples,
+ * and appends a per-request nonce to nudge the model off its default phrasing.
+ */
+function buildCorpoInstruction(hard: boolean): string {
+  const tone = pickOne(CORPO_TONES);
+  const focus = pickSome(CORPO_FOCUS, hard ? 4 : 2).join("; ");
+  const examples = pickSome(CORPO_EXAMPLES, 3).join("\n");
+  const nonce = Math.random().toString(36).slice(2, 8);
+
+  const base = hard
+    ? "Przekształć poniższą wiadomość na PRZERYSOWANY, satyryczny korpo-bełkot naszpikowany frazesami. Ma być zabawnie przesadzone (max ~3x długości oryginału — bez esejów z jednego zdania)."
+    : "Przekształć poniższą wiadomość na uprzejmy, korporacyjny styl z lekką dawką biznesowych frazesów (max ~2x długości oryginału).";
+
+  return (
+    base +
+    "\n" +
+    CORPO_RULES +
+    "\n" +
+    CORPO_GLOSSARY +
+    "\nTym razem użyj tonu: " +
+    tone +
+    ". Postaw akcent na frazesy z puli: " +
+    focus +
+    ". (Nie musisz użyć wszystkich — dobierz naturalnie.)\n" +
+    "Przykłady stylu (dobór długości/typu, NIE kopiuj dosłownie):\n" +
+    examples +
+    "\n[wariant:" +
+    nonce +
+    "]"
+  );
+}
 
 const REWRITE_INSTRUCTIONS: Record<
-  "improve" | "shorten" | "translate_en" | "translate_pl" | "corpo" | "corpo_hard",
+  "improve" | "shorten" | "translate_en" | "translate_pl",
   string
 > = {
   improve: "Popraw ton i gramatykę poniższego tekstu, zachowując jego sens i długość. Zwróć TYLKO poprawiony tekst, bez komentarzy.",
   shorten: "Skróć poniższy tekst do najważniejszej treści, zachowując sens. Zwróć TYLKO skrócony tekst, bez komentarzy.",
   translate_en: "Przetłumacz poniższy tekst na angielski. Zwróć TYLKO tłumaczenie, bez komentarzy.",
-  translate_pl: "Przetłumacz poniższy tekst na polski. Zwróć TYLKO tłumaczenie, bez komentarzy.",
-  corpo:
-    "Przekształć poniższą wiadomość na uprzejmy, korporacyjny styl z lekką dawką biznesowych frazesów " +
-    "(synergia, touchpoint, quick win, action item, value-added, deep dive, leverage, stakeholder, KPI, roadmapa). " +
-    CORPO_RULES +
-    "\n" +
-    CORPO_GLOSSARY +
-    "\n" +
-    CORPO_EXAMPLES,
-  corpo_hard:
-    "Przekształć poniższą wiadomość na PRZERYSOWANY, satyryczny korpo-bełkot naszpikowany frazesami " +
-    "(synergia, touchpoint, quick win, action items, value-added, deep dive, leverage, stakeholder, KPI, roadmapa, " +
-    "na koniec dnia, win-win, poziom wysoki). Ma być zabawnie przesadzone. " +
-    "ALE nadal: ZACHOWAJ TYP wiadomości (pytanie->pytanie), ZACHOWAJ konkretną intencję i WYDŹWIĘK (nie odwracaj sensu), USUŃ wulgaryzmy. " +
-    "Rozumiej polskie realia: L4 = zwolnienie lekarskie, nie stanowisko. " +
-    "Długość: max ~3x oryginału (nie całe eseje z pojedynczego zdania). Zwróć TYLKO tekst, bez komentarzy."
+  translate_pl: "Przetłumacz poniższy tekst na polski. Zwróć TYLKO tłumaczenie, bez komentarzy."
 };
 
 export default async function aiRoutes(fastify: FastifyInstance) {
@@ -135,10 +186,24 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     await assertOrgPermission(fastify, request.user!.id, orgId as string, "ai.use");
     const input = parseOrThrow(rewriteSchema, request.body);
 
-    const result = await chatCompletion(fastify, [
-      { role: "system", content: REWRITE_INSTRUCTIONS[input.mode] },
-      { role: "user", content: input.text }
-    ]);
+    let systemPrompt: string;
+    let options: { temperature?: number } = {};
+    if (input.mode === "corpo" || input.mode === "corpo_hard") {
+      systemPrompt = buildCorpoInstruction(input.mode === "corpo_hard");
+      // Higher temperature so repeated runs on the same input vary.
+      options = { temperature: input.mode === "corpo_hard" ? 1.05 : 0.95 };
+    } else {
+      systemPrompt = REWRITE_INSTRUCTIONS[input.mode];
+    }
+
+    const result = await chatCompletion(
+      fastify,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: input.text }
+      ],
+      options
+    );
 
     return { result: result.trim() };
   });

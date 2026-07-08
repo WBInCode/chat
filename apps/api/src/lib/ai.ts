@@ -43,7 +43,7 @@ export class AiDisabledError extends Error {
   }
 }
 
-async function callGroq(messages: ChatMessage[]): Promise<string> {
+async function callGroq(messages: ChatMessage[], temperature = 0.5): Promise<string> {
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -54,7 +54,7 @@ async function callGroq(messages: ChatMessage[]): Promise<string> {
       model: "llama-3.3-70b-versatile",
       messages,
       max_tokens: 800,
-      temperature: 0.5
+      temperature
     })
   });
 
@@ -70,7 +70,7 @@ async function callGroq(messages: ChatMessage[]): Promise<string> {
 
 class RetryableProviderError extends Error {}
 
-async function callGemini(messages: ChatMessage[]): Promise<string> {
+async function callGemini(messages: ChatMessage[], temperature = 0.5): Promise<string> {
   // Gemini has no "system" role — fold system messages into the first user turn.
   const systemParts = messages.filter((m) => m.role === "system").map((m) => m.content);
   const conversational = messages.filter((m) => m.role !== "system");
@@ -85,7 +85,7 @@ async function callGemini(messages: ChatMessage[]): Promise<string> {
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 800, temperature: 0.5 } })
+      body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 800, temperature } })
     }
   );
 
@@ -104,15 +104,21 @@ async function callGemini(messages: ChatMessage[]): Promise<string> {
  * provider is configured — callers must check isAiEnabled() first to give
  * a clean UX instead of relying on this throw.
  */
-export async function chatCompletion(fastify: FastifyInstance, messages: ChatMessage[]): Promise<string> {
+export async function chatCompletion(
+  fastify: FastifyInstance,
+  messages: ChatMessage[],
+  options: { temperature?: number } = {}
+): Promise<string> {
   if (!isAiEnabled()) throw new AiDisabledError();
 
   const withinBudget = await checkAndConsumeQuota(fastify);
   if (!withinBudget) throw new AiQuotaExceededError();
 
+  const { temperature } = options;
+
   if (env.GROQ_API_KEY) {
     try {
-      return await callGroq(messages);
+      return await callGroq(messages, temperature);
     } catch (err) {
       if (!(err instanceof RetryableProviderError) || !env.GEMINI_API_KEY) {
         if (err instanceof RetryableProviderError && !env.GEMINI_API_KEY) {
@@ -125,7 +131,7 @@ export async function chatCompletion(fastify: FastifyInstance, messages: ChatMes
   }
 
   if (env.GEMINI_API_KEY) {
-    return await callGemini(messages);
+    return await callGemini(messages, temperature);
   }
 
   throw new AiDisabledError();
