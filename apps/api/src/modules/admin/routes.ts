@@ -45,6 +45,81 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     }));
   });
 
+  // ── Analytics ────────────────────────────────────────────────────────
+  /** Workspace activity overview for admins (F6-I). */
+  fastify.get("/orgs/:orgId/admin/analytics", async (request) => {
+    const { orgId } = request.params as { orgId: string };
+    await assertOrgPermission(fastify, request.user!.id, orgId, "org.settings");
+
+    const now = Date.now();
+    const since7 = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const since30 = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+    const [memberCount, channelCount, totalMessages, recent, topChannelsRaw] = await Promise.all([
+      fastify.prisma.membership.count({ where: { orgId } }),
+      fastify.prisma.channel.count({ where: { orgId } }),
+      fastify.prisma.message.count({ where: { channel: { orgId }, deletedAt: null } }),
+      // Last 7 days of messages (bounded, small for a company chat) — reused
+      // for the daily buckets and the active-member count.
+      fastify.prisma.message.findMany({
+        where: { channel: { orgId }, deletedAt: null, createdAt: { gte: since7 } },
+        select: { createdAt: true, authorId: true }
+      }),
+      fastify.prisma.message.groupBy({
+        by: ["channelId"],
+        where: { channel: { orgId }, deletedAt: null, createdAt: { gte: since30 } },
+        _count: { _all: true },
+        orderBy: { _count: { channelId: "desc" } },
+        take: 5
+      })
+    ]);
+
+    // Daily message counts for the last 7 days (oldest → newest).
+    const days: { date: string; count: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      days.push({ date: key, count: 0 });
+    }
+    const dayIndex = new Map(days.map((d, i) => [d.date, i]));
+    for (const m of recent) {
+      const key = m.createdAt.toISOString().slice(0, 10);
+      const idx = dayIndex.get(key);
+      if (idx !== undefined) days[idx]!.count += 1;
+    }
+
+    const activeMembers7d = new Set(recent.map((m) => m.authorId)).size;
+
+    // Resolve channel names for the top channels.
+    const topIds = topChannelsRaw.map((t) => t.channelId);
+    const topChannelMeta = await fastify.prisma.channel.findMany({
+      where: { id: { in: topIds } },
+      select: { id: true, name: true, type: true }
+    });
+    const nameById = new Map(topChannelMeta.map((c) => [c.id, c]));
+    const topChannels = topChannelsRaw
+      .map((t) => {
+        const meta = nameById.get(t.channelId);
+        return {
+          channelId: t.channelId,
+          name: meta?.type === "DM" ? "Wiadomość bezpośrednia" : (meta?.name ?? "?"),
+          messageCount: t._count._all
+        };
+      })
+      // Hide DMs from the workspace overview (they're private).
+      .filter((t) => nameById.get(t.channelId)?.type !== "DM");
+
+    return {
+      memberCount,
+      channelCount,
+      totalMessages,
+      messages7d: recent.length,
+      activeMembers7d,
+      dailyMessages: days,
+      topChannels
+    };
+  });
+
   fastify.patch("/orgs/:orgId/admin/members/:userId/custom-role", async (request, reply) => {
     const { orgId, userId } = request.params as { orgId: string; userId: string };
     const actor = await assertOrgPermission(fastify, request.user!.id, orgId, "role.manage");

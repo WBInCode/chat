@@ -218,3 +218,43 @@ describe("Admin — org settings", () => {
     expect(asOwner.json().messageRetentionDays).toBe(90);
   });
 });
+
+describe("Admin — analytics", () => {
+  it("forbids a MEMBER and returns workspace stats for OWNER", async () => {
+    // Seed a channel with a few messages authored by owner and hr.
+    const channel = await app.prisma.channel.create({
+      data: { orgId, type: "PUBLIC", name: `analytics-${uniq}`, createdBy: owner.userId }
+    });
+    await app.prisma.message.createMany({
+      data: [
+        { channelId: channel.id, authorId: owner.userId, content: "a" },
+        { channelId: channel.id, authorId: owner.userId, content: "b" },
+        { channelId: channel.id, authorId: hr.userId, content: "c" }
+      ]
+    });
+
+    const forbidden = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/admin/analytics`,
+      headers: auth(hr.token)
+    });
+    expect(forbidden.statusCode).toBe(403);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/admin/analytics`,
+      headers: auth(owner.token)
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.memberCount).toBeGreaterThanOrEqual(3);
+    expect(body.totalMessages).toBeGreaterThanOrEqual(3);
+    expect(body.messages7d).toBeGreaterThanOrEqual(3);
+    expect(body.activeMembers7d).toBeGreaterThanOrEqual(2);
+    expect(body.dailyMessages).toHaveLength(7);
+    // Today's bucket should include the seeded messages.
+    expect(body.dailyMessages[6].count).toBeGreaterThanOrEqual(3);
+    expect(body.topChannels.some((c: { name: string }) => c.name === `analytics-${uniq}`)).toBe(true);
+  });
+});
+

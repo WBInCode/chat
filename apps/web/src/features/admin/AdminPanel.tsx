@@ -20,6 +20,17 @@ interface OrgItem {
   role: OrgRole;
 }
 
+/** Shape of GET /orgs/:id/admin/analytics (F6-I). */
+interface WorkspaceAnalytics {
+  memberCount: number;
+  channelCount: number;
+  totalMessages: number;
+  messages7d: number;
+  activeMembers7d: number;
+  dailyMessages: { date: string; count: number }[];
+  topChannels: { channelId: string; name: string; messageCount: number }[];
+}
+
 /** Top-level admin shell: org picker + tab navigation (own routes). */
 export function AdminPanel() {
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
@@ -619,21 +630,28 @@ function SettingsTab({ orgId }: { orgId: string }) {
 // ── Dashboard ──────────────────────────────────────────────────────────
 function DashboardTab({ orgId }: { orgId: string }) {
   const [data, setData] = useState<AdminDashboardDto | null>(null);
+  const [analytics, setAnalytics] = useState<WorkspaceAnalytics | null>(null);
 
   useEffect(() => {
     void apiFetch<AdminDashboardDto>(`/orgs/${orgId}/admin/dashboard`).then(setData);
+    void apiFetch<WorkspaceAnalytics>(`/orgs/${orgId}/admin/analytics`)
+      .then(setAnalytics)
+      .catch(() => setAnalytics(null));
   }, [orgId]);
 
   if (!data) return <p className="text-sm text-[var(--text-dim)]">Ładowanie...</p>;
 
   const max = Math.max(...data.messagesLast30d, 1);
+  const topMax = Math.max(...(analytics?.topChannels.map((c) => c.messageCount) ?? [1]), 1);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4 md:grid-cols-5">
         <Kpi label="Członkowie" value={data.totalMembers} />
         <Kpi label="Aktywni (7 dni)" value={data.activeMembers7d} />
         <Kpi label="Pliki" value={data.totalFiles} />
+        {analytics && <Kpi label="Wiadomości" value={analytics.totalMessages} />}
+        {analytics && <Kpi label="Kanały" value={analytics.channelCount} />}
       </div>
 
       <div>
@@ -651,6 +669,30 @@ function DashboardTab({ orgId }: { orgId: string }) {
           ))}
         </div>
       </div>
+
+      {analytics && analytics.topChannels.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
+            Najbardziej aktywne kanały (30 dni)
+          </p>
+          <ul className="space-y-1.5">
+            {analytics.topChannels.map((c) => (
+              <li key={c.channelId} className="flex items-center gap-2 text-sm">
+                <span className="w-32 shrink-0 truncate text-[var(--text-dim)]">#{c.name}</span>
+                <span className="relative h-4 flex-1 overflow-hidden rounded bg-[var(--border)]/40">
+                  <span
+                    style={{ width: `${(c.messageCount / topMax) * 100}%` }}
+                    className="absolute inset-y-0 left-0 rounded bg-[var(--accent)]/60"
+                  />
+                </span>
+                <span className="w-12 shrink-0 text-right text-xs tabular-nums text-[var(--text-dim)]">
+                  {c.messageCount}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div>
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
