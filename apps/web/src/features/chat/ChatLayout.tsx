@@ -32,7 +32,7 @@ import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -141,6 +141,7 @@ export function ChatLayout() {
   } = useChatStore();
 
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
+  const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   const [members, setMembers] = useState<MemberItem[]>([]);
   const [profileCard, setProfileCard] = useState<{ userId: string; anchor: { x: number; y: number } } | null>(null);
   const avatarUrls = useAvatarStore((s) => s.urls);
@@ -249,7 +250,10 @@ export function ChatLayout() {
   useEffect(() => {
     void apiFetch<OrgItem[]>("/orgs").then((data) => {
       setOrgs(data);
-      if (data[0]) setActiveOrg(data[0].id);
+      // Restore the last-used org (multi-org users), else the first one.
+      const saved = localStorage.getItem("chatv2-active-org");
+      const pick = data.find((o) => o.id === saved) ?? data[0];
+      if (pick) setActiveOrg(pick.id);
     });
   }, [setActiveOrg]);
 
@@ -1063,6 +1067,16 @@ export function ChatLayout() {
     }
   }
 
+  // Switch the active organization (multi-org users). Re-scopes channels,
+  // members and modules via the activeOrgId effects; persisted for reloads.
+  function switchOrg(orgId: string) {
+    setShowOrgSwitcher(false);
+    if (orgId === activeOrgId) return;
+    localStorage.setItem("chatv2-active-org", orgId);
+    setActiveChannel(null);
+    setActiveOrg(orgId);
+  }
+
   // ── render ─────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full gap-0 p-0 md:gap-3 md:p-3">
@@ -1087,9 +1101,44 @@ export function ChatLayout() {
         }`}
       >
         <div className="flex items-center justify-between border-b border-[var(--glass-border)] p-4">
-          <span className="font-semibold">
-            {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}
-          </span>
+          <div className="relative min-w-0">
+            <button
+              type="button"
+              onClick={() => orgs.length > 1 && setShowOrgSwitcher((v) => !v)}
+              className={`flex min-w-0 items-center gap-1.5 font-semibold ${
+                orgs.length > 1 ? "hover:text-[var(--accent)]" : "cursor-default"
+              }`}
+              title={orgs.length > 1 ? "Przełącz organizację" : undefined}
+            >
+              <span className="truncate">
+                {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}
+              </span>
+              {orgs.length > 1 && <Icon icon={ChevronDown} size={14} className="shrink-0 text-[var(--text-dim)]" />}
+            </button>
+            {showOrgSwitcher && orgs.length > 1 && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowOrgSwitcher(false)} />
+                <div className="animate-slide-up absolute left-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-2xl backdrop-blur-lg">
+                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-dim)]">
+                    Organizacje
+                  </p>
+                  {orgs.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => switchOrg(o.id)}
+                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 ${
+                        o.id === activeOrgId ? "text-[var(--accent)]" : ""
+                      }`}
+                    >
+                      <span className="min-w-0 truncate">{o.name}</span>
+                      {o.id === activeOrgId && <Icon icon={Check} size={14} className="shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <button
