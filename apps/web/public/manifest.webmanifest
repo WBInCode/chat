@@ -1,0 +1,29 @@
+{
+  "name": "chatv2 — komunikator firmowy",
+  "short_name": "chatv2",
+  "description": "Bezpieczny komunikator dla zespołów i firm: kanały, wiadomości, głos, pliki i AI.",
+  "lang": "pl",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0b0b12",
+  "theme_color": "#4f46e5",
+  "categories": ["business", "productivity", "social"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

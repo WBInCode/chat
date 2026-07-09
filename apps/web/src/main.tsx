@@ -26,3 +26,12 @@ createRoot(document.getElementById("root")!).render(
 );
 
 reportWebVitals();
+
+// Register the PWA service worker for offline support in production only, so
+// it never interferes with Vite's dev server / HMR. Push registration stays
+// lazy in lib/push.ts (same sw.js, idempotent).
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  });
+}
