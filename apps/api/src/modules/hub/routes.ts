@@ -4,8 +4,10 @@ import { signAccessToken } from "../../lib/jwt.js";
 import { generateRefreshToken, generateFamilyId, hashToken } from "../../lib/tokens.js";
 import { hashPassword } from "../../lib/password.js";
 import { revokeSession } from "../../plugins/auth-guard.js";
+import { invalidateModuleCache } from "../../lib/modules.js";
 import { env } from "../../config/env.js";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
+import { OPTIONAL_MODULE_KEYS } from "@chatv2/shared";
 import type { OrgRole } from "@prisma/client";
 
 /**
@@ -26,6 +28,8 @@ interface HubCfg {
   clientId: string;
   clientSecret: string;
   webUrl: string;
+  /** Optional HMAC secret to verify webhook signatures (x-wb-signature). */
+  webhookSecret: string | null;
 }
 
 function getHubCfg(): HubCfg | null {
@@ -42,6 +46,7 @@ function getHubCfg(): HubCfg | null {
     issuer: process.env.HUB_ISSUER || "https://hub.wb.local",
     productKey: process.env.HUB_PRODUCT_KEY || "chat",
     webUrl: process.env.CHAT_WEB_URL || "http://localhost:5273",
+    webhookSecret: process.env.HUB_WEBHOOK_SECRET || null,
   };
 }
 
@@ -63,6 +68,79 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
   }
 
   const jwks = createRemoteJWKSet(new URL(`${cfg.url}/.well-known/jwks.json`));
+
+  // Capture the raw JSON body (scoped to this plugin) so webhook HMAC
+  // signatures can be verified against the exact bytes the Hub signed.
+  fastify.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (req, body, done) => {
+      (req as unknown as { rawBody?: string }).rawBody = body as string;
+      try {
+        done(null, body ? JSON.parse(body as string) : {});
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    }
+  );
+
+  interface HubConfig {
+    status: string;
+    orgSlug: string;
+    modules?: string[];
+  }
+
+  /** Fetch the authoritative instance config (status + enabled modules). */
+  async function fetchHubConfig(): Promise<HubConfig | null> {
+    try {
+      const res = await fetch(`${cfg!.url}/api/v1/instances/${cfg!.instanceId}/config`, {
+        headers: { "x-sso-client-id": cfg!.clientId, "x-sso-secret": cfg!.clientSecret },
+      });
+      if (res.ok) return (await res.json()) as HubConfig;
+    } catch (err) {
+      fastify.log.warn({ err }, "Hub: nie udało się pobrać konfiguracji instancji");
+    }
+    return null;
+  }
+
+  /**
+   * Mirror the Hub's enabled-module list into OrganizationModule rows
+   * (source="hub"). `modules` is the authoritative ENABLED set — every
+   * optional key NOT present is disabled. Core keys are never persisted.
+   */
+  async function syncHubModules(orgSlug: string, modules: string[] | undefined) {
+    if (!modules) return;
+    const org = await fastify.prisma.organization.findUnique({ where: { slug: orgSlug } });
+    if (!org) return;
+    const enabled = new Set(modules);
+    await Promise.all(
+      OPTIONAL_MODULE_KEYS.map((key) =>
+        fastify.prisma.organizationModule.upsert({
+          where: { orgId_moduleKey: { orgId: org.id, moduleKey: key } },
+          update: { enabled: enabled.has(key), source: "hub" },
+          create: { orgId: org.id, moduleKey: key, enabled: enabled.has(key), source: "hub" },
+        })
+      )
+    );
+    await invalidateModuleCache(fastify, org.id);
+  }
+
+  /** Revoke every active session of an org's members (suspend / expiry). */
+  async function revokeOrgSessions(orgSlug: string, reason: string) {
+    const org = await fastify.prisma.organization.findUnique({ where: { slug: orgSlug } });
+    if (!org) return;
+    const members = await fastify.prisma.membership.findMany({ where: { orgId: org.id }, select: { userId: true } });
+    const userIds = members.map((m) => m.userId);
+    const sessions = await fastify.prisma.session.findMany({
+      where: { userId: { in: userIds }, revokedAt: null },
+      select: { id: true },
+    });
+    for (const s of sessions) {
+      await fastify.prisma.session.update({ where: { id: s.id }, data: { revokedAt: new Date() } });
+      await revokeSession(fastify, s.id, 3600);
+    }
+    fastify.log.info({ org: orgSlug, revoked: sessions.length, reason }, "Hub: unieważniono sesje organizacji");
+  }
 
   function refreshCookieOptions() {
     const isProd = env.NODE_ENV === "production";
@@ -145,43 +223,45 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
     });
     await signAccessToken({ sub: user.id, sid: session.id }); // rozgrzewa klucz; token wyda /refresh
 
+    // 5. Zsynchronizuj włączone moduły z Huba (source="hub") — best-effort.
+    const config = await fetchHubConfig();
+    if (config) await syncHubModules(orgSlug, config.modules).catch((err) => request.log.warn({ err }, "Hub: sync modułów nieudany"));
+
     reply.setCookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
     request.log.info({ email, org: orgSlug }, "Hub SSO: zalogowano");
     return reply.redirect(cfg.webUrl);
   });
 
   /**
-   * Webhook z Huba (entitlements.updated / suspend). Nie ufamy treści — pobieramy
-   * autorytatywny stan z Entitlements API. Gdy instancja zawieszona, NATYCHMIAST
-   * unieważniamy sesje członków organizacji (blocklist Redis + revokedAt).
+   * Webhook z Huba (entitlements.updated). Nie ufamy treści — pobieramy
+   * autorytatywny stan z Entitlements API, synchronizujemy moduły, a gdy
+   * instancja jest suspended/expired NATYCHMIAST unieważniamy sesje członków.
+   * Jeśli skonfigurowano HUB_WEBHOOK_SECRET, weryfikujemy podpis HMAC.
    */
   fastify.post("/webhook", async (request, reply) => {
-    let config: { status: string; orgSlug: string } | null = null;
-    try {
-      const res = await fetch(`${cfg.url}/api/v1/instances/${cfg.instanceId}/config`, {
-        headers: { "x-sso-client-id": cfg.clientId, "x-sso-secret": cfg.clientSecret },
-      });
-      if (res.ok) config = (await res.json()) as { status: string; orgSlug: string };
-    } catch (err) {
-      request.log.warn({ err }, "Hub webhook: nie udało się pobrać konfiguracji");
+    // Optional HMAC signature verification over the exact raw body.
+    if (cfg.webhookSecret) {
+      const raw = (request as unknown as { rawBody?: string }).rawBody ?? "";
+      const header = String(request.headers["x-wb-signature"] ?? "");
+      const expected = "sha256=" + createHmac("sha256", cfg.webhookSecret).update(raw).digest("hex");
+      const a = Buffer.from(header);
+      const b = Buffer.from(expected);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        request.log.warn("Hub webhook: nieprawidłowy podpis HMAC");
+        return reply.code(401).send({ error: "INVALID_SIGNATURE" });
+      }
     }
+
+    const config = await fetchHubConfig();
     if (!config) return reply.send({ ok: true });
 
-    if (config.status === "suspended") {
-      const org = await fastify.prisma.organization.findUnique({ where: { slug: config.orgSlug } });
-      if (org) {
-        const members = await fastify.prisma.membership.findMany({ where: { orgId: org.id }, select: { userId: true } });
-        const userIds = members.map((m) => m.userId);
-        const sessions = await fastify.prisma.session.findMany({
-          where: { userId: { in: userIds }, revokedAt: null },
-          select: { id: true },
-        });
-        for (const s of sessions) {
-          await fastify.prisma.session.update({ where: { id: s.id }, data: { revokedAt: new Date() } });
-          await revokeSession(fastify, s.id, 3600); // blokada > TTL access tokena
-        }
-        request.log.info({ org: config.orgSlug, revoked: sessions.length }, "Hub: zawieszenie — unieważniono sesje");
-      }
+    // Keep local module state in sync with the Hub (source of truth).
+    await syncHubModules(config.orgSlug, config.modules).catch((err) =>
+      request.log.warn({ err }, "Hub webhook: sync modułów nieudany")
+    );
+
+    if (config.status === "suspended" || config.status === "expired") {
+      await revokeOrgSessions(config.orgSlug, config.status);
     }
     return reply.send({ ok: true });
   });
