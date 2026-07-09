@@ -57,6 +57,9 @@ interface MessageRowProps {
   inThread?: boolean;
   /** Bumped to request opening inline edit (↑ in an empty composer). */
   autoEditNonce?: number;
+  /** Module toggles (F7) — hide reaction / thread affordances when off. */
+  reactionsEnabled?: boolean;
+  threadsEnabled?: boolean;
 }
 
 export function MessageRow({
@@ -82,7 +85,9 @@ export function MessageRow({
   highlighted = false,
   isFirstUnread = false,
   inThread = false,
-  autoEditNonce = 0
+  autoEditNonce = 0,
+  reactionsEnabled = true,
+  threadsEnabled = true
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
@@ -182,14 +187,16 @@ export function MessageRow({
             }`}
             onClick={() => setShowActions(false)}
           >
-          <button
-            onClick={() => setShowPicker((v) => !v)}
-            title="Dodaj reakcję"
-            className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
-          >
-            <Icon icon={SmilePlus} />
-          </button>
-          {!inThread && onOpenThread && (
+          {reactionsEnabled && (
+            <button
+              onClick={() => setShowPicker((v) => !v)}
+              title="Dodaj reakcję"
+              className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
+            >
+              <Icon icon={SmilePlus} />
+            </button>
+          )}
+          {!inThread && threadsEnabled && onOpenThread && (
             <button
               onClick={() => onOpenThread(m.id)}
               title="Odpowiedz w wątku"

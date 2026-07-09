@@ -2,12 +2,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, 
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link } from "react-router-dom";
-import type { MessageDto } from "@chatv2/shared";
+import type { MessageDto, ModuleKey } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { uploadFile, isAllowedFileType, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
 import { connectSocket, disconnectSocket, getSocket } from "../../lib/socket.js";
 import { useAuthStore } from "../../stores/auth.js";
 import { useChatStore, type ChannelItem } from "../../stores/chat.js";
+import { useModulesStore } from "../../stores/modules.js";
 import { MessageRow } from "./MessageRow.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 import { ProfileCard } from "./ProfileCard.js";
@@ -195,11 +196,20 @@ export function ChatLayout() {
   const [wsDisconnected, setWsDisconnected] = useState(false);
   useIdlePresence(user ? getSocket() : null);
 
+  const moduleState = useModulesStore((s) => s.modules);
+  const loadModules = useModulesStore((s) => s.loadModules);
+  const moduleEnabled = (key: ModuleKey) => moduleState[key] !== false;
+
   useEffect(() => {
     void apiFetch<{ enabled: boolean }>("/ai/status")
       .then((r) => setAiEnabled(r.enabled))
       .catch(() => setAiEnabled(false));
   }, []);
+
+  // Load per-org module state so the UI hides disabled features (F7-A).
+  useEffect(() => {
+    if (activeOrgId) void loadModules(activeOrgId);
+  }, [activeOrgId, loadModules]);
   const [draft, setDraft] = useState("");
   const [draftChannels, setDraftChannels] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -1344,7 +1354,7 @@ export function ChatLayout() {
                         <Icon icon={Users} size={15} />
                       </button>
                     )}
-                    {aiEnabled && (
+                    {aiEnabled && moduleEnabled("ai") && (
                       <button
                         onClick={() => void runAiSummary()}
                         disabled={aiSummaryLoading}
@@ -1354,7 +1364,7 @@ export function ChatLayout() {
                         <Icon icon={Sparkles} size={15} />
                       </button>
                     )}
-                    {activeChannel.type !== "DM" && (
+                    {activeChannel.type !== "DM" && moduleEnabled("voice") && (
                       <button
                         onClick={() => setInVoiceChannelId((prev) => (prev === activeChannel.id ? null : activeChannel.id))}
                         title={inVoiceChannelId === activeChannel.id ? "W rozmowie głosowej" : "Dołącz do rozmowy głosowej"}
@@ -1407,7 +1417,7 @@ export function ChatLayout() {
                             <Icon icon={Users} size={16} /> Członkowie kanału
                           </button>
                         )}
-                        {aiEnabled && (
+                        {aiEnabled && moduleEnabled("ai") && (
                           <button
                             onClick={() => {
                               setShowChannelMenu(false);
@@ -1419,7 +1429,7 @@ export function ChatLayout() {
                             <Icon icon={Sparkles} size={16} /> Podsumuj kanał (AI)
                           </button>
                         )}
-                        {activeChannel.type !== "DM" && (
+                        {activeChannel.type !== "DM" && moduleEnabled("voice") && (
                           <button
                             onClick={() => {
                               setShowChannelMenu(false);
@@ -1479,20 +1489,22 @@ export function ChatLayout() {
                   type="button"
                   onClick={() => setShowMobileSearch((v) => !v)}
                   title="Szukaj"
-                  className="text-[var(--text-dim)] hover:text-[var(--text)] md:hidden"
+                  className={`text-[var(--text-dim)] hover:text-[var(--text)] md:hidden ${moduleEnabled("search") ? "" : "hidden"}`}
                 >
                   <Icon icon={Search} size={18} />
                 </button>
-                <form onSubmit={handleSearch} className="relative hidden md:block">
-                  <input
-                    ref={searchInputRef}
-                    type="search"
-                    value={searchTerm}
-                    onChange={(e) => handleSearchInput(e.target.value)}
-                    placeholder="Szukaj (Ctrl+K)… from: in: has:file"
-                    className="w-56 rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-1.5 text-xs outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
-                  />
-                </form>
+                {moduleEnabled("search") && (
+                  <form onSubmit={handleSearch} className="relative hidden md:block">
+                    <input
+                      ref={searchInputRef}
+                      type="search"
+                      value={searchTerm}
+                      onChange={(e) => handleSearchInput(e.target.value)}
+                      placeholder="Szukaj (Ctrl+K)… from: in: has:file"
+                      className="w-56 rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-1.5 text-xs outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
+                    />
+                  </form>
+                )}
               </div>
             </header>
 
@@ -1706,6 +1718,8 @@ export function ChatLayout() {
                         isSaved={savedIds.has(m.id)}
                         isFirstUnread={m.id === firstUnreadId}
                         autoEditNonce={editRequest?.id === m.id ? editRequest.nonce : 0}
+                        reactionsEnabled={moduleEnabled("reactions")}
+                        threadsEnabled={moduleEnabled("threads")}
                       />
                     </div>
                   );
@@ -1840,38 +1854,44 @@ export function ChatLayout() {
                       >
                         <Icon icon={Smile} size={16} /> Emoji
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowComposerActions(false);
-                          fileInputRef.current?.click();
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
-                      >
-                        <Icon icon={Paperclip} size={16} /> Załącz plik
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowComposerActions(false);
-                          setShowPollModal(true);
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
-                      >
-                        <Icon icon={BarChart3} size={16} /> Utwórz ankietę
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowComposerActions(false);
-                          setShowSchedulePicker(true);
-                        }}
-                        disabled={!draft.trim()}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 disabled:opacity-40"
-                      >
-                        <Icon icon={Clock} size={16} /> Wyślij później
-                      </button>
-                      {aiEnabled &&
+                      {moduleEnabled("files") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowComposerActions(false);
+                            fileInputRef.current?.click();
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                        >
+                          <Icon icon={Paperclip} size={16} /> Załącz plik
+                        </button>
+                      )}
+                      {moduleEnabled("polls") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowComposerActions(false);
+                            setShowPollModal(true);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                        >
+                          <Icon icon={BarChart3} size={16} /> Utwórz ankietę
+                        </button>
+                      )}
+                      {moduleEnabled("scheduling") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowComposerActions(false);
+                            setShowSchedulePicker(true);
+                          }}
+                          disabled={!draft.trim()}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 disabled:opacity-40"
+                        >
+                          <Icon icon={Clock} size={16} /> Wyślij później
+                        </button>
+                      )}
+                      {aiEnabled && moduleEnabled("ai") &&
                         [
                           { mode: "improve", label: "AI: Popraw ton" },
                           { mode: "shorten", label: "AI: Skróć" },
@@ -1957,37 +1977,43 @@ export function ChatLayout() {
                         >
                           <Icon icon={Smile} size={16} /> Emoji
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowComposerMenu(false);
-                            fileInputRef.current?.click();
-                          }}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
-                        >
-                          <Icon icon={Paperclip} size={16} /> Załącz plik
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowComposerMenu(false);
-                            setShowPollModal(true);
-                          }}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
-                        >
-                          <Icon icon={BarChart3} size={16} /> Utwórz ankietę
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!draft.trim()}
-                          onClick={() => {
-                            setShowComposerMenu(false);
-                            setShowSchedulePicker(true);
-                          }}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 disabled:opacity-40"
-                        >
-                          <Icon icon={Clock} size={16} /> Wyślij później
-                        </button>
+                        {moduleEnabled("files") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowComposerMenu(false);
+                              fileInputRef.current?.click();
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                          >
+                            <Icon icon={Paperclip} size={16} /> Załącz plik
+                          </button>
+                        )}
+                        {moduleEnabled("polls") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowComposerMenu(false);
+                              setShowPollModal(true);
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                          >
+                            <Icon icon={BarChart3} size={16} /> Utwórz ankietę
+                          </button>
+                        )}
+                        {moduleEnabled("scheduling") && (
+                          <button
+                            type="button"
+                            disabled={!draft.trim()}
+                            onClick={() => {
+                              setShowComposerMenu(false);
+                              setShowSchedulePicker(true);
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15 disabled:opacity-40"
+                          >
+                            <Icon icon={Clock} size={16} /> Wyślij później
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
@@ -1997,7 +2023,7 @@ export function ChatLayout() {
                       onClose={() => setShowComposerEmoji(false)}
                     />
                   )}
-                  {aiEnabled && (
+                  {aiEnabled && moduleEnabled("ai") && (
                     <div className="relative">
                       <button
                         type="button"
