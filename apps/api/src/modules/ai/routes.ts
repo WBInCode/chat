@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { assertChannelMember, assertOrgPermission, notFound, HttpError } from "../../lib/authz.js";
+import { assertModuleEnabled } from "../../lib/modules.js";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import { chatCompletion, isAiEnabled, AiQuotaExceededError, AiDisabledError } from "../../lib/ai.js";
 
@@ -151,6 +152,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     const { channelId } = request.params as { channelId: string };
     const member = await assertChannelMember(fastify, request.user!.id, channelId);
     await assertOrgPermission(fastify, request.user!.id, member.channel.orgId, "ai.use");
+    await assertModuleEnabled(fastify, member.channel.orgId, "ai");
     const input = parseOrThrow(summarizeSchema, request.query ?? {});
 
     const messages = await fastify.prisma.message.findMany({
@@ -184,6 +186,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     const orgId = (request.query as { orgId?: string })?.orgId;
     if (!orgId) notFound("Brak identyfikatora organizacji");
     await assertOrgPermission(fastify, request.user!.id, orgId as string, "ai.use");
+    await assertModuleEnabled(fastify, orgId as string, "ai");
     const input = parseOrThrow(rewriteSchema, request.body);
 
     let systemPrompt: string;
@@ -217,6 +220,7 @@ export default async function aiRoutes(fastify: FastifyInstance) {
     if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
     await assertChannelMember(fastify, request.user!.id, message.channelId);
     await assertOrgPermission(fastify, request.user!.id, message.channel.orgId, "ai.use");
+    await assertModuleEnabled(fastify, message.channel.orgId, "ai");
 
     const raw = await chatCompletion(fastify, [
       {

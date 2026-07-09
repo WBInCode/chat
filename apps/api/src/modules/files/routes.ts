@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { presignFileSchema } from "@chatv2/shared";
 import { parseOrThrow } from "../../lib/validation.js";
 import { assertChannelMember } from "../../lib/authz.js";
+import { assertModuleEnabled } from "../../lib/modules.js";
 import { createFileService } from "./service.js";
 
 export default async function fileRoutes(fastify: FastifyInstance) {
@@ -14,6 +15,7 @@ export default async function fileRoutes(fastify: FastifyInstance) {
     const userId = request.user!.id;
 
     const membership = await assertChannelMember(fastify, userId, input.channelId);
+    await assertModuleEnabled(fastify, membership.channel.orgId, "files");
     return service.presign(userId, membership.channel.orgId, input);
   });
 

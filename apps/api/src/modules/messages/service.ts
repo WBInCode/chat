@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { MessageDto, FileDto, LinkEmbedDto, ReactionGroupDto } from "@chatv2/shared";
 import { assertChannelMember, HttpError, forbidden, notFound } from "../../lib/authz.js";
+import { assertModuleEnabled } from "../../lib/modules.js";
 import { createFileService } from "../files/service.js";
 import { enqueueLinkUnfurl } from "../../lib/queue.js";
 import { sendPushToUser } from "../../lib/push.js";
@@ -206,9 +207,10 @@ export function createMessageService(fastify: FastifyInstance) {
     fileIds: string[] = [],
     parentId?: string
   ) {
-    await assertChannelMember(fastify, userId, channelId);
+    const member = await assertChannelMember(fastify, userId, channelId);
 
     if (parentId) {
+      await assertModuleEnabled(fastify, member.channel.orgId, "threads");
       const parent = await fastify.prisma.message.findUnique({ where: { id: parentId } });
       // Parent must exist in the SAME channel; also disallow nesting
       // (replying to a reply attaches to the root — single-level threads).
@@ -305,7 +307,8 @@ export function createMessageService(fastify: FastifyInstance) {
   async function toggleReaction(userId: string, messageId: string, emoji: string) {
     const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
     if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
-    await assertChannelMember(fastify, userId, message.channelId);
+    const member = await assertChannelMember(fastify, userId, message.channelId);
+    await assertModuleEnabled(fastify, member.channel.orgId, "reactions");
 
     const existing = await fastify.prisma.reaction.findUnique({
       where: { messageId_userId_emoji: { messageId, userId, emoji } }

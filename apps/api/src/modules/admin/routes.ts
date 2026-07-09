@@ -8,6 +8,7 @@ import {
 } from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import { assertOrgPermission, assertOrgMember, forbidden, notFound, HttpError } from "../../lib/authz.js";
+import { assertModuleEnabled } from "../../lib/modules.js";
 import { logAudit, verifyAuditChain } from "../../lib/audit.js";
 import { revokeSession } from "../../plugins/auth-guard.js";
 
@@ -50,6 +51,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
   fastify.get("/orgs/:orgId/admin/analytics", async (request) => {
     const { orgId } = request.params as { orgId: string };
     await assertOrgPermission(fastify, request.user!.id, orgId, "org.settings");
+    await assertModuleEnabled(fastify, orgId, "analytics");
 
     const now = Date.now();
     const since7 = new Date(now - 7 * 24 * 60 * 60 * 1000);

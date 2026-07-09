@@ -20,6 +20,7 @@ import { env } from "../config/env.js";
 import { verifyAccessToken } from "../lib/jwt.js";
 import { createMessageService } from "../modules/messages/service.js";
 import { HttpError, assertChannelMember, assertOrgPermission } from "../lib/authz.js";
+import { assertModuleEnabled } from "../lib/modules.js";
 import { setWsConnectionCount } from "../lib/metrics.js";
 
 interface SocketData {
@@ -267,6 +268,7 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
         if (!channelId) return;
         const member = await assertChannelMember(fastify, userId, channelId);
         await assertOrgPermission(fastify, userId, member.channel.orgId, "voice.use");
+        await assertModuleEnabled(fastify, member.channel.orgId, "voice");
 
         const existing = await fastify.redis.smembers(voiceUsersKey(channelId));
         if (!existing.includes(userId) && existing.length >= MAX_VOICE_PARTICIPANTS) {

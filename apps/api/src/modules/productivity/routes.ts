@@ -9,6 +9,7 @@ import {
 } from "@chatv2/shared";
 import { parseOrThrow } from "../../lib/validation.js";
 import { assertChannelMember, notFound, HttpError } from "../../lib/authz.js";
+import { assertModuleEnabled } from "../../lib/modules.js";
 import { sendError } from "../../lib/validation.js";
 
 function toScheduledDto(row: {
@@ -71,7 +72,8 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
     const { channelId } = request.params as { channelId: string };
     const userId = request.user!.id;
     const input = parseOrThrow(scheduleMessageSchema, request.body);
-    await assertChannelMember(fastify, userId, channelId);
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    await assertModuleEnabled(fastify, membership.channel.orgId, "scheduling");
 
     if (new Date(input.sendAt).getTime() <= Date.now()) {
       return sendError(reply, 400, "SEND_AT_IN_PAST", "Czas wysyłki musi być w przyszłości");
@@ -113,7 +115,8 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
 
     const message = await fastify.prisma.message.findUnique({ where: { id: input.messageId } });
     if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
-    await assertChannelMember(fastify, userId, message.channelId);
+    const membership = await assertChannelMember(fastify, userId, message.channelId);
+    await assertModuleEnabled(fastify, membership.channel.orgId, "reminders");
 
     if (new Date(input.remindAt).getTime() <= Date.now()) {
       return sendError(reply, 400, "REMIND_AT_IN_PAST", "Czas przypomnienia musi być w przyszłości");
@@ -174,7 +177,8 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
     const { channelId } = request.params as { channelId: string };
     const userId = request.user!.id;
     const input = parseOrThrow(createPollSchema, { ...(request.body as object), channelId });
-    await assertChannelMember(fastify, userId, channelId);
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    await assertModuleEnabled(fastify, membership.channel.orgId, "polls");
 
     const message = await fastify.prisma.$transaction(async (tx) => {
       const created = await tx.message.create({

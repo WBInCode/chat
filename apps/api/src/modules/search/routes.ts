@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { searchQuerySchema, type SearchResultDto } from "@chatv2/shared";
 import { parseOrThrow } from "../../lib/validation.js";
 import { assertOrgMember } from "../../lib/authz.js";
+import { assertModuleEnabled } from "../../lib/modules.js";
 
 interface SearchRow {
   id: string;
@@ -29,6 +30,7 @@ export default async function searchRoutes(fastify: FastifyInstance) {
     const query = parseOrThrow(searchQuerySchema, request.query);
     const userId = request.user!.id;
     await assertOrgMember(fastify, userId, query.orgId);
+    await assertModuleEnabled(fastify, query.orgId, "search");
 
     const conditions = [Prisma.sql`cm."userId" = ${userId}`, Prisma.sql`c."orgId" = ${query.orgId}`, Prisma.sql`m."deletedAt" IS NULL`];
     if (query.q.length >= 2) {

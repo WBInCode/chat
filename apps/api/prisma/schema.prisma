@@ -38,8 +38,30 @@ model Organization {
   invites        Invite[]
   auditLogs      AuditLog[]
   roles          Role[]
+  modules        OrganizationModule[]
 
   @@map("organizations")
+}
+
+/**
+ * Per-organization module toggle (F7). Only stores explicit overrides for
+ * OPTIONAL modules; a missing row means "use default" (enabled). Core modules
+ * are never persisted here. When the org is linked to the wb-platform Hub,
+ * these rows are synced from the Hub's Entitlements API.
+ */
+model OrganizationModule {
+  id        String   @id @default(uuid())
+  orgId     String
+  moduleKey String
+  enabled   Boolean  @default(true)
+  source    String   @default("local") // "local" | "hub"
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, moduleKey])
+  @@index([orgId])
+  @@map("organization_modules")
 }
 
 model User {
