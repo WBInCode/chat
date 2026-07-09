@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type DragEvent, type ClipboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { MessageDto, ModuleKey } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { uploadFile, isAllowedFileType, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
@@ -108,6 +108,7 @@ function presenceDotClass(status: "online" | "away" | "dnd" | "offline" | undefi
 export function ChatLayout() {
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clear);
+  const navigate = useNavigate();
   const {
     activeOrgId,
     activeChannelId,
@@ -2300,6 +2301,14 @@ export function ChatLayout() {
             void handleStartDm(userId);
             setShowQuickSwitcher(false);
           }}
+          actions={[
+            { key: "a-create", label: "Utwórz kanał", icon: "➕", onSelect: () => { setShowQuickSwitcher(false); setShowCreateChannel(true); } },
+            { key: "a-browse", label: "Przeglądaj kanały", icon: "🔎", onSelect: () => { setShowQuickSwitcher(false); setShowBrowseChannels(true); } },
+            { key: "a-saved", label: "Zapisane wiadomości", icon: "🔖", onSelect: () => { setShowQuickSwitcher(false); setShowSaved(true); } },
+            { key: "a-settings", label: "Ustawienia", icon: "⚙️", onSelect: () => { setShowQuickSwitcher(false); navigate("/settings"); } },
+            { key: "a-admin", label: "Panel administracyjny", icon: "🛡️", onSelect: () => { setShowQuickSwitcher(false); navigate("/admin/members"); } },
+            { key: "a-logout", label: "Wyloguj", icon: "🚪", onSelect: () => { setShowQuickSwitcher(false); void handleLogout(); } }
+          ]}
           onClose={() => setShowQuickSwitcher(false)}
         />
       )}

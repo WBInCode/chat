@@ -13,6 +13,8 @@ interface QuickSwitcherProps {
   onSelectChannel: (channelId: string) => void;
   onSelectMember: (userId: string) => void;
   onClose: () => void;
+  /** Command-palette actions (navigate, create channel, logout, …). */
+  actions?: Entry[];
 }
 
 interface Entry {
@@ -22,8 +24,8 @@ interface Entry {
   onSelect: () => void;
 }
 
-/** Ctrl+P fuzzy switcher: jump to any channel/DM or start a DM with any member. */
-export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMember, onClose }: QuickSwitcherProps) {
+/** Ctrl+P command palette: jump to any channel/DM/member or run a command. */
+export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMember, onClose, actions = [] }: QuickSwitcherProps) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,11 +47,11 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
       icon: "👤",
       onSelect: () => onSelectMember(m.userId)
     }));
-    const all = [...channelEntries, ...memberEntries];
+    const all = [...channelEntries, ...memberEntries, ...actions];
     const q = query.trim().toLowerCase();
     if (!q) return all.slice(0, 20);
     return all.filter((e) => e.label.toLowerCase().includes(q)).slice(0, 20);
-  }, [channels, members, query, onSelectChannel, onSelectMember]);
+  }, [channels, members, actions, query, onSelectChannel, onSelectMember]);
 
   useEffect(() => setActiveIndex(0), [query]);
 
@@ -77,7 +79,7 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Przejdź do kanału lub osoby…"
+          placeholder="Przejdź do kanału, osoby lub uruchom komendę…"
           className="w-full border-b border-[var(--glass-border)] bg-transparent px-4 py-3 text-sm outline-none"
         />
         <div className="max-h-80 overflow-y-auto p-1.5">
