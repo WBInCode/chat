@@ -33,7 +33,7 @@ beforeAll(async () => {
         headers: { "content-type": "application/json" }
       });
     }
-    return realFetch(input as RequestInfo, init);
+    return realFetch(input, init);
   }) as typeof globalThis.fetch;
 
   const { buildApp } = await import("../app.js");

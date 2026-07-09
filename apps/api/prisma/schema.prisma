@@ -257,6 +257,7 @@ model Channel {
   org     Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   members ChannelMember[]
   messages Message[]
+  integrationWebhooks IntegrationWebhook[]
 
   @@index([orgId])
   @@map("channels")
@@ -279,6 +280,30 @@ model ChannelMember {
   @@unique([channelId, userId])
   @@index([userId])
   @@map("channel_members")
+}
+
+/// Incoming integration webhook (F7-I): an external system POSTs JSON to a
+/// per-channel URL (authenticated by an unguessable token, stored hashed)
+/// and the payload is posted into the channel as a bot user. Gated by the
+/// `integrations` module.
+model IntegrationWebhook {
+  id           String    @id @default(uuid())
+  orgId        String
+  channelId    String
+  name         String
+  tokenHash    String    @unique
+  botUserId    String?
+  enabled      Boolean   @default(true)
+  createdById  String
+  messageCount Int       @default(0)
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId])
+  @@index([orgId])
+  @@map("integration_webhooks")
 }
 
 model Message {

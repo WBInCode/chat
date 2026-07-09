@@ -9,7 +9,8 @@ import type {
   ModuleKey,
   OrgRole,
   RoleDto,
-  OrgPermission
+  OrgPermission,
+  IntegrationWebhookDto
 } from "@chatv2/shared";
 import { ORG_PERMISSIONS } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
@@ -73,6 +74,7 @@ export function AdminPanel() {
           { to: "roles", label: "Role" },
           { to: "channels", label: "Kanały" },
           { to: "modules", label: "Moduły" },
+          { to: "integrations", label: "Integracje" },
           { to: "audit", label: "Audit log" },
           { to: "settings", label: "Ustawienia" },
           { to: "dashboard", label: "Dashboard" }
@@ -99,6 +101,7 @@ export function AdminPanel() {
           <Route path="roles" element={<RolesTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
           <Route path="channels" element={<ChannelsTab orgId={activeOrgId} />} />
           <Route path="modules" element={<ModulesTab orgId={activeOrgId} />} />
+          <Route path="integrations" element={<IntegrationsTab orgId={activeOrgId} />} />
           <Route path="audit" element={<AuditTab orgId={activeOrgId} />} />
           <Route path="settings" element={<SettingsTab orgId={activeOrgId} />} />
           <Route path="dashboard" element={<DashboardTab orgId={activeOrgId} />} />
@@ -765,6 +768,170 @@ function ModuleSwitch({
         }`}
       />
     </button>
+  );
+}
+
+// ── Integrations (F7-I) ───────────────────────────────────────────────
+function IntegrationsTab({ orgId }: { orgId: string }) {
+  const [hooks, setHooks] = useState<IntegrationWebhookDto[] | null>(null);
+  const [channels, setChannels] = useState<AdminChannelDto[]>([]);
+  const [name, setName] = useState("");
+  const [channelId, setChannelId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newToken, setNewToken] = useState<{ id: string; token: string; url: string } | null>(null);
+  const enabled = useModulesStore((s) => s.modules).integrations !== false;
+
+  function reload() {
+    void apiFetch<IntegrationWebhookDto[]>(`/orgs/${orgId}/integrations`)
+      .then(setHooks)
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Błąd"));
+  }
+
+  useEffect(() => {
+    reload();
+    void apiFetch<AdminChannelDto[]>(`/orgs/${orgId}/admin/channels`).then((cs) => {
+      const active = cs.filter((c) => !c.archived && c.type !== "DM");
+      setChannels(active);
+      setChannelId((prev) => prev || active[0]?.id || "");
+    });
+  }, [orgId]);
+
+  async function create() {
+    if (!name.trim() || !channelId) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const created = await apiFetch<IntegrationWebhookDto>(`/orgs/${orgId}/integrations`, {
+        method: "POST",
+        body: JSON.stringify({ channelId, name: name.trim() })
+      });
+      const base = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+      setNewToken({ id: created.id, token: created.token!, url: `${base}/api/v1/webhooks/incoming/${created.token}` });
+      setName("");
+      reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Nie udało się utworzyć integracji");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function toggle(id: string, next: boolean) {
+    await apiFetch(`/integrations/${id}`, { method: "PATCH", body: JSON.stringify({ enabled: next }) });
+    reload();
+  }
+
+  async function remove(id: string) {
+    await apiFetch(`/integrations/${id}`, { method: "DELETE" });
+    if (newToken?.id === id) setNewToken(null);
+    reload();
+  }
+
+  if (!enabled) {
+    return (
+      <p className="text-sm text-[var(--text-dim)]">
+        Moduł integracji jest wyłączony dla tej organizacji. Włącz go w zakładce „Moduły”.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-sm font-semibold">Integracje przychodzące</h2>
+        <p className="text-xs text-[var(--text-dim)]">
+          Wygeneruj adres URL, na który zewnętrzne systemy (CI, monitoring, formularze) mogą wysłać zwykłe
+          żądanie POST z JSON — treść trafi jako wiadomość na wybrany kanał.
+        </p>
+      </div>
+
+      {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+
+      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] p-4">
+        <div className="flex-1 min-w-[160px]">
+          <label className="mb-1 block text-xs font-medium text-[var(--text-dim)]">Nazwa</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="np. CI Pipeline"
+            className={glassInput}
+          />
+        </div>
+        <div className="min-w-[160px]">
+          <label className="mb-1 block text-xs font-medium text-[var(--text-dim)]">Kanał</label>
+          <select value={channelId} onChange={(e) => setChannelId(e.target.value)} className={glassInput}>
+            {channels.map((c) => (
+              <option key={c.id} value={c.id}>
+                #{c.name ?? c.id}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={create}
+          disabled={creating || !name.trim() || !channelId}
+          className={glassButtonPrimary}
+        >
+          {creating ? "Tworzenie..." : "+ Nowa integracja"}
+        </button>
+      </div>
+
+      {newToken && (
+        <div className="space-y-2 rounded-xl border border-[var(--accent)]/40 bg-[var(--accent)]/10 p-4">
+          <p className="text-xs font-semibold text-[var(--accent)]">
+            🔑 Zapisz ten adres — nie zostanie ponownie pokazany
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-lg bg-[var(--glass)] px-2 py-1.5 text-xs">
+              {newToken.url}
+            </code>
+            <button
+              onClick={() => void navigator.clipboard.writeText(newToken.url)}
+              className={glassButtonGhost}
+            >
+              Kopiuj
+            </button>
+          </div>
+          <p className="text-xs text-[var(--text-dim)]">
+            Przykład: <code>curl -X POST {newToken.url} -H "Content-Type: application/json" -d
+            {" "}
+            {"'{\"text\":\"Build failed on main\"}'"}</code>
+          </p>
+        </div>
+      )}
+
+      <ul className="space-y-2">
+        {hooks?.map((h) => (
+          <li
+            key={h.id}
+            className="flex items-center justify-between gap-3 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-4 py-3"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {h.name} <span className="text-xs font-normal text-[var(--text-dim)]">→ #{h.channelName ?? "?"}</span>
+              </p>
+              <p className="text-xs text-[var(--text-dim)]">
+                {h.messageCount} wiadomości
+                {h.lastUsedAt ? ` · ostatnio ${new Date(h.lastUsedAt).toLocaleString("pl-PL")}` : " · nigdy nie użyto"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <ModuleSwitch checked={h.enabled} onChange={(v) => void toggle(h.id, v)} />
+              <button
+                onClick={() => void remove(h.id)}
+                className="rounded-lg px-2 py-1 text-xs text-[var(--danger)] transition-colors hover:bg-[var(--danger)]/10"
+              >
+                Usuń
+              </button>
+            </div>
+          </li>
+        ))}
+        {hooks && hooks.length === 0 && (
+          <p className="text-xs text-[var(--text-dim)]">Brak skonfigurowanych integracji.</p>
+        )}
+      </ul>
+    </div>
   );
 }
 
