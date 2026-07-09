@@ -4,6 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App.js";
 import { reportWebVitals } from "./lib/reportWebVitals.js";
+// Self-hosted variable fonts (CSP-safe, no CDN): body, display, mono.
+import "@fontsource-variable/inter";
+import "@fontsource-variable/sora";
+import "@fontsource-variable/jetbrains-mono";
 import "./styles/index.css";
 
 const queryClient = new QueryClient({

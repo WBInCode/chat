@@ -154,7 +154,7 @@ export function MessageRow({
   return (
     <div
       id={`message-${m.id}`}
-      className={`group relative rounded-lg transition-colors duration-500 ${
+      className={`group relative rounded-lg transition-colors duration-500 hover:bg-[var(--border)]/30 ${
         highlighted ? "bg-[var(--accent)]/15 ring-1 ring-[var(--accent)]/40" : ""
       }`}
     >

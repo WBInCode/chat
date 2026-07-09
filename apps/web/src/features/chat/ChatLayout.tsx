@@ -1113,7 +1113,7 @@ export function ChatLayout() {
               }`}
               title={orgs.length > 1 ? "Przełącz organizację" : undefined}
             >
-              <span className="truncate">
+              <span className="truncate font-[family-name:var(--font-display)] tracking-tight">
                 {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}
               </span>
               {orgs.length > 1 && <Icon icon={ChevronDown} size={14} className="shrink-0 text-[var(--text-dim)]" />}
@@ -1153,7 +1153,7 @@ export function ChatLayout() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="cascade flex-1 overflow-y-auto p-2">
           <button
             onClick={() => setShowSaved((v) => !v)}
             className={`mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors duration-150 ${
@@ -1175,7 +1175,7 @@ export function ChatLayout() {
                     onClick={() => setActiveChannel(c.id)}
                     className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
                       c.id === activeChannelId
-                        ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
+                        ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent-ring)]"
                         : "text-[var(--text)] hover:bg-[var(--border)]/50"
                     }`}
                   >
@@ -1183,7 +1183,7 @@ export function ChatLayout() {
                       {c.type === "DM" ? "@" : c.type === "PRIVATE" ? "🔒" : "#"} {c.name}
                     </span>
                     {(c.unreadCount ?? 0) > 0 && !c.muted && (
-                      <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
+                      <span className="animate-spring-in btn-gradient ml-2 min-w-5 rounded-full px-1.5 text-center text-xs font-semibold text-white shadow-[0_2px_8px_var(--accent-glow)]">
                         {c.unreadCount}
                       </span>
                     )}
@@ -1244,7 +1244,7 @@ export function ChatLayout() {
                     draggedChannelId === c.id ? "opacity-40" : ""
                   } ${
                     c.id === activeChannelId
-                      ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
+                      ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent-ring)]"
                       : c.muted
                         ? "text-[var(--text-dim)] hover:bg-[var(--border)]/50"
                         : "text-[var(--text)] hover:bg-[var(--border)]/50"
@@ -1257,7 +1257,7 @@ export function ChatLayout() {
                     )}
                   </span>
                   {(c.unreadCount ?? 0) > 0 && !c.muted && (
-                    <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
+                    <span className="animate-spring-in btn-gradient ml-2 min-w-5 rounded-full px-1.5 text-center text-xs font-semibold text-white shadow-[0_2px_8px_var(--accent-glow)]">
                       {c.unreadCount}
                     </span>
                   )}
@@ -1294,7 +1294,7 @@ export function ChatLayout() {
                     @ {c.name} {c.muted && <Icon icon={BellOff} size={12} />}
                   </span>
                   {(c.unreadCount ?? 0) > 0 && !c.muted && (
-                    <span className="animate-spring-in ml-2 min-w-5 rounded-full bg-[var(--accent)] px-1.5 text-center text-xs font-semibold text-white">
+                    <span className="animate-spring-in btn-gradient ml-2 min-w-5 rounded-full px-1.5 text-center text-xs font-semibold text-white shadow-[0_2px_8px_var(--accent-glow)]">
                       {c.unreadCount}
                     </span>
                   )}
@@ -1740,11 +1740,11 @@ export function ChatLayout() {
                     >
                       {newDay && (
                         <div className="my-2 flex items-center gap-3 px-1 select-none">
-                          <span className="h-px flex-1 bg-[var(--glass-border)]" />
-                          <span className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-0.5 text-[11px] font-medium text-[var(--text-dim)]">
+                          <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--glass-border)] to-[var(--glass-border)]" />
+                          <span className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-0.5 font-[family-name:var(--font-display)] text-[11px] font-medium tracking-wide text-[var(--text-dim)] backdrop-blur-sm">
                             {formatDayLabel(new Date(m.createdAt))}
                           </span>
-                          <span className="h-px flex-1 bg-[var(--glass-border)]" />
+                          <span className="h-px flex-1 bg-gradient-to-l from-transparent via-[var(--glass-border)] to-[var(--glass-border)]" />
                         </div>
                       )}
                       <MessageRow
@@ -2201,7 +2201,7 @@ export function ChatLayout() {
                   onPaste={handlePaste}
                   placeholder={`Napisz na ${activeChannel.type === "DM" ? "@" : "#"}${activeChannel.name}`}
                   maxLength={8000}
-                  className="min-w-0 flex-1 resize-none rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm leading-snug outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-[var(--accent)]"
+                  className="composer-glow min-w-0 flex-1 resize-none rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm leading-snug outline-none backdrop-blur-sm focus:ring-0"
                 />
                 {draft.length > 7000 && (
                   <span className="absolute -top-5 right-24 text-xs text-[var(--warning)]">
@@ -2212,7 +2212,7 @@ export function ChatLayout() {
                   type="submit"
                   disabled={!draft.trim() && pending.length === 0}
                   title="Wyślij"
-                  className="flex items-center justify-center rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_rgba(91,124,255,0.35)] transition-all duration-150 hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 sm:px-4"
+                  className="btn-gradient flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_var(--accent-glow)] transition-all duration-150 hover:brightness-[1.06] active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 sm:px-4"
                 >
                   <Icon icon={Send} className="sm:hidden" />
                   <span className="hidden sm:inline">Wyślij</span>
@@ -2244,8 +2244,8 @@ export function ChatLayout() {
                         alt=""
                         className="mx-auto mb-5 h-16 w-16 rounded-2xl shadow-lg"
                       />
-                      <h2 className="text-xl font-semibold text-[var(--text)]">
-                        Witaj w {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"} 👋
+                      <h2 className="text-xl font-semibold">
+                        <span className="text-brand-gradient">Witaj w {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}</span> 👋
                       </h2>
                       <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--text-dim)]">
                         Nie masz jeszcze żadnych kanałów. Kanały to miejsca, w których Twój zespół prowadzi
@@ -2254,7 +2254,7 @@ export function ChatLayout() {
                       <div className="mt-6 flex flex-col gap-2.5">
                         <button
                           onClick={() => setShowCreateChannel(true)}
-                          className="flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white shadow-[0_4px_16px_rgba(91,124,255,0.35)] transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
+                          className="btn-gradient flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white shadow-[0_4px_16px_var(--accent-glow)] transition-all duration-150 hover:brightness-[1.06] active:scale-[0.98]"
                         >
                           <Icon icon={Plus} size={16} /> Utwórz pierwszy kanał
                         </button>
