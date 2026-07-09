@@ -32,8 +32,9 @@ import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
+import { renderMarkdown } from "./markdown.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
 /** True when two dates fall on the same calendar day (local time). */
@@ -193,6 +194,7 @@ export function ChatLayout() {
   const [showComposerActions, setShowComposerActions] = useState(false);
   const [showComposerEmoji, setShowComposerEmoji] = useState(false);
   const [showComposerMenu, setShowComposerMenu] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [showChannelMenu, setShowChannelMenu] = useState(false);
   const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
   const [wsDisconnected, setWsDisconnected] = useState(false);
@@ -1838,6 +1840,16 @@ export function ChatLayout() {
                   ))}
                 </div>
               )}
+              {showPreview && draft.trim() && (
+                <div className="mb-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-dim)]">
+                    <Icon icon={Eye} size={12} /> Podgląd
+                  </div>
+                  <div className="text-sm leading-snug [word-break:break-word]">
+                    {renderMarkdown(draft, members, user?.id ?? "")}
+                  </div>
+                </div>
+              )}
               <div className="relative flex gap-2">
                 {(mentionCandidates.length > 0 || mentionBroadcasts.length > 0) && (
                   <div className="animate-slide-up absolute bottom-full left-12 z-20 mb-1 w-64 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-xl backdrop-blur-lg">
@@ -2016,6 +2028,20 @@ export function ChatLayout() {
                             </button>
                           ))}
                         </div>
+                        <div className="border-t border-[var(--glass-border)]" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowComposerMenu(false);
+                            setShowPreview((v) => !v);
+                          }}
+                          className="flex w-full items-center justify-between gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <Icon icon={Eye} size={16} /> Podgląd na żywo
+                          </span>
+                          {showPreview && <Icon icon={Check} size={15} />}
+                        </button>
                         <div className="border-t border-[var(--glass-border)]" />
                         <button
                           type="button"
@@ -2205,8 +2231,63 @@ export function ChatLayout() {
                 <Icon icon={Menu} size={18} />
               </button>
             </div>
-            <div className="flex flex-1 items-center justify-center text-[var(--text-dim)]">
-              <p className="text-sm">Wybierz kanał, aby rozpocząć rozmowę</p>
+            <div className="flex flex-1 items-center justify-center p-6">
+              {channels.length === 0 ? (
+                (() => {
+                  const canInvite = ["OWNER", "ADMIN", "HR"].includes(
+                    orgs.find((o) => o.id === activeOrgId)?.role ?? ""
+                  );
+                  return (
+                    <div className="animate-float-in w-full max-w-md text-center">
+                      <img
+                        src="/icon-192.png"
+                        alt=""
+                        className="mx-auto mb-5 h-16 w-16 rounded-2xl shadow-lg"
+                      />
+                      <h2 className="text-xl font-semibold text-[var(--text)]">
+                        Witaj w {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"} 👋
+                      </h2>
+                      <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--text-dim)]">
+                        Nie masz jeszcze żadnych kanałów. Kanały to miejsca, w których Twój zespół prowadzi
+                        rozmowy — zacznij od utworzenia pierwszego.
+                      </p>
+                      <div className="mt-6 flex flex-col gap-2.5">
+                        <button
+                          onClick={() => setShowCreateChannel(true)}
+                          className="flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white shadow-[0_4px_16px_rgba(91,124,255,0.35)] transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
+                        >
+                          <Icon icon={Plus} size={16} /> Utwórz pierwszy kanał
+                        </button>
+                        <button
+                          onClick={() => setShowBrowseChannels(true)}
+                          className="flex items-center justify-center gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-4 py-2.5 text-sm font-medium transition-colors hover:bg-[var(--border)]/40"
+                        >
+                          <Icon icon={Search} size={16} /> Przeglądaj istniejące kanały
+                        </button>
+                        {canInvite && (
+                          <button
+                            onClick={() => navigate("/admin/members")}
+                            className="flex items-center justify-center gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-4 py-2.5 text-sm font-medium transition-colors hover:bg-[var(--border)]/40"
+                          >
+                            <Icon icon={Users} size={16} /> Zaproś współpracowników
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="text-center text-[var(--text-dim)]">
+                  <Icon icon={Send} size={28} className="mx-auto mb-3 opacity-40" />
+                  <p className="text-sm">Wybierz kanał z listy po lewej, aby rozpocząć rozmowę.</p>
+                  <button
+                    onClick={() => setShowBrowseChannels(true)}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-4 py-2 text-sm font-medium text-[var(--text)] transition-colors hover:bg-[var(--border)]/40"
+                  >
+                    <Icon icon={Search} size={15} /> Przeglądaj kanały
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

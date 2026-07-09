@@ -3,6 +3,7 @@ import type { MessageDto } from "@chatv2/shared";
 import { ALLOWED_REACTIONS } from "@chatv2/shared";
 import { FileAttachment } from "./FileAttachment.js";
 import { EmbedCard } from "./EmbedCard.js";
+import { Lightbox, type LightboxImage } from "./Lightbox.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { renderMarkdown } from "./markdown.js";
@@ -60,6 +61,40 @@ interface MessageRowProps {
   /** Module toggles (F7) — hide reaction / thread affordances when off. */
   reactionsEnabled?: boolean;
   threadsEnabled?: boolean;
+}
+
+/**
+ * A group of image attachments on one message: renders the thumbnail grid
+ * (single image large, 2+ tiled) and shares one lightbox with prev/next
+ * navigation across them.
+ */
+function ImageGroup({ images }: { images: NonNullable<MessageDto["files"]> }) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const lightboxImages: LightboxImage[] = images.map((f) => ({ id: f.id, name: f.name }));
+
+  return (
+    <>
+      {images.length >= 2 ? (
+        <div className="mt-1 grid max-w-sm grid-cols-2 gap-1">
+          {images.map((f, i) => (
+            <FileAttachment key={f.id} file={f} gallery onImageOpen={() => setOpenIndex(i)} />
+          ))}
+        </div>
+      ) : (
+        images.map((f, i) => (
+          <FileAttachment key={f.id} file={f} onImageOpen={() => setOpenIndex(i)} />
+        ))
+      )}
+      {openIndex !== null && (
+        <Lightbox
+          images={lightboxImages}
+          index={openIndex}
+          onIndexChange={setOpenIndex}
+          onClose={() => setOpenIndex(null)}
+        />
+      )}
+    </>
+  );
 }
 
 export function MessageRow({
@@ -385,15 +420,7 @@ export function MessageRow({
         return (
           <>
             {/* 2+ images tile into a gallery grid; a single image stays large. */}
-            {images.length >= 2 ? (
-              <div className="mt-1 grid max-w-sm grid-cols-2 gap-1">
-                {images.map((f) => (
-                  <FileAttachment key={f.id} file={f} gallery />
-                ))}
-              </div>
-            ) : (
-              images.map((f) => <FileAttachment key={f.id} file={f} />)
-            )}
+            {images.length >= 1 && <ImageGroup images={images} />}
             {others.map((f) => (
               <FileAttachment key={f.id} file={f} />
             ))}

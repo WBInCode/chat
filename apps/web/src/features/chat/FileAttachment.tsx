@@ -29,7 +29,17 @@ function fileIcon(mimeType: string): string {
 }
 
 /** One attachment row: image → thumbnail + lightbox; other → download card. */
-export function FileAttachment({ file, gallery = false }: { file: FileDto; gallery?: boolean }) {
+export function FileAttachment({
+  file,
+  gallery = false,
+  onImageOpen
+}: {
+  file: FileDto;
+  gallery?: boolean;
+  /** When provided, clicking an image thumbnail delegates to a shared gallery
+   *  lightbox (with prev/next) instead of opening this attachment's own. */
+  onImageOpen?: () => void;
+}) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -98,7 +108,7 @@ export function FileAttachment({ file, gallery = false }: { file: FileDto; galle
     return (
       <>
         <button
-          onClick={openLightbox}
+          onClick={onImageOpen ?? openLightbox}
           className={
             gallery
               ? "block aspect-square overflow-hidden rounded-lg border border-[var(--border)]"
