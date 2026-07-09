@@ -73,3 +73,13 @@ export const setModuleSchema = z.object({
 export type SetModuleInput = z.infer<typeof setModuleSchema>;
 
 export type ModuleState = Record<ModuleKey, boolean>;
+
+/** Admin toggles view: catalog + current state + override source. */
+export interface AdminModuleDto {
+  key: ModuleKey;
+  label: string;
+  description: string;
+  core: boolean;
+  enabled: boolean;
+  source: "core" | "local" | "hub" | "default";
+}

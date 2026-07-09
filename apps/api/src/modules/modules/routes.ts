@@ -30,6 +30,33 @@ export default async function modulesRoutes(fastify: FastifyInstance) {
     return MODULE_KEYS.map((key) => MODULE_CATALOG[key]);
   });
 
+  /**
+   * Admin view: catalog + current enabled state + override source
+   * ("local" | "hub" | "default") per module — powers the admin toggles UI.
+   */
+  fastify.get("/orgs/:orgId/admin/modules", async (request) => {
+    const { orgId } = request.params as { orgId: string };
+    await assertOrgPermission(fastify, request.user!.id, orgId, "org.settings");
+
+    const [state, overrides] = await Promise.all([
+      getModuleState(fastify, orgId),
+      fastify.prisma.organizationModule.findMany({ where: { orgId } })
+    ]);
+    const sourceByKey = new Map(overrides.map((o) => [o.moduleKey, o.source]));
+
+    return MODULE_KEYS.map((key) => {
+      const meta = MODULE_CATALOG[key];
+      return {
+        key,
+        label: meta.label,
+        description: meta.description,
+        core: meta.core,
+        enabled: meta.core ? true : state[key] !== false,
+        source: meta.core ? "core" : (sourceByKey.get(key) ?? "default")
+      };
+    });
+  });
+
   /** Admin: toggle a single optional module for the organization. */
   fastify.patch("/orgs/:orgId/admin/modules", async (request) => {
     const { orgId } = request.params as { orgId: string };

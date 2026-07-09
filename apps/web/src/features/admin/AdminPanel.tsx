@@ -5,12 +5,15 @@ import type {
   AdminChannelDto,
   AuditLogEntryDto,
   AdminDashboardDto,
+  AdminModuleDto,
+  ModuleKey,
   OrgRole,
   RoleDto,
   OrgPermission
 } from "@chatv2/shared";
 import { ORG_PERMISSIONS } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
+import { useModulesStore } from "../../stores/modules.js";
 import { glassButtonGhost, glassButtonPrimary, glassInput } from "../../styles/glass.js";
 
 interface OrgItem {
@@ -69,6 +72,7 @@ export function AdminPanel() {
           { to: "members", label: "Członkowie" },
           { to: "roles", label: "Role" },
           { to: "channels", label: "Kanały" },
+          { to: "modules", label: "Moduły" },
           { to: "audit", label: "Audit log" },
           { to: "settings", label: "Ustawienia" },
           { to: "dashboard", label: "Dashboard" }
@@ -94,6 +98,7 @@ export function AdminPanel() {
           <Route path="members" element={<MembersTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
           <Route path="roles" element={<RolesTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
           <Route path="channels" element={<ChannelsTab orgId={activeOrgId} />} />
+          <Route path="modules" element={<ModulesTab orgId={activeOrgId} />} />
           <Route path="audit" element={<AuditTab orgId={activeOrgId} />} />
           <Route path="settings" element={<SettingsTab orgId={activeOrgId} />} />
           <Route path="dashboard" element={<DashboardTab orgId={activeOrgId} />} />
@@ -624,6 +629,142 @@ function SettingsTab({ orgId }: { orgId: string }) {
         {saved ? "Zapisano ✓" : "Zapisz ustawienia"}
       </button>
     </div>
+  );
+}
+
+// ── Modules (F7-B) ─────────────────────────────────────────────────────
+function ModulesTab({ orgId }: { orgId: string }) {
+  const [modules, setModules] = useState<AdminModuleDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<ModuleKey | null>(null);
+  const loadModulesStore = useModulesStore((s) => s.loadModules);
+
+  function reload() {
+    void apiFetch<AdminModuleDto[]>(`/orgs/${orgId}/admin/modules`)
+      .then(setModules)
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Błąd"));
+  }
+
+  useEffect(reload, [orgId]);
+
+  async function toggle(key: ModuleKey, enabled: boolean) {
+    setBusyKey(key);
+    setError(null);
+    // Optimistic flip.
+    setModules((prev) => prev?.map((m) => (m.key === key ? { ...m, enabled } : m)) ?? prev);
+    try {
+      await apiFetch(`/orgs/${orgId}/admin/modules`, {
+        method: "PATCH",
+        body: JSON.stringify({ key, enabled })
+      });
+      // Keep the chat UI in sync immediately (hide/show affordances).
+      void loadModulesStore(orgId);
+      reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Nie udało się zmienić modułu");
+      reload(); // revert to server truth
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  if (error && !modules) return <p className="text-sm text-[var(--danger)]">{error}</p>;
+  if (!modules) return <p className="text-sm text-[var(--text-dim)]">Ładowanie...</p>;
+
+  const optional = modules.filter((m) => !m.core);
+  const core = modules.filter((m) => m.core);
+  const activeCount = optional.filter((m) => m.enabled).length;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-sm font-semibold">Moduły organizacji</h2>
+        <p className="text-xs text-[var(--text-dim)]">
+          Włącz lub wyłącz funkcje dla całej organizacji. Aktywne opcjonalne: {activeCount}/{optional.length}.
+        </p>
+      </div>
+
+      {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+
+      <ul className="space-y-2">
+        {optional.map((m) => (
+          <li
+            key={m.key}
+            className="flex items-center justify-between gap-3 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-4 py-3"
+          >
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                {m.label}
+                {m.source === "hub" && (
+                  <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
+                    z Huba
+                  </span>
+                )}
+              </p>
+              <p className="text-xs text-[var(--text-dim)]">
+                {m.description}
+                {m.source === "hub" && " · zarządzane centralnie — lokalna zmiana zostanie nadpisana przy synchronizacji."}
+              </p>
+            </div>
+            <ModuleSwitch
+              checked={m.enabled}
+              disabled={busyKey === m.key}
+              onChange={(v) => toggle(m.key, v)}
+            />
+          </li>
+        ))}
+      </ul>
+
+      <div>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">Moduły podstawowe</p>
+        <ul className="space-y-2">
+          {core.map((m) => (
+            <li
+              key={m.key}
+              className="flex items-center justify-between gap-3 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)]/50 px-4 py-3 opacity-70"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{m.label}</p>
+                <p className="text-xs text-[var(--text-dim)]">{m.description}</p>
+              </div>
+              <span className="shrink-0 rounded-full border border-[var(--glass-border)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-dim)]">
+                wymagany
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/** Accessible on/off toggle switch. */
+function ModuleSwitch({
+  checked,
+  disabled,
+  onChange
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+        checked ? "bg-[var(--accent)]" : "bg-[var(--border)]"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+          checked ? "translate-x-[22px]" : "translate-x-0.5"
+        }`}
+      />
+    </button>
   );
 }
 

@@ -122,4 +122,39 @@ describe("module toggles (F7-A)", () => {
     expect(catalog.find((m) => m.key === "messaging")?.core).toBe(true);
     expect(catalog.find((m) => m.key === "voice")?.core).toBe(false);
   });
+
+  it("admin module view returns per-module state + source", async () => {
+    // Disable one to assert source flips to "local".
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/orgs/${orgId}/admin/modules`,
+      headers: auth(owner.token),
+      payload: { key: "polls", enabled: false }
+    });
+
+    const forbidden = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/admin/modules`,
+      headers: auth(member.token)
+    });
+    expect(forbidden.statusCode).toBe(403);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/admin/modules`,
+      headers: auth(owner.token)
+    });
+    expect(res.statusCode).toBe(200);
+    const rows = res.json() as { key: string; core: boolean; enabled: boolean; source: string }[];
+    expect(rows).toHaveLength(15);
+    const messaging = rows.find((r) => r.key === "messaging");
+    expect(messaging?.core).toBe(true);
+    expect(messaging?.source).toBe("core");
+    const polls = rows.find((r) => r.key === "polls");
+    expect(polls?.enabled).toBe(false);
+    expect(polls?.source).toBe("local");
+    const voice = rows.find((r) => r.key === "voice");
+    expect(voice?.enabled).toBe(true);
+    expect(voice?.source).toBe("default");
+  });
 });
