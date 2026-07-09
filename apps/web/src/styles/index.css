@@ -299,36 +299,25 @@ textarea::placeholder {
 }
 
 .glass-strong {
-  background: var(--glass-strong);
+  /* Prismatic top edge: a faint accent-tinted light catching the rim,
+     layered as a 1px background stripe (NOT a positioned pseudo-element —
+     modals combine .glass-strong with `fixed`, so this class must never
+     touch `position`). */
+  background:
+    linear-gradient(
+        90deg,
+        transparent 5%,
+        color-mix(in srgb, var(--accent) 45%, var(--glass-highlight)) 30%,
+        color-mix(in srgb, var(--accent-hi) 45%, var(--glass-highlight)) 70%,
+        transparent 95%
+      )
+      top / 100% 1px no-repeat,
+    var(--glass-strong);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-glass);
   box-shadow: var(--shadow-glass);
   backdrop-filter: blur(28px) saturate(170%);
   -webkit-backdrop-filter: blur(28px) saturate(170%);
-  position: relative;
-}
-
-/* Prismatic top edge: a faint accent-tinted light catching the rim of
-   strong glass panels — the physical detail that sells the material. */
-.glass-strong::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  border-radius: var(--radius-glass) var(--radius-glass) 0 0;
-  background: linear-gradient(
-    90deg,
-    transparent 5%,
-    color-mix(in srgb, var(--accent) 45%, var(--glass-highlight)) 30%,
-    color-mix(in srgb, var(--accent-hi) 45%, var(--glass-highlight)) 70%,
-    transparent 95%
-  );
-  opacity: 0.75;
-  pointer-events: none;
-}
-
-:root.midnight .glass-strong::before {
-  opacity: 0.35;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
