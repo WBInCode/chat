@@ -1,0 +1,21 @@
+# gitleaks configuration — extends the built-in rules and allowlists known
+# non-secret test fixtures / CI dummy values so the scan doesn't fail on them.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and CI dummy values (not real secrets)"
+paths = [
+  '''.*\.test\.ts$''',
+  '''apps/api/prisma/seed\.ts$''',
+  '''\.github/workflows/ci\.yml$''',
+]
+regexes = [
+  # Shared test-account password used across integration tests + seed.
+  '''Haslo!Testowe123''',
+  '''BardzoBezpieczneHaslo123''',
+  # CI-only dummy values explicitly marked not-for-production.
+  '''ci-only-cookie-secret-not-for-production-use''',
+  '''ci-dummy-key-not-used-fetch-is-mocked''',
+  '''MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=''',
+]

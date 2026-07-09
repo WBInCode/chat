@@ -5,23 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <title>chatv2</title>
-    <script>
-      // Applied before paint to avoid a flash of the wrong theme (FOUC).
-      (function () {
-        try {
-          var mode = localStorage.getItem("chatv2-theme") || "system";
-          var isMidnight = mode === "midnight";
-          var isDark =
-            isMidnight ||
-            mode === "dark" ||
-            (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-          if (isDark) document.documentElement.classList.add("dark");
-          if (isMidnight) document.documentElement.classList.add("midnight");
-          if (localStorage.getItem("chatv2-density") === "compact")
-            document.documentElement.classList.add("compact");
-        } catch (e) {}
-      })();
-    </script>
+    <!-- External (CSP-friendly) theme init; runs before paint to avoid FOUC. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>
