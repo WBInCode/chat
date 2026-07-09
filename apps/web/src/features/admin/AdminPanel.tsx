@@ -55,20 +55,20 @@ export function AdminPanel() {
   const org = orgs.find((o) => o.id === activeOrgId);
 
   return (
-    <div className="mx-auto flex h-full max-w-5xl flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="mx-auto flex h-full w-full min-w-0 max-w-5xl flex-col gap-4 p-4 sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-lg font-semibold">Panel administracyjny</h1>
-          <p className="text-xs text-[var(--text-dim)]">
+          <p className="truncate text-xs text-[var(--text-dim)]">
             {org?.name} · rola: {org?.role}
           </p>
         </div>
-        <NavLink to="/" className={glassButtonGhost}>
+        <NavLink to="/" className={`${glassButtonGhost} shrink-0`}>
           ← Wróć do czatu
         </NavLink>
       </div>
 
-      <nav className="glass flex w-fit gap-1 p-1">
+      <nav className="glass flex min-w-0 gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[
           { to: "members", label: "Członkowie" },
           { to: "roles", label: "Role" },
@@ -83,7 +83,7 @@ export function AdminPanel() {
             key={tab.to}
             to={`/admin/${tab.to}`}
             className={({ isActive }) =>
-              `rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              `shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-[var(--accent)]/15 text-[var(--accent)]"
                   : "text-[var(--text-dim)] hover:bg-[var(--border)]/50"
@@ -95,7 +95,7 @@ export function AdminPanel() {
         ))}
       </nav>
 
-      <div className="glass flex-1 overflow-y-auto p-5">
+      <div className="glass min-w-0 flex-1 overflow-y-auto p-4 sm:p-5">
         <Routes>
           <Route path="members" element={<MembersTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
           <Route path="roles" element={<RolesTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
@@ -758,15 +758,11 @@ function ModuleSwitch({
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-        checked ? "bg-[var(--accent)]" : "bg-[var(--border)]"
+      className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-50 ${
+        checked ? "justify-end bg-[var(--accent)]" : "justify-start bg-[var(--border)]"
       }`}
     >
-      <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-          checked ? "translate-x-[22px]" : "translate-x-0.5"
-        }`}
-      />
+      <span className="h-5 w-5 rounded-full bg-white shadow-sm transition-transform" />
     </button>
   );
 }
