@@ -1,11 +1,24 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Lightweight, dependency-free emoji picker. Provides a categorized grid and
  * keyword search over a curated (but large) emoji set. Kept native to avoid
  * pulling a heavy emoji dataset / React-19 peer-dependency concerns from
  * third-party pickers.
+ *
+ * Positioning: when an `anchor` rect is provided the panel renders through a
+ * portal with `position: fixed`, clamped to the viewport (never clipped by
+ * overflow containers, sidebars or stacking contexts). Without an anchor it
+ * falls back to legacy absolute positioning inside the caller.
  */
+
+export interface PickerAnchor {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
 
 type Category = { id: string; label: string; icon: string; emojis: string[] };
 
@@ -103,14 +116,39 @@ const KEYWORDS: Record<string, string> = {
 
 export function EmojiPicker({
   onPick,
-  onClose
+  onClose,
+  anchor
 }: {
   onPick: (emoji: string) => void;
   onClose: () => void;
+  anchor?: PickerAnchor | null;
 }) {
   const [active, setActive] = useState(CATEGORIES[0]!.id);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; origin: string } | null>(null);
+
+  // Viewport-aware placement: prefer above the anchor (right-aligned), flip
+  // below when there's no room, always clamp inside the viewport.
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const el = rootRef.current;
+    if (!el) return;
+    const margin = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const left = Math.min(Math.max(anchor.right - w, margin), Math.max(vw - w - margin, margin));
+    let top = anchor.top - h - margin;
+    let originY = "bottom";
+    if (top < margin) {
+      top = Math.min(anchor.bottom + margin, Math.max(vh - h - margin, margin));
+      originY = "top";
+    }
+    const originX = left + w / 2 < anchor.right ? "right" : "left";
+    setPos({ left, top, origin: `${originX} ${originY}` });
+  }, [anchor]);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -148,10 +186,24 @@ export function EmojiPicker({
   const activeCat = CATEGORIES.find((c) => c.id === active) ?? CATEGORIES[0]!;
   const shown = results ?? activeCat.emojis;
 
-  return (
+  const floating = !!anchor;
+  const panel = (
     <div
       ref={rootRef}
-      className="animate-spring-in absolute -top-2 right-0 z-30 w-64 -translate-y-full overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-2xl backdrop-blur-lg"
+      style={
+        floating
+          ? {
+              position: "fixed",
+              left: pos?.left ?? -9999,
+              top: pos?.top ?? -9999,
+              transformOrigin: pos?.origin ?? "center",
+              visibility: pos ? "visible" : "hidden"
+            }
+          : undefined
+      }
+      className={`${pos || !floating ? "animate-menu-pop" : ""} w-64 overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-2xl backdrop-blur-lg ${
+        floating ? "z-[80]" : "absolute -top-2 right-0 z-30 -translate-y-full"
+      }`}
     >
       <div className="border-b border-[var(--glass-border)] p-2">
         <input
@@ -199,4 +251,6 @@ export function EmojiPicker({
       </div>
     </div>
   );
+
+  return floating ? createPortal(panel, document.body) : panel;
 }

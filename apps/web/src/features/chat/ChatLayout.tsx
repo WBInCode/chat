@@ -14,7 +14,7 @@ import { ThreadPanel } from "./ThreadPanel.js";
 import { ProfileCard } from "./ProfileCard.js";
 import { SavedPanel } from "./SavedPanel.js";
 import { ForwardPicker } from "./ForwardPicker.js";
-import { EmojiPicker } from "./EmojiPicker.js";
+import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
 import { ChannelMembersPanel } from "./ChannelMembersPanel.js";
 import { GroupDmPicker } from "./GroupDmPicker.js";
 import { QuickSwitcher } from "./QuickSwitcher.js";
@@ -193,6 +193,7 @@ export function ChatLayout() {
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showComposerActions, setShowComposerActions] = useState(false);
   const [showComposerEmoji, setShowComposerEmoji] = useState(false);
+  const [composerEmojiAnchor, setComposerEmojiAnchor] = useState<PickerAnchor | null>(null);
   const [showComposerMenu, setShowComposerMenu] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showChannelMenu, setShowChannelMenu] = useState(false);
@@ -1091,7 +1092,7 @@ export function ChatLayout() {
       )}
       {showMobileSidebar && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          className="animate-overlay-in fixed inset-0 z-30 bg-black/50 md:hidden"
           onClick={() => setShowMobileSidebar(false)}
         />
       )}
@@ -1905,10 +1906,11 @@ export function ChatLayout() {
                     <Icon icon={Plus} />
                   </button>
                   {showComposerActions && (
-                    <div className="animate-slide-up absolute bottom-full left-0 z-20 mb-1 w-52 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
+                    <div className="animate-menu-pop origin-bottom-left absolute bottom-full left-0 z-20 mb-1 w-52 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          setComposerEmojiAnchor(e.currentTarget.getBoundingClientRect());
                           setShowComposerActions(false);
                           setShowComposerEmoji(true);
                         }}
@@ -1977,15 +1979,7 @@ export function ChatLayout() {
                         ))}
                     </div>
                   )}
-                  {/* Mobile emoji picker (opened from the "+" menu). */}
-                  {showComposerEmoji && (
-                    <div className="md:hidden">
-                      <EmojiPicker
-                        onPick={(emoji) => insertEmoji(emoji)}
-                        onClose={() => setShowComposerEmoji(false)}
-                      />
-                    </div>
-                  )}
+                  {/* Mobile emoji picker renders through the shared portal instance below. */}
                 </div>
 
                 {/* Desktop: secondary actions live in a single designed dropdown
@@ -2005,7 +1999,7 @@ export function ChatLayout() {
                     <>
                       {/* Click-away backdrop */}
                       <div className="fixed inset-0 z-10" onClick={() => setShowComposerMenu(false)} />
-                      <div className="animate-slide-up absolute bottom-full left-0 z-20 mb-2 w-60 overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-2xl backdrop-blur-lg">
+                      <div className="animate-menu-pop origin-bottom-left absolute bottom-full left-0 z-20 mb-2 w-60 overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-2xl backdrop-blur-lg">
                         <div className="px-3 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-dim)]">
                           Formatowanie
                         </div>
@@ -2022,7 +2016,7 @@ export function ChatLayout() {
                               type="button"
                               title={f.title}
                               onClick={() => f.act()}
-                              className="flex-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] py-1.5 transition-colors hover:bg-[var(--accent)]/20 active:scale-[0.94]"
+                              className="flex flex-1 items-center justify-center rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] py-1.5 transition-colors hover:bg-[var(--accent)]/20 active:scale-[0.94]"
                             >
                               <Icon icon={f.icon} size={15} />
                             </button>
@@ -2045,7 +2039,8 @@ export function ChatLayout() {
                         <div className="border-t border-[var(--glass-border)]" />
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            setComposerEmojiAnchor(e.currentTarget.getBoundingClientRect());
                             setShowComposerMenu(false);
                             setShowComposerEmoji(true);
                           }}
@@ -2095,6 +2090,7 @@ export function ChatLayout() {
                   )}
                   {showComposerEmoji && (
                     <EmojiPicker
+                      anchor={composerEmojiAnchor}
                       onPick={(emoji) => insertEmoji(emoji)}
                       onClose={() => setShowComposerEmoji(false)}
                     />
@@ -2111,7 +2107,7 @@ export function ChatLayout() {
                         <Icon icon={Sparkles} />
                       </button>
                       {showAiRewriteMenu && (
-                        <div className="animate-slide-up absolute bottom-full left-0 z-20 mb-1 w-48 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
+                        <div className="animate-menu-pop origin-bottom-left absolute bottom-full left-0 z-20 mb-1 w-48 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl backdrop-blur-lg">
                           {[
                             { mode: "improve", label: "Popraw ton" },
                             { mode: "shorten", label: "Skróć" },
@@ -2414,7 +2410,7 @@ export function ChatLayout() {
 
       {(aiSummaryLoading || aiSummary) &&
         createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAiSummary(null)}>
+          <div className="animate-overlay-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAiSummary(null)}>
             <div
               className="glass-strong max-h-[70vh] w-full max-w-md overflow-y-auto rounded-2xl p-5 shadow-2xl"
               onClick={(e) => e.stopPropagation()}

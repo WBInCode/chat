@@ -1,10 +1,13 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { registerSchema } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { glassInput, glassButtonPrimary, glassCard } from "../../styles/glass.js";
 
 export function RegisterPage() {
+  if (import.meta.env.VITE_SSO_ONLY === "true") {
+    return <Navigate to="/login" replace />;
+  }
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");

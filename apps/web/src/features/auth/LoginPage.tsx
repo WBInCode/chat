@@ -4,6 +4,9 @@ import { apiFetch, ApiError } from "../../lib/api.js";
 import { useAuthStore } from "../../stores/auth.js";
 import { glassInput, glassButtonPrimary, glassCard } from "../../styles/glass.js";
 
+const SSO_ONLY = import.meta.env.VITE_SSO_ONLY === "true";
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://wb-partners.pl";
+
 interface LoginResponse {
   accessToken: string;
   user: { id: string; email: string; displayName: string; isSuperAdmin?: boolean };
@@ -46,6 +49,30 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (SSO_ONLY) {
+    return (
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className={`max-w-sm ${glassCard}`}>
+          <div className="mb-6 flex flex-col items-center text-center">
+            <img
+              src="/icon-192.png"
+              alt=""
+              className="animate-spring-in mb-4 h-14 w-14 rounded-2xl shadow-[0_8px_24px_var(--accent-glow)]"
+            />
+            <h1 className="text-brand-gradient text-2xl font-semibold">Zaloguj się</h1>
+            <p className="mt-1 text-sm text-[var(--text-dim)]">Dostęp wyłącznie przez WB Platform</p>
+          </div>
+          <a href={HUB_URL} className={`${glassButtonPrimary} block text-center no-underline`}>
+            Zaloguj przez WB Platform
+          </a>
+          <p className="mt-4 text-center text-sm text-[var(--text-dim)]">
+            Konta i logowanie są zarządzane centralnie w WB Platform.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

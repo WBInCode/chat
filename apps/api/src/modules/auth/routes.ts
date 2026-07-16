@@ -7,6 +7,7 @@ import {
 import { createAuthRepo } from "./repo.js";
 import { createAuthService, AuthError } from "./service.js";
 import { parseOrThrow, ValidationError, sendError } from "../../lib/validation.js";
+import { env } from "../../config/env.js";
 
 export default async function authRoutes(fastify: FastifyInstance) {
   const repo = createAuthRepo(fastify.prisma);
@@ -38,6 +39,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
       }
     },
     async (request, reply) => {
+      if (env.AUTH_SSO_ONLY) {
+        return sendError(reply, 403, "SSO_ONLY", "Rejestracja lokalna wyłączona — zaloguj się przez WB Platform.");
+      }
       const input = parseOrThrow(registerSchema, request.body);
       const user = await service.register(input);
       return reply.status(201).send({
@@ -64,6 +68,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
       }
     },
     async (request, reply) => {
+      if (env.AUTH_SSO_ONLY) {
+        return sendError(reply, 403, "SSO_ONLY", "Logowanie lokalne wyłączone — zaloguj się przez WB Platform.");
+      }
       const input = parseOrThrow(loginSchema, request.body);
       const result = await service.login({
         email: input.email,

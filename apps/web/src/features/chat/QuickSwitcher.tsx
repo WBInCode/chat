@@ -72,7 +72,7 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div className="animate-modal-pop glass-strong fixed left-1/2 top-24 z-50 w-[28rem] -translate-x-1/2 overflow-hidden">
         <input
           ref={inputRef}

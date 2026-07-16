@@ -8,7 +8,7 @@ import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { renderMarkdown } from "./markdown.js";
 import { PollCard } from "./PollCard.js";
-import { EmojiPicker } from "./EmojiPicker.js";
+import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
 import { Icon } from "../../components/Icon.js";
 import {
   SmilePlus,
@@ -126,6 +126,7 @@ export function MessageRow({
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
+  const [fullPickerAnchor, setFullPickerAnchor] = useState<PickerAnchor | null>(null);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(m.content);
   // Touch devices have no hover, so the action bar is revealed via an
@@ -217,7 +218,7 @@ export function MessageRow({
             <Icon icon={MoreHorizontal} size={14} />
           </button>
           <div
-            className={`absolute -top-3 right-0 z-10 items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 shadow-lg backdrop-blur-md group-hover:flex ${
+            className={`animate-tool-pop origin-top-right absolute -top-3 right-0 z-10 items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 shadow-lg backdrop-blur-md group-hover:flex ${
               showActions ? "flex" : "hidden"
             }`}
             onClick={() => setShowActions(false)}
@@ -321,7 +322,7 @@ export function MessageRow({
 
       {/* Reaction picker */}
       {showPicker && (
-        <div className="animate-spring-in absolute -top-11 right-0 z-20 flex items-center gap-0.5 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1.5 py-1 shadow-xl backdrop-blur-lg">
+        <div className="animate-spring-in origin-bottom-right absolute -top-11 right-0 z-20 flex items-center gap-0.5 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1.5 py-1 shadow-xl backdrop-blur-lg">
           {ALLOWED_REACTIONS.map((emoji) => (
             <button
               key={emoji}
@@ -337,7 +338,8 @@ export function MessageRow({
           <span className="mx-0.5 h-4 w-px bg-[var(--glass-border)]" />
           <button
             title="Więcej emoji"
-            onClick={() => {
+            onClick={(e) => {
+              setFullPickerAnchor(e.currentTarget.getBoundingClientRect());
               setShowFullPicker(true);
               setShowPicker(false);
             }}
@@ -351,6 +353,7 @@ export function MessageRow({
       {/* Full emoji picker */}
       {showFullPicker && (
         <EmojiPicker
+          anchor={fullPickerAnchor}
           onPick={(emoji) => {
             onReact(m.id, emoji);
             setShowFullPicker(false);
@@ -439,9 +442,9 @@ export function MessageRow({
               <button
                 key={r.emoji}
                 onClick={() => onReact(m.id, r.emoji)}
-                className={`animate-spring-in flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-all ${
+                className={`animate-spring-in flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-all hover:scale-[1.08] active:scale-95 ${
                   iReacted
-                    ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]"
+                    ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_2px_8px_var(--accent-glow)]"
                     : "border-[var(--glass-border)] bg-[var(--glass)] hover:border-[var(--accent)]/40"
                 }`}
               >

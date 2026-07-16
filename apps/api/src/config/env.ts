@@ -33,7 +33,10 @@ const envSchema = z.object({
   VAPID_SUBJECT: z.string().default("mailto:admin@chatv2.local"),
   GROQ_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
-  AI_DAILY_LIMIT: z.coerce.number().int().positive().default(300)
+  AI_DAILY_LIMIT: z.coerce.number().int().positive().default(300),
+  // SSO-only: gdy true, lokalna rejestracja i logowanie hasłem są wyłączone —
+  // dostęp wyłącznie przez SSO z Hubem (wb-platform).
+  AUTH_SSO_ONLY: z.coerce.boolean().default(false)
 });
 
 const parsed = envSchema.safeParse(process.env);
