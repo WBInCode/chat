@@ -31,12 +31,12 @@
   "devDependencies": {
     "@chatv2/config": "workspace:*",
     "@playwright/test": "^1.61.1",
-    "@tailwindcss/vite": "^4.0.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
-    "@vitejs/plugin-react": "^4.3.4",
-    "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.0",
-    "vite": "^6.0.3"
+    "@vitejs/plugin-react": "^6.0.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5"
   }
 }
