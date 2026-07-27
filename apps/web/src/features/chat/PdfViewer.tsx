@@ -81,7 +81,7 @@ export function PdfViewer({ url, onClose }: PdfViewerProps) {
             disabled={page <= 1}
             className="rounded-md bg-white/10 px-2 py-1 disabled:opacity-30"
           >
-            ← Poprzednia
+            Poprzednia
           </button>
           <span>
             {page} / {numPages || "…"}
@@ -91,7 +91,7 @@ export function PdfViewer({ url, onClose }: PdfViewerProps) {
             disabled={page >= numPages}
             className="rounded-md bg-white/10 px-2 py-1 disabled:opacity-30"
           >
-            Następna →
+            Następna
           </button>
           <button
             onClick={() => setScale((s) => Math.max(0.5, s - 0.15))}
@@ -107,7 +107,7 @@ export function PdfViewer({ url, onClose }: PdfViewerProps) {
           </button>
         </div>
         <button onClick={onClose} className="rounded-md bg-white/10 px-3 py-1">
-          Zamknij ✕
+          Zamknij
         </button>
       </div>
 

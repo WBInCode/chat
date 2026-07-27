@@ -32,7 +32,15 @@ export default async function searchRoutes(fastify: FastifyInstance) {
     await assertOrgMember(fastify, userId, query.orgId);
     await assertModuleEnabled(fastify, query.orgId, "search");
 
-    const conditions = [Prisma.sql`cm."userId" = ${userId}`, Prisma.sql`c."orgId" = ${query.orgId}`, Prisma.sql`m."deletedAt" IS NULL`];
+    const conditions = [
+      Prisma.sql`cm."userId" = ${userId}`,
+      Prisma.sql`c."orgId" = ${query.orgId}`,
+      Prisma.sql`m."deletedAt" IS NULL`,
+      // E2E ciphertext and at-rest-encrypted rows are opaque to FTS — the
+      // former must never be returned raw, the latter can never match.
+      Prisma.sql`m."contentType" != 'e2e'`,
+      Prisma.sql`m."encrypted" = false`
+    ];
     if (query.q.length >= 2) {
       conditions.push(Prisma.sql`to_tsvector('simple', m.content) @@ websearch_to_tsquery('simple', ${query.q})`);
     }

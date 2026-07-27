@@ -32,6 +32,8 @@ export interface ChannelDto {
   favorite?: boolean;
   lastReadAt?: string | null;
   archivedAt?: string | null;
+  e2ee?: boolean;
+  messageTtlSeconds?: number | null;
 }
 
 export interface MessageDto {
@@ -39,7 +41,7 @@ export interface MessageDto {
   channelId: string;
   authorId: string;
   content: string;
-  contentType: "text" | "file" | "image" | "system" | "poll";
+  contentType: "text" | "file" | "image" | "system" | "poll" | "e2e";
   parentId: string | null;
   editedAt: string | null;
   createdAt: string;

@@ -74,8 +74,8 @@ export function CreateChannelModal({ orgId, onClose, onCreated }: CreateChannelM
           <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--glass-border)] p-2.5 text-sm has-[:checked]:border-[var(--accent)]">
             <input type="radio" checked={type === "PRIVATE"} onChange={() => setType("PRIVATE")} className="mt-0.5 accent-[var(--accent)]" />
             <span>
-              <span className="block font-medium">🔒 Prywatny</span>
-              <span className="block text-xs text-[var(--text-dim)]">Tylko zaproszeni członkowie — dodasz ich po utworzeniu</span>
+              <span className="block font-medium">Prywatny</span>
+              <span className="block text-xs text-[var(--text-dim)]">Tylko zaproszeni członkowie. Dodasz ich po utworzeniu.</span>
             </span>
           </label>
         </div>

@@ -8,6 +8,7 @@ import {
   updateProfileSchema,
   avatarPresignSchema,
   avatarCompleteSchema,
+  publishE2eKeySchema,
   type ProfileDto
 } from "@chatv2/shared";
 import { parseOrThrow } from "../../lib/validation.js";
@@ -68,6 +69,30 @@ export default async function profileRoutes(fastify: FastifyInstance) {
     const user = await fastify.prisma.user.findUnique({ where: { id: request.user!.id } });
     if (!user) notFound("Użytkownik nie istnieje");
     return toProfileDto(user);
+  });
+
+  /**
+   * Publish this device's X25519 identity public key (E2E DMs). The private
+   * key NEVER leaves the client. Publishing a new key (e.g. new browser)
+   * replaces the old one — previously encrypted history stays readable only
+   * on devices holding the matching private key.
+   */
+  fastify.put("/me/e2e-key", async (request) => {
+    const input = parseOrThrow(publishE2eKeySchema, request.body);
+    await fastify.prisma.user.update({
+      where: { id: request.user!.id },
+      data: { publicKey: input.publicKey }
+    });
+    return { ok: true };
+  });
+
+  /** Own public key (client checks whether its local keypair is the published one). */
+  fastify.get("/me/e2e-key", async (request) => {
+    const user = await fastify.prisma.user.findUnique({
+      where: { id: request.user!.id },
+      select: { publicKey: true }
+    });
+    return { publicKey: user?.publicKey ?? null };
   });
 
   fastify.patch("/me/profile", async (request) => {

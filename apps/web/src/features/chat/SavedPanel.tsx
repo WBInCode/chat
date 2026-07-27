@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { MessageDto, SavedMessageDto } from "@chatv2/shared";
+import { Bookmark, X } from "lucide-react";
+import { Icon } from "../../components/Icon.js";
 import { apiFetch } from "../../lib/api.js";
 import { MessageRow } from "./MessageRow.js";
 
@@ -35,15 +37,17 @@ export function SavedPanel({ currentUserId, members, onClose, onToggleSave }: Sa
   return (
     <aside className="glass-strong fixed inset-0 z-40 flex flex-col overflow-hidden md:static md:z-auto md:w-80 md:shrink-0">
       <div className="flex items-center justify-between border-b border-[var(--glass-border)] p-3">
-        <span className="text-sm font-semibold">🔖 Zapisane wiadomości</span>
-        <button onClick={onClose} className="text-[var(--text-dim)] hover:text-[var(--text)]">
-          ✕
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <Icon icon={Bookmark} size={15} className="text-[var(--accent)]" /> Zapisane wiadomości
+        </span>
+        <button onClick={onClose} aria-label="Zamknij" className="text-[var(--text-dim)] hover:text-[var(--text)]">
+          <Icon icon={X} size={16} />
         </button>
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {items === null && <p className="text-sm text-[var(--text-dim)]">Ładowanie…</p>}
         {items?.length === 0 && (
-          <p className="text-sm text-[var(--text-dim)]">Brak zapisanych wiadomości. Kliknij 📑 przy wiadomości, aby ją zapisać.</p>
+          <p className="text-sm text-[var(--text-dim)]">Brak zapisanych wiadomości. Użyj opcji Zapisz w menu wiadomości, aby dodać ją tutaj.</p>
         )}
         {items?.map((item) => (
           <div key={item.message.id} className="rounded-lg border border-[var(--glass-border)] p-2">

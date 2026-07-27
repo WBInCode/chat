@@ -16,7 +16,8 @@ export type SetDeactivatedInput = z.infer<typeof setDeactivatedSchema>;
 export const orgSettingsSchema = z.object({
   require2fa: z.boolean().optional(),
   messageRetentionDays: z.number().int().positive().max(3650).nullable().optional(),
-  allowedEmailDomains: z.string().trim().max(500).nullable().optional()
+  allowedEmailDomains: z.string().trim().max(500).nullable().optional(),
+  encryptAtRest: z.boolean().optional()
 });
 export type OrgSettingsInput = z.infer<typeof orgSettingsSchema>;
 

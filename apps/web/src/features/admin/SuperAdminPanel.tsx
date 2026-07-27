@@ -78,7 +78,7 @@ export function SuperAdminPanel() {
       <div>
         <h1 className="text-lg font-semibold">Panel super-admina</h1>
         <p className="text-xs text-[var(--text-dim)]">
-          Zarządzanie użytkownikami i organizacjami w całej instalacji — niezależnie od ról w konkretnej organizacji.
+          Zarządzanie użytkownikami i organizacjami w całej instalacji, niezależnie od ról w konkretnej organizacji.
         </p>
       </div>
 
@@ -147,7 +147,12 @@ export function SuperAdminPanel() {
               <tr key={u.id} className="border-b border-[var(--glass-border)]/50 align-top">
                 <td className="py-2">
                   <div className="font-medium">
-                    {u.displayName} {u.isSuperAdmin && <span className="text-[var(--warning)]">★</span>}
+                    {u.displayName}{" "}
+                    {u.isSuperAdmin && (
+                      <span className="rounded-full bg-[var(--warning)]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--warning)]">
+                        super-admin
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-[var(--text-dim)]">{u.email}</div>
                 </td>

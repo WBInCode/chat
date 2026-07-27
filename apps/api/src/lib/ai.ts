@@ -21,9 +21,13 @@ export function isAiEnabled(): boolean {
 
 const AI_QUOTA_TTL_SECONDS = 60 * 60 * 26; // a little over a day, so the key naturally expires
 
-/** Redis-backed hard daily budget shared across the whole org/install — never call paid tiers. */
-export async function checkAndConsumeQuota(fastify: FastifyInstance): Promise<boolean> {
-  const key = `ai-quota:${new Date().toISOString().slice(0, 10)}`;
+/**
+ * Redis-backed hard daily budget, keyed PER ORGANIZATION so one org cannot
+ * exhaust the free tier for every other tenant. Calls without an org
+ * context (should not happen in practice) share a "global" bucket.
+ */
+export async function checkAndConsumeQuota(fastify: FastifyInstance, orgId?: string): Promise<boolean> {
+  const key = `ai-quota:${orgId ?? "global"}:${new Date().toISOString().slice(0, 10)}`;
   const count = await fastify.redis.incr(key);
   if (count === 1) {
     await fastify.redis.expire(key, AI_QUOTA_TTL_SECONDS);
@@ -107,11 +111,11 @@ async function callGemini(messages: ChatMessage[], temperature = 0.5): Promise<s
 export async function chatCompletion(
   fastify: FastifyInstance,
   messages: ChatMessage[],
-  options: { temperature?: number } = {}
+  options: { temperature?: number; orgId?: string } = {}
 ): Promise<string> {
   if (!isAiEnabled()) throw new AiDisabledError();
 
-  const withinBudget = await checkAndConsumeQuota(fastify);
+  const withinBudget = await checkAndConsumeQuota(fastify, options.orgId);
   if (!withinBudget) throw new AiQuotaExceededError();
 
   const { temperature } = options;

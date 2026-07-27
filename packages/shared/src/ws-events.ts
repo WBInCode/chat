@@ -27,6 +27,7 @@ export const WS_SERVER_EVENTS = {
   PresenceUpdate: "presence:update",
   ChannelCreated: "channel:created",
   ChannelMemberJoined: "channel:member-joined",
+  ChannelSettingsUpdated: "channel:settings-updated",
   FileStatus: "file:status",
   FilePreview: "file:preview",
   MessageEmbeds: "message:embeds",
@@ -47,6 +48,7 @@ export interface ClientToServerEvents {
     channelId: string;
     tempId: string;
     content: string;
+    contentType?: "text" | "e2e";
     fileIds?: string[];
     parentId?: string;
   }) => void;
@@ -91,6 +93,11 @@ export interface ServerToClientEvents {
   [WS_SERVER_EVENTS.ChannelMemberJoined]: (payload: {
     channelId: string;
     userId: string;
+  }) => void;
+  [WS_SERVER_EVENTS.ChannelSettingsUpdated]: (payload: {
+    channelId: string;
+    e2ee?: boolean;
+    messageTtlSeconds?: number | null;
   }) => void;
   [WS_SERVER_EVENTS.FileStatus]: (payload: {
     fileId: string;

@@ -2,12 +2,18 @@ import { z } from "zod";
 
 // Max message length enforced both client & server side (DoS / abuse guard).
 export const MAX_MESSAGE_LENGTH = 8000;
+// E2E ciphertext is base64 of (nonce + box) over UTF-8 plaintext, so the
+// stored content is longer than the 8000-char plaintext limit the client
+// enforces before encrypting. Headroom for 8000 chars of 4-byte UTF-8.
+export const MAX_E2E_CONTENT_LENGTH = 48_000;
 
 export const sendMessageSchema = z
   .object({
     channelId: z.string().uuid(),
     // Caption is optional when the message carries at least one file.
-    content: z.string().trim().max(MAX_MESSAGE_LENGTH).default(""),
+    content: z.string().trim().max(MAX_E2E_CONTENT_LENGTH).default(""),
+    // "e2e" = content is client-side ciphertext; server treats it as opaque.
+    contentType: z.enum(["text", "e2e"]).default("text"),
     fileIds: z.array(z.string().uuid()).max(10).default([]),
     // Thread reply: parent message id (must belong to the same channel).
     parentId: z.string().uuid().optional(),
@@ -15,11 +21,17 @@ export const sendMessageSchema = z
   })
   .refine((v) => v.content.length > 0 || v.fileIds.length > 0, {
     message: "Wiadomość musi zawierać treść lub co najmniej jeden plik"
+  })
+  .refine((v) => v.contentType === "e2e" || v.content.length <= MAX_MESSAGE_LENGTH, {
+    message: `Wiadomość może mieć maksymalnie ${MAX_MESSAGE_LENGTH} znaków`
+  })
+  .refine((v) => v.contentType !== "e2e" || v.fileIds.length === 0, {
+    message: "Załączniki nie są dostępne w rozmowach szyfrowanych"
   });
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 
 export const editMessageSchema = z.object({
-  content: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH)
+  content: z.string().trim().min(1).max(MAX_E2E_CONTENT_LENGTH)
 });
 export type EditMessageInput = z.infer<typeof editMessageSchema>;
 

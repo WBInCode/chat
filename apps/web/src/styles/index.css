@@ -1,75 +1,78 @@
 @import "tailwindcss";
 
-/* ── Design tokens ────────────────────────────────────────────────────── */
+/* ── Design tokens: clean corporate (solid surfaces, one accent) ─────── */
 :root {
-  /* Typography roles — loaded as variable fonts from main.tsx. */
+  /* Typography roles: loaded as variable fonts from main.tsx. */
   --font-body: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Sora Variable", var(--font-body);
+  --font-display: var(--font-body);
   --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Code", Consolas, monospace;
 
-  --bg-base: #eef0f7;
-  --mesh-1: rgba(93, 95, 239, 0.17);
-  --mesh-2: rgba(139, 92, 246, 0.13);
-  --mesh-3: rgba(56, 189, 168, 0.11);
+  --bg-base: #f2f3f7;
+  --mesh-1: transparent;
+  --mesh-2: transparent;
+  --mesh-3: transparent;
 
-  --glass: rgba(255, 255, 255, 0.55);
-  --glass-strong: rgba(255, 255, 255, 0.78);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-highlight: rgba(255, 255, 255, 0.9);
+  /* Legacy token names kept (whole app references them); values are now
+     solid corporate surfaces, not translucent glass. */
+  --glass: #ffffff;
+  --glass-strong: #ffffff;
+  --glass-border: #e2e5ec;
+  --glass-highlight: #ffffff;
 
   --bg: var(--bg-base);
   --surface: var(--glass);
-  --border: rgba(17, 24, 39, 0.08);
-  --text: #15171d;
-  --text-dim: #5d6675;
+  --border: #e2e5ec;
+  --text: #1b1f27;
+  --text-dim: #5f6877;
 
-  /* Accent system: indigo → violet, matching the app icon. */
-  --accent: #5b5fe8;
-  --accent-hi: #8b5cf6;
-  --accent-grad: linear-gradient(135deg, #5b5fe8 0%, #8b5cf6 100%);
-  --accent-glow: rgba(99, 96, 240, 0.35);
-  --accent-2: #14a06d;
-  --danger: #e5484d;
-  --warning: #f5a623;
+  /* One flat accent. No gradients. */
+  --accent: #3d6df2;
+  --accent-hi: #2b55d4;
+  --accent-grad: linear-gradient(135deg, #3d6df2 0%, #3d6df2 100%);
+  --accent-glow: rgba(61, 109, 242, 0.18);
+  --accent-ring: rgba(61, 109, 242, 0.28);
+  --accent-2: #12a66b;
+  --danger: #d93840;
+  --warning: #b97a08;
 
   --shadow-glass:
-    0 2px 6px rgba(31, 41, 55, 0.05),
-    0 16px 40px -12px rgba(31, 41, 55, 0.16),
-    0 1px 0 rgba(255, 255, 255, 0.45) inset;
-  --radius-glass: 18px;
+    0 1px 2px rgba(23, 30, 46, 0.05),
+    0 4px 14px -6px rgba(23, 30, 46, 0.08);
+  --radius-glass: 12px;
 }
 
 :root.dark {
-  --bg-base: #0a0c13;
-  --mesh-1: rgba(93, 95, 239, 0.17);
-  --mesh-2: rgba(139, 92, 246, 0.13);
-  --mesh-3: rgba(34, 197, 183, 0.08);
+  --bg-base: #101318;
+  --mesh-1: transparent;
+  --mesh-2: transparent;
+  --mesh-3: transparent;
 
-  --glass: rgba(21, 25, 37, 0.55);
-  --glass-strong: rgba(21, 25, 37, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-highlight: rgba(255, 255, 255, 0.06);
+  --glass: #171b22;
+  --glass-strong: #1b2029;
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-highlight: rgba(255, 255, 255, 0.05);
 
   --bg: var(--bg-base);
   --surface: var(--glass);
-  --border: rgba(255, 255, 255, 0.08);
-  --text: #e9ecf2;
-  --text-dim: #8a93a5;
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #e7eaf0;
+  --text-dim: #99a2b1;
 
-  --accent: #818cf8;
-  --accent-hi: #a78bfa;
-  --accent-grad: linear-gradient(135deg, #6d74f0 0%, #9d6ff8 100%);
-  --accent-glow: rgba(129, 140, 248, 0.38);
+  --accent: #7c93f5;
+  --accent-hi: #98abf8;
+  --accent-grad: linear-gradient(135deg, #7c93f5 0%, #7c93f5 100%);
+  --accent-glow: rgba(124, 147, 245, 0.2);
+  --accent-ring: rgba(124, 147, 245, 0.32);
   --accent-2: #34c88a;
   --danger: #ff6369;
+  --warning: #e8a13c;
 
   --shadow-glass:
-    0 2px 8px rgba(0, 0, 0, 0.3),
-    0 20px 48px -12px rgba(0, 0, 0, 0.55),
-    0 1px 0 rgba(255, 255, 255, 0.05) inset;
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 6px 18px -8px rgba(0, 0, 0, 0.45);
 }
 
-/* ── Midnight: czysta czeŕń OLED, bez mesh-gradientu i blurów (F6-A.2) ── */
+/* ── Midnight: czysta czerń OLED, solidne powierzchnie (F6-A.2) ── */
 :root.midnight {
   --bg-base: #000000;
   --mesh-1: transparent;
@@ -86,10 +89,11 @@
   --border: rgba(255, 255, 255, 0.09);
   --text: #e9ecf2;
   --text-dim: #8f97a8;
-  --accent: #818cf8;
-  --accent-hi: #a78bfa;
-  --accent-grad: linear-gradient(135deg, #6d74f0 0%, #9d6ff8 100%);
+  --accent: #7c93f5;
+  --accent-hi: #98abf8;
+  --accent-grad: linear-gradient(135deg, #7c93f5 0%, #7c93f5 100%);
   --accent-glow: transparent;
+  --accent-ring: rgba(124, 147, 245, 0.32);
   --accent-2: #34c88a;
   --danger: #ff6369;
 
@@ -98,18 +102,11 @@
 
 :root.midnight .glass,
 :root.midnight .glass-strong {
-  /* Solid surfaces — no backdrop blur on OLED (battery + pure black). */
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  box-shadow: none;
 }
 
 :root.midnight body {
   background-image: none;
-}
-
-:root.midnight body::before,
-:root.midnight body::after {
-  display: none;
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────── */
@@ -121,11 +118,6 @@ body,
 
 body {
   background-color: var(--bg-base);
-  background-image:
-    radial-gradient(ellipse 60% 50% at 15% 10%, var(--mesh-1), transparent),
-    radial-gradient(ellipse 55% 45% at 85% 20%, var(--mesh-2), transparent),
-    radial-gradient(ellipse 50% 60% at 50% 100%, var(--mesh-3), transparent);
-  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-body);
   font-optical-sizing: auto;
@@ -134,56 +126,6 @@ body {
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
-}
-
-/* ── Living aurora background ─────────────────────────────────────────
-   Two soft color fields drifting on opposite slow orbits behind all
-   content. Transform-only (GPU compositing, no repaint), disabled on
-   midnight (pure black) and under prefers-reduced-motion. */
-@keyframes aurora-drift-a {
-  0% {
-    transform: translate3d(-4%, -2%, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(5%, 4%, 0) scale(1.12);
-  }
-  100% {
-    transform: translate3d(-4%, -2%, 0) scale(1);
-  }
-}
-
-@keyframes aurora-drift-b {
-  0% {
-    transform: translate3d(3%, 2%, 0) scale(1.08);
-  }
-  50% {
-    transform: translate3d(-5%, -4%, 0) scale(0.96);
-  }
-  100% {
-    transform: translate3d(3%, 2%, 0) scale(1.08);
-  }
-}
-
-body::before,
-body::after {
-  content: "";
-  position: fixed;
-  inset: -20%;
-  z-index: -1;
-  pointer-events: none;
-  will-change: transform;
-}
-
-body::before {
-  background:
-    radial-gradient(ellipse 42% 34% at 22% 24%, var(--mesh-1), transparent 70%),
-    radial-gradient(ellipse 36% 30% at 76% 70%, var(--mesh-3), transparent 70%);
-  animation: aurora-drift-a 46s ease-in-out infinite;
-}
-
-body::after {
-  background: radial-gradient(ellipse 40% 36% at 72% 22%, var(--mesh-2), transparent 70%);
-  animation: aurora-drift-b 58s ease-in-out infinite;
 }
 
 /* Display face for headings & brand moments. */
@@ -200,8 +142,8 @@ kbd {
   font-family: var(--font-mono);
 }
 
-/* Inputs inherit theme text color explicitly — without this, the UA
-   default (black) makes typed text invisible on dark glass surfaces. */
+/* Inputs inherit theme text color explicitly. Without this, the UA
+   default (black) makes typed text invisible on dark surfaces. */
 input,
 textarea,
 select {
@@ -216,8 +158,8 @@ textarea::placeholder {
 }
 
 /* ── Accessibility: visible focus ring for keyboard navigation ───────── */
-/* Only shown for keyboard focus (:focus-visible), never for mouse clicks —
-   avoids the "focus ring flashes on every click" complaint while still
+/* Only shown for keyboard focus (:focus-visible), never for mouse clicks.
+   Avoids the "focus ring flashes on every click" complaint while still
    satisfying WCAG 2.4.7 (Focus Visible) for keyboard/screen-reader users. */
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -288,80 +230,36 @@ textarea::placeholder {
   background: transparent;
 }
 
-/* ── Liquid glass surfaces ────────────────────────────────────────────── */
+/* ── Surfaces: solid cards (legacy class names kept app-wide) ─────────── */
 .glass {
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-glass);
   box-shadow: var(--shadow-glass);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
 }
 
 .glass-strong {
-  /* Prismatic top edge: a faint accent-tinted light catching the rim,
-     layered as a 1px background stripe (NOT a positioned pseudo-element —
-     modals combine .glass-strong with `fixed`, so this class must never
-     touch `position`). */
-  background:
-    linear-gradient(
-        90deg,
-        transparent 5%,
-        color-mix(in srgb, var(--accent) 45%, var(--glass-highlight)) 30%,
-        color-mix(in srgb, var(--accent-hi) 45%, var(--glass-highlight)) 70%,
-        transparent 95%
-      )
-      top / 100% 1px no-repeat,
-    var(--glass-strong);
+  background: var(--glass-strong);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-glass);
-  box-shadow: var(--shadow-glass);
-  backdrop-filter: blur(28px) saturate(170%);
-  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  box-shadow:
+    var(--shadow-glass),
+    0 12px 32px -12px rgba(23, 30, 46, 0.18);
 }
 
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass,
-  .glass-strong {
-    background: var(--surface);
-  }
-}
-
-/* ── Brand utilities ─────────────────────────────────────────────────── */
-/* Gradient text for brand moments (login title, onboarding welcome). */
+/* ── Brand utilities (names kept; values are flat now) ───────────────── */
 .text-brand-gradient {
-  background: var(--accent-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
+  color: var(--accent);
 }
 
-/* Gradient-filled primary action. Sheen sweeps across on hover. */
+/* Primary action: flat accent fill, darkens on hover. */
 .btn-gradient {
-  position: relative;
-  background: var(--accent-grad);
-  overflow: hidden;
-  isolation: isolate;
+  background: var(--accent);
+  transition: background-color 0.15s ease;
 }
 
-.btn-gradient::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: linear-gradient(
-    115deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.35) 50%,
-    transparent 70%
-  );
-  transform: translateX(-120%);
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.btn-gradient:hover::after {
-  transform: translateX(120%);
+.btn-gradient:hover {
+  background: var(--accent-hi);
 }
 
 /* ── Animations ───────────────────────────────────────────────────────── */
@@ -551,18 +449,16 @@ textarea::placeholder {
 .cascade > *:nth-child(6) { animation-delay: 0.23s; }
 .cascade > *:nth-child(n + 7) { animation-delay: 0.27s; }
 
-/* ── Composer focus glow: the "you are here" moment of the chat ──────── */
+/* ── Composer focus: clear accent border, no glow ────────────────────── */
 .composer-glow {
   transition:
-    box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.25s ease;
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .composer-glow:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--glass-border));
-  box-shadow:
-    0 0 0 3px var(--accent-ring, color-mix(in srgb, var(--accent) 22%, transparent)),
-    0 8px 28px -8px var(--accent-glow);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 /* ── Message hover lift: rows respond to the pointer like paper ──────── */
@@ -571,7 +467,7 @@ textarea::placeholder {
   border-radius: 12px;
 }
 
-/* ── Active channel indicator: gradient ink bar ──────────────────────── */
+/* ── Active channel indicator: flat accent bar ───────────────────────── */
 .nav-active-bar {
   position: absolute;
   left: -2px;
@@ -579,24 +475,12 @@ textarea::placeholder {
   bottom: 20%;
   width: 3px;
   border-radius: 3px;
-  background: var(--accent-grad);
-  box-shadow: 0 0 8px var(--accent-glow);
+  background: var(--accent);
 }
 
-/* Sidebar active "pill" slides smoothly between items. */
 .nav-item {
   position: relative;
-  transition:
-    color 0.15s ease,
-    transform 0.15s ease;
-}
-
-.nav-item:hover {
-  transform: translateX(2px);
-}
-
-.nav-item:active {
-  transform: translateX(2px) scale(0.985);
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 /* ── Scrollbars: thin, glassy, only visible where needed ─────────────── */

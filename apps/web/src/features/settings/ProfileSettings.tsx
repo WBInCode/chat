@@ -213,7 +213,7 @@ export function ProfileSettings() {
           >
             {STATUS_EMOJI_OPTIONS.map((emoji) => (
               <option key={emoji || "none"} value={emoji}>
-                {emoji || "—"}
+                {emoji || "brak"}
               </option>
             ))}
           </select>
@@ -243,7 +243,7 @@ export function ProfileSettings() {
         <button type="button" className={`${glassButtonPrimary} !w-auto`} onClick={save} disabled={saving}>
           {saving ? "Zapisywanie…" : "Zapisz profil"}
         </button>
-        {saved && <span className="text-sm text-[var(--accent-2)]">✓ Zapisano</span>}
+        {saved && <span className="text-sm text-[var(--accent-2)]">Zapisano</span>}
       </div>
     </div>
   );

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FileDto } from "@chatv2/shared";
+import type { LucideIcon } from "lucide-react";
+import { FileText, FileSpreadsheet, Presentation, FolderArchive, File, Paperclip } from "lucide-react";
+import { Icon } from "../../components/Icon.js";
 import { apiFetch } from "../../lib/api.js";
 import { PdfViewer } from "./PdfViewer.js";
 
@@ -19,13 +22,14 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function fileIcon(mimeType: string): string {
-  if (mimeType === "application/pdf") return "📄";
-  if (mimeType.includes("wordprocessingml")) return "📝";
-  if (mimeType.includes("spreadsheetml")) return "📊";
-  if (mimeType.includes("presentationml")) return "📽️";
-  if (mimeType === "application/zip") return "🗜️";
-  return "📎";
+function fileIcon(mimeType: string): LucideIcon {
+  if (mimeType === "application/pdf") return FileText;
+  if (mimeType.includes("wordprocessingml")) return FileText;
+  if (mimeType.includes("spreadsheetml")) return FileSpreadsheet;
+  if (mimeType.includes("presentationml")) return Presentation;
+  if (mimeType === "application/zip") return FolderArchive;
+  if (mimeType.startsWith("text/")) return File;
+  return Paperclip;
 }
 
 /** One attachment row: image → thumbnail + lightbox; other → download card. */
@@ -181,7 +185,9 @@ export function FileAttachment({
         onClick={download}
         className="mt-1 flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-xs hover:bg-[var(--border)]/30"
       >
-        <span className="text-lg">{fileIcon(file.mimeType)}</span>
+        <span className="text-[var(--text-dim)]">
+          <Icon icon={fileIcon(file.mimeType)} size={20} />
+        </span>
         <span className="min-w-0">
           <span className="block truncate font-medium">{file.name}</span>
           <span className="text-[var(--text-dim)]">
@@ -197,7 +203,7 @@ export function FileAttachment({
           disabled={previewGenerating}
           className="ml-1 mt-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--accent)] hover:bg-[var(--accent)]/10 disabled:cursor-not-allowed disabled:text-[var(--text-dim)]"
         >
-          {previewGenerating ? "Generowanie podglądu..." : previewFailed ? "Podgląd niedostępny" : "👁 Podgląd"}
+          {previewGenerating ? "Generowanie podglądu..." : previewFailed ? "Podgląd niedostępny" : "Podgląd"}
         </button>
       )}
       {previewError && <p className="mt-1 text-xs text-[var(--danger)]">{previewError}</p>}

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { Clock } from "lucide-react";
+import { Icon } from "../../components/Icon.js";
 
 interface SchedulePickerProps {
   onClose: () => void;
@@ -36,7 +38,9 @@ export function SchedulePicker({ onClose, onSubmit }: SchedulePickerProps) {
     <>
       <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-80 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 p-5">
-        <h2 className="text-sm font-semibold">🕐 Wyślij później</h2>
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+          <Icon icon={Clock} size={15} className="text-[var(--accent)]" /> Wyślij później
+        </h2>
         <input
           type="datetime-local"
           value={value}

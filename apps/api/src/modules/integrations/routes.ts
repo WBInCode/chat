@@ -11,6 +11,7 @@ import { assertModuleEnabled, isModuleEnabled } from "../../lib/modules.js";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import { generateRefreshToken, hashToken } from "../../lib/tokens.js";
 import { logAudit } from "../../lib/audit.js";
+import { encryptMessageContent, isOrgEncryptedAtRest } from "../../lib/message-crypto.js";
 
 const INTEGRATION_BOT_EMAIL = "integrations@chatv2.system";
 const INTEGRATION_BOT_DISPLAY_NAME = "Integracje";
@@ -204,8 +205,15 @@ export async function incomingWebhookRoute(fastify: FastifyInstance) {
         .join("\n\n");
       const content = [header + input.text, attachments].filter(Boolean).join("\n\n").slice(0, 4000);
 
+      const encryptAtRest = await isOrgEncryptedAtRest(fastify, webhook.orgId);
       const message = await fastify.prisma.message.create({
-        data: { channelId: webhook.channelId, authorId: bot.id, content, contentType: "text" }
+        data: {
+          channelId: webhook.channelId,
+          authorId: bot.id,
+          content: encryptAtRest ? encryptMessageContent(content) : content,
+          encrypted: encryptAtRest,
+          contentType: "text"
+        }
       });
 
       await fastify.prisma.integrationWebhook.update({
@@ -217,7 +225,7 @@ export async function incomingWebhookRoute(fastify: FastifyInstance) {
         id: message.id,
         channelId: message.channelId,
         authorId: message.authorId,
-        content: message.content,
+        content,
         contentType: "text",
         parentId: null,
         editedAt: null,

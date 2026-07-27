@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { BarChart3, X } from "lucide-react";
+import { Icon } from "../../components/Icon.js";
 
 interface CreatePollModalProps {
   onClose: () => void;
@@ -31,7 +33,9 @@ export function CreatePollModal({ onClose, onSubmit }: CreatePollModalProps) {
     <>
       <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-96 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 p-5">
-        <h2 className="text-sm font-semibold">📊 Nowa ankieta</h2>
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+          <Icon icon={BarChart3} size={15} className="text-[var(--accent)]" /> Nowa ankieta
+        </h2>
         <input
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
@@ -50,8 +54,8 @@ export function CreatePollModal({ onClose, onSubmit }: CreatePollModalProps) {
                 className="flex-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2 py-1.5 text-sm outline-none"
               />
               {options.length > 2 && (
-                <button onClick={() => removeOption(i)} className="text-[var(--danger)]">
-                  ✕
+                <button onClick={() => removeOption(i)} aria-label="Usuń opcję" className="text-[var(--danger)]">
+                  <Icon icon={X} size={14} />
                 </button>
               )}
             </div>

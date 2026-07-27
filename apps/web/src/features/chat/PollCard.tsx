@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { BarChart3, Check } from "lucide-react";
+import { Icon } from "../../components/Icon.js";
 import { apiFetch } from "../../lib/api.js";
 import { getSocket } from "../../lib/socket.js";
 
@@ -59,7 +61,9 @@ export function PollCard({ messageId }: { messageId: string }) {
 
   return (
     <div className="mt-1 space-y-1.5 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] p-3">
-      <p className="text-sm font-semibold">📊 {poll.question}</p>
+      <p className="flex items-center gap-1.5 text-sm font-semibold">
+        <Icon icon={BarChart3} size={14} className="text-[var(--accent)]" /> {poll.question}
+      </p>
       {poll.options.map((opt) => {
         const pct = poll.totalVotes > 0 ? Math.round((opt.votes / poll.totalVotes) * 100) : 0;
         return (
@@ -73,8 +77,8 @@ export function PollCard({ messageId }: { messageId: string }) {
               style={{ width: `${pct}%` }}
             />
             <span className="relative flex items-center justify-between">
-              <span className={opt.votedByMe ? "font-medium text-[var(--accent)]" : ""}>
-                {opt.votedByMe ? "✓ " : ""}
+              <span className={opt.votedByMe ? "flex items-center gap-1 font-medium text-[var(--accent)]" : ""}>
+                {opt.votedByMe && <Icon icon={Check} size={13} />}
                 {opt.text}
               </span>
               <span className="text-xs text-[var(--text-dim)]">

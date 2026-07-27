@@ -86,7 +86,7 @@ export function DataPrivacySection() {
             href={exportState.downloadUrl}
             className="block text-sm font-medium text-[var(--accent)] hover:underline"
           >
-            ⬇ Pobierz plik eksportu (.zip)
+            Pobierz plik eksportu (.zip)
           </a>
         )}
         {exportState?.status === "FAILED" && (

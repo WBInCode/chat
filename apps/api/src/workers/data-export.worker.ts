@@ -7,6 +7,7 @@ import { s3 } from "../lib/s3.js";
 import { env } from "../config/env.js";
 import { queueConnection, DATA_EXPORT_QUEUE, type DataExportJobData } from "../lib/queue.js";
 import { logAudit } from "../lib/audit.js";
+import { decryptMessageContent } from "../lib/message-crypto.js";
 
 /**
  * Streams a set of named JSON files into a zip and uploads it to S3,
@@ -65,8 +66,14 @@ export function registerDataExportWorker(fastify: FastifyInstance) {
 
         const messages = await fastify.prisma.message.findMany({
           where: { authorId: exportRow.targetUserId, channel: { orgId: { in: orgIds } } },
-          select: { id: true, channelId: true, content: true, contentType: true, createdAt: true, editedAt: true, deletedAt: true }
+          select: { id: true, channelId: true, content: true, contentType: true, encrypted: true, createdAt: true, editedAt: true, deletedAt: true }
         });
+        // GDPR export must contain readable data: decrypt at-rest rows.
+        // E2E ciphertext stays as-is — the server cannot decrypt it.
+        const exportableMessages = messages.map(({ encrypted, ...m }) => ({
+          ...m,
+          content: m.contentType === "e2e" ? "[zaszyfrowane end-to-end]" : decryptMessageContent({ content: m.content, encrypted })
+        }));
 
         const files = await fastify.prisma.file.findMany({
           where: { uploaderId: exportRow.targetUserId, orgId: { in: orgIds } },
@@ -94,7 +101,7 @@ export function registerDataExportWorker(fastify: FastifyInstance) {
             name: "memberships.json",
             content: memberships.map((m) => ({ org: m.org.name, role: m.role, joinedAt: m.createdAt }))
           },
-          { name: "messages.json", content: messages },
+          { name: "messages.json", content: exportableMessages },
           { name: "files.json", content: files },
           { name: "audit-log-actions.json", content: auditEntries }
         ]);

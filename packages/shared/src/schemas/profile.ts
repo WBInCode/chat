@@ -26,6 +26,14 @@ export const avatarCompleteSchema = z.object({
 });
 export type AvatarCompleteInput = z.infer<typeof avatarCompleteSchema>;
 
+// E2E identity key publication: raw X25519 public key, base64 (32 bytes -> 44 chars).
+export const publishE2eKeySchema = z.object({
+  publicKey: z
+    .string()
+    .regex(/^[A-Za-z0-9+/]{43}=$/, "Nieprawidłowy format klucza publicznego")
+});
+export type PublishE2eKeyInput = z.infer<typeof publishE2eKeySchema>;
+
 export interface ProfileDto {
   id: string;
   email: string;
