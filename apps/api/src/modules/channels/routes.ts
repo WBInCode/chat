@@ -19,6 +19,7 @@ import {
   forbidden,
   notFound
 } from "../../lib/authz.js";
+import { assertModuleEnabled } from "../../lib/modules.js";
 import { logAudit } from "../../lib/audit.js";
 
 export default async function channelRoutes(fastify: FastifyInstance) {
@@ -450,6 +451,11 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     const membership = await assertChannelMember(fastify, userId, channelId);
     if (membership.channel.type !== "DM") {
       return sendError(reply, 400, "E2E_DM_ONLY", "Szyfrowanie end-to-end jest dostępne tylko w rozmowach 1:1");
+    }
+    // Hub-governed entitlement: the e2ee module can be disabled centrally
+    // from wb-platform (Entitlements API) — respect it before any toggle.
+    if (input.enabled) {
+      await assertModuleEnabled(fastify, membership.channel.orgId, "e2ee");
     }
 
     const members = await fastify.prisma.channelMember.findMany({
