@@ -6,6 +6,11 @@ import { createFileService } from "../files/service.js";
 import { enqueueLinkUnfurl } from "../../lib/queue.js";
 import { sendPushToUser } from "../../lib/push.js";
 import { mentionsAiBot, triggerAiBotReply } from "../../lib/ai-bot.js";
+import {
+  isOrgEncryptedAtRest,
+  encryptMessageContent,
+  decryptMessageContent
+} from "../../lib/message-crypto.js";
 
 // Only the first few links per message are unfurled — avoids a single
 // message with a wall of URLs fanning out into dozens of outbound
@@ -25,6 +30,7 @@ function toDto(
     authorId: string;
     content: string;
     contentType: string;
+    encrypted?: boolean;
     parentId: string | null;
     editedAt: Date | null;
     deletedAt: Date | null;
@@ -41,7 +47,8 @@ function toDto(
     channelId: m.channelId,
     authorId: m.authorId,
     // Soft-deleted messages keep their slot but content is blanked out.
-    content: m.deletedAt ? "" : m.content,
+    // At-rest encrypted rows are decrypted here (single read chokepoint).
+    content: m.deletedAt ? "" : decryptMessageContent(m),
     contentType: m.contentType as MessageDto["contentType"],
     parentId: m.parentId,
     editedAt: m.editedAt?.toISOString() ?? null,
@@ -120,11 +127,20 @@ export function createMessageService(fastify: FastifyInstance) {
     channelId: string,
     opts: { cursor?: string; limit: number }
   ) {
-    await assertChannelMember(fastify, userId, channelId);
+    const member = await assertChannelMember(fastify, userId, channelId);
+
+    // Disappearing messages: rows past the channel TTL are hidden from
+    // reads immediately; the purge worker hard-deletes them shortly after.
+    const ttl = member.channel.messageTtlSeconds;
+    const ttlCutoff = ttl ? new Date(Date.now() - ttl * 1000) : undefined;
 
     const messages = await fastify.prisma.message.findMany({
       // Top-level only — thread replies live in the thread panel.
-      where: { channelId, parentId: null },
+      where: {
+        channelId,
+        parentId: null,
+        ...(ttlCutoff ? { createdAt: { gte: ttlCutoff } } : {})
+      },
       orderBy: { createdAt: "desc" },
       take: opts.limit + 1,
       ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {})
@@ -205,9 +221,20 @@ export function createMessageService(fastify: FastifyInstance) {
     channelId: string,
     content: string,
     fileIds: string[] = [],
-    parentId?: string
+    parentId?: string,
+    contentTypeInput: "text" | "e2e" = "text"
   ) {
     const member = await assertChannelMember(fastify, userId, channelId);
+
+    // E2E ciphertext is only accepted on channels with E2E enabled, and an
+    // E2E-enabled channel refuses plaintext (no silent downgrade).
+    if (contentTypeInput === "e2e" && !member.channel.e2ee) {
+      forbidden("Ten kanał nie ma włączonego szyfrowania end-to-end");
+    }
+    if (member.channel.e2ee && contentTypeInput !== "e2e" && content.length > 0) {
+      forbidden("Ta rozmowa jest szyfrowana end-to-end. Zaktualizuj aplikację.");
+    }
+    const isE2e = contentTypeInput === "e2e";
 
     if (parentId) {
       await assertModuleEnabled(fastify, member.channel.orgId, "threads");
@@ -220,31 +247,46 @@ export function createMessageService(fastify: FastifyInstance) {
       if (parent.parentId) parentId = parent.parentId;
     }
 
-    const contentType = fileIds.length > 0 ? "file" : "text";
+    // At-rest encryption (org opt-in): ciphertext goes to the DB, but the
+    // PLAINTEXT keeps flowing to unfurl/notifications/AI below, so features
+    // work while the stored copy is protected. E2E content is stored as-is
+    // (it is already ciphertext the server cannot read).
+    const encryptAtRest = !isE2e && (await isOrgEncryptedAtRest(fastify, member.channel.orgId));
+    const contentType = isE2e ? "e2e" : fileIds.length > 0 ? "file" : "text";
     const message = await fastify.prisma.message.create({
-      data: { channelId, authorId: userId, content, contentType, parentId: parentId ?? null }
+      data: {
+        channelId,
+        authorId: userId,
+        content: encryptAtRest ? encryptMessageContent(content) : content,
+        encrypted: encryptAtRest,
+        contentType,
+        parentId: parentId ?? null
+      }
     });
 
     if (fileIds.length > 0) {
       await files.attachToMessage(userId, fileIds, message.id, channelId);
     }
 
-    for (const url of extractUrls(content)) {
-      await enqueueLinkUnfurl({ messageId: message.id, channelId, url });
+    if (!isE2e) {
+      for (const url of extractUrls(content)) {
+        await enqueueLinkUnfurl({ messageId: message.id, channelId, url });
+      }
     }
 
     const filesByMessage = await files.listForMessages([message.id]);
     const dto = toDto(message, filesByMessage.get(message.id));
 
     // Fire-and-forget: notification delivery must never delay/replace the
-    // message-send response or WS broadcast.
-    void notifyRecipients(userId, channelId, message.id, content).catch((err) =>
+    // message-send response or WS broadcast. E2E messages push a generic
+    // body — the server cannot (and must not) read the ciphertext.
+    void notifyRecipients(userId, channelId, message.id, isE2e ? "" : content, isE2e).catch((err) =>
       fastify.log.warn({ err }, "notifyRecipients failed")
     );
 
     // Fire-and-forget: "@AI" mentions trigger the assistant bot (F5-D) —
-    // never delays or fails the human's own send.
-    if (mentionsAiBot(content)) {
+    // never delays or fails the human's own send. Disabled for E2E content.
+    if (!isE2e && mentionsAiBot(content)) {
       void triggerAiBotReply(fastify, channelId, message.id, parentId ?? null).catch((err) =>
         fastify.log.warn({ err }, "triggerAiBotReply failed")
       );
@@ -259,7 +301,13 @@ export function createMessageService(fastify: FastifyInstance) {
    * "mention" since they're inherently 1:1 directed), and skips users
    * currently in Do Not Disturb presence.
    */
-  async function notifyRecipients(authorId: string, channelId: string, messageId: string, content: string) {
+  async function notifyRecipients(
+    authorId: string,
+    channelId: string,
+    messageId: string,
+    content: string,
+    isE2e = false
+  ) {
     const channel = await fastify.prisma.channel.findUnique({ where: { id: channelId } });
     if (!channel) return;
 
@@ -269,7 +317,11 @@ export function createMessageService(fastify: FastifyInstance) {
       include: { user: true }
     });
 
-    const preview = content.length > 120 ? `${content.slice(0, 120)}…` : content;
+    const preview = isE2e
+      ? "Zaszyfrowana wiadomość"
+      : content.length > 120
+        ? `${content.slice(0, 120)}…`
+        : content;
 
     // Broadcast mentions: @channel / @wszyscy notify every member; @here
     // notifies only members currently online. Word-boundary matched so
@@ -295,7 +347,7 @@ export function createMessageService(fastify: FastifyInstance) {
 
         await sendPushToUser(fastify, member.userId, {
           title: isDm ? `${author?.displayName ?? "Wiadomość"}` : `${author?.displayName ?? "Ktoś"} w #${channel.name ?? "kanale"}`,
-          body: preview || "📎 Załącznik",
+          body: preview || "Załącznik",
           channelId,
           messageId
         });
@@ -331,14 +383,22 @@ export function createMessageService(fastify: FastifyInstance) {
   async function editMessage(userId: string, messageId: string, content: string) {
     const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
     if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
-    await assertChannelMember(fastify, userId, message.channelId);
+    const member = await assertChannelMember(fastify, userId, message.channelId);
     if (message.authorId !== userId) {
       forbidden("Możesz edytować tylko własne wiadomości");
     }
 
+    // Preserve the storage form of the original row: e2e rows receive new
+    // ciphertext from the client; at-rest-encrypted rows are re-encrypted.
+    const encryptAtRest =
+      message.contentType !== "e2e" && (await isOrgEncryptedAtRest(fastify, member.channel.orgId));
     const updated = await fastify.prisma.message.update({
       where: { id: messageId },
-      data: { content, editedAt: new Date() }
+      data: {
+        content: encryptAtRest ? encryptMessageContent(content) : content,
+        encrypted: encryptAtRest,
+        editedAt: new Date()
+      }
     });
 
     return toDto(updated);

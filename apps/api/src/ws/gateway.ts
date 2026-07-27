@@ -40,6 +40,11 @@ declare module "fastify" {
       reactions: ReactionGroupDto[];
     }) => void;
     wsBroadcastPollUpdate?: (payload: { messageId: string; channelId: string; poll: PollDto }) => void;
+    wsBroadcastChannelSettings?: (payload: {
+      channelId: string;
+      e2ee?: boolean;
+      messageTtlSeconds?: number | null;
+    }) => void;
   }
 }
 
@@ -169,7 +174,8 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
           input.channelId,
           input.content,
           input.fileIds,
-          input.parentId
+          input.parentId,
+          input.contentType
         );
         // Ensure sender's socket is in the room (e.g. channel joined after connect).
         await socket.join(`channel:${input.channelId}`);
@@ -375,6 +381,12 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
     "wsBroadcastPollUpdate",
     (payload: { messageId: string; channelId: string; poll: PollDto }) => {
       io.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.PollUpdate, payload);
+    }
+  );
+  fastify.decorate(
+    "wsBroadcastChannelSettings",
+    (payload: { channelId: string; e2ee?: boolean; messageTtlSeconds?: number | null }) => {
+      io.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.ChannelSettingsUpdated, payload);
     }
   );
 

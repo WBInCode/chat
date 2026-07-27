@@ -1,9 +1,9 @@
 import { usePresenceModeStore, type PresenceMode } from "../../stores/presenceMode.js";
 
-const OPTIONS: { mode: PresenceMode | null; label: string; icon: string }[] = [
-  { mode: null, label: "Dostępny (auto)", icon: "🟢" },
-  { mode: "away", label: "Zaraz wracam", icon: "🟡" },
-  { mode: "dnd", label: "Nie przeszkadzać", icon: "🔴" }
+const OPTIONS: { mode: PresenceMode | null; label: string }[] = [
+  { mode: null, label: "Dostępny (auto)" },
+  { mode: "away", label: "Zaraz wracam" },
+  { mode: "dnd", label: "Nie przeszkadzać" }
 ];
 
 /** Manual presence override: auto (idle-based online/away), or forced away/DND. */
@@ -20,7 +20,7 @@ export function PresenceToggle() {
     >
       {OPTIONS.map((o) => (
         <option key={o.mode ?? "auto"} value={o.mode ?? "auto"}>
-          {o.icon} {o.label}
+          {o.label}
         </option>
       ))}
     </select>

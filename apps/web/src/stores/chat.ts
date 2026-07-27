@@ -14,6 +14,8 @@ export interface ChannelItem {
   favorite?: boolean;
   lastReadAt?: string | null;
   archivedAt?: string | null;
+  e2ee?: boolean;
+  messageTtlSeconds?: number | null;
 }
 
 interface ChatState {
@@ -33,6 +35,11 @@ interface ChatState {
   setActiveOrg: (orgId: string | null) => void;
   setActiveChannel: (channelId: string | null) => void;
   setChannels: (channels: ChannelItem[]) => void;
+  /** Live update of channel security settings (E2E / disappearing messages). */
+  applyChannelSettings: (
+    channelId: string,
+    settings: { e2ee?: boolean | undefined; messageTtlSeconds?: number | null | undefined }
+  ) => void;
   clearUnread: (channelId: string) => void;
   setMessages: (channelId: string, messages: MessageDto[]) => void;
   /** Prepend older messages (oldest-first) to the top of the channel. */
@@ -71,6 +78,21 @@ export const useChatStore = create<ChatState>((set) => ({
   setActiveOrg: (orgId) => set({ activeOrgId: orgId, activeChannelId: null, channels: [] }),
   setActiveChannel: (channelId) => set({ activeChannelId: channelId }),
   setChannels: (channels) => set({ channels }),
+
+  applyChannelSettings: (channelId, settings) =>
+    set((s) => ({
+      channels: s.channels.map((c) =>
+        c.id === channelId
+          ? {
+              ...c,
+              ...(settings.e2ee !== undefined ? { e2ee: settings.e2ee } : {}),
+              ...(settings.messageTtlSeconds !== undefined
+                ? { messageTtlSeconds: settings.messageTtlSeconds }
+                : {})
+            }
+          : c
+      )
+    })),
 
   clearUnread: (channelId) =>
     set((s) => ({

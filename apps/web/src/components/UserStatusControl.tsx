@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, Check } from "lucide-react";
 import { Avatar } from "./Avatar.js";
 import { usePresenceModeStore, type PresenceMode } from "../stores/presenceMode.js";
 
@@ -62,7 +62,7 @@ export function UserStatusControl({ userId, displayName, avatarUrl, myPresenceDo
                 >
                   <span className={`inline-block h-2.5 w-2.5 rounded-full ${opt.dotClass}`} />
                   {opt.label}
-                  {manual === opt.mode && <span className="ml-auto text-xs">✓</span>}
+                  {manual === opt.mode && <Check size={13} className="ml-auto" aria-hidden="true" />}
                 </button>
               ))}
             </div>

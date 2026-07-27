@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Bell, BellOff } from "lucide-react";
 import { apiFetch } from "../../lib/api.js";
 import { enablePushNotifications, disablePushNotifications, isPushEnabled } from "../../lib/push.js";
 import { glassButtonGhost } from "../../styles/glass.js";
@@ -54,8 +55,9 @@ export function NotificationSettings() {
         <p className="text-sm text-[var(--text-dim)]">
           Powiadomienia push w przeglądarce (działają nawet, gdy karta jest nieaktywna).
         </p>
-        <button type="button" className={glassButtonGhost} onClick={togglePush} disabled={busy}>
-          {pushEnabled ? "🔔 Wyłącz powiadomienia push" : "🔕 Włącz powiadomienia push"}
+        <button type="button" className={`${glassButtonGhost} inline-flex items-center gap-2`} onClick={togglePush} disabled={busy}>
+          {pushEnabled ? <BellOff size={15} aria-hidden="true" /> : <Bell size={15} aria-hidden="true" />}
+          {pushEnabled ? "Wyłącz powiadomienia push" : "Włącz powiadomienia push"}
         </button>
       </div>
 

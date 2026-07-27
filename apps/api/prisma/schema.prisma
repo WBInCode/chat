@@ -32,6 +32,7 @@ model Organization {
   require2fa     Boolean      @default(false)
   messageRetentionDays Int?   // null = keep forever
   allowedEmailDomains  String? // comma-separated, null = any domain
+  encryptAtRest  Boolean      @default(false) // AES-256-GCM on message content at rest (server-side)
   createdAt      DateTime     @default(now())
   members        Membership[]
   channels       Channel[]
@@ -251,6 +252,8 @@ model Channel {
   name       String?
   topic      String?
   createdBy  String
+  e2ee       Boolean     @default(false) // end-to-end encryption enabled (DM only); content is client-side ciphertext
+  messageTtlSeconds Int? // disappearing messages: purge messages older than this (null = off)
   archivedAt DateTime?
   createdAt  DateTime    @default(now())
 
@@ -312,6 +315,7 @@ model Message {
   authorId    String
   content     String
   contentType String    @default("text")
+  encrypted   Boolean   @default(false) // content stored AES-256-GCM encrypted (org at-rest encryption)
   parentId    String?
   pinnedAt    DateTime?
   pinnedBy    String?

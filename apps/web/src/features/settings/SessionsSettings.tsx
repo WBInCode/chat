@@ -108,7 +108,7 @@ export function SessionsSettings() {
                   )}
                 </p>
                 <p className="text-[11px] text-[var(--text-dim)]">
-                  {s.ip ?? "—"} · od {new Date(s.createdAt).toLocaleString("pl-PL")}
+                  {s.ip ?? "brak IP"} · od {new Date(s.createdAt).toLocaleString("pl-PL")}
                 </p>
               </div>
               {!s.current && (

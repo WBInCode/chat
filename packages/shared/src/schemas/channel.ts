@@ -71,3 +71,18 @@ export const reorderChannelsSchema = z.object({
   orderedChannelIds: z.array(z.string().uuid()).min(1).max(500)
 });
 export type ReorderChannelsInput = z.infer<typeof reorderChannelsSchema>;
+
+// Disappearing messages: allowed TTL values (seconds). null = off.
+export const CHANNEL_TTL_OPTIONS = [3600, 86400, 604800, 2592000] as const;
+
+export const setChannelTtlSchema = z.object({
+  messageTtlSeconds: z
+    .union([z.literal(3600), z.literal(86400), z.literal(604800), z.literal(2592000)])
+    .nullable()
+});
+export type SetChannelTtlInput = z.infer<typeof setChannelTtlSchema>;
+
+export const setChannelE2eSchema = z.object({
+  enabled: z.boolean()
+});
+export type SetChannelE2eInput = z.infer<typeof setChannelE2eSchema>;

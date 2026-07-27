@@ -60,7 +60,7 @@ export function TotpSettings() {
         <div>
           <p className="mb-2 text-sm font-medium text-[var(--accent-2)]">2FA włączone.</p>
           <p className="mb-2 text-xs text-[var(--text-dim)]">
-            Zapisz kody zapasowe w bezpiecznym miejscu — każdy działa jednorazowo:
+            Zapisz kody zapasowe w bezpiecznym miejscu. Każdy działa jednorazowo:
           </p>
           <ul className="grid grid-cols-2 gap-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] p-3 font-mono text-xs">
             {recoveryCodes.map((c) => (

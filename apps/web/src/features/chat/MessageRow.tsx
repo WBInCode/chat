@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { MessageDto } from "@chatv2/shared";
 import { ALLOWED_REACTIONS } from "@chatv2/shared";
 import { FileAttachment } from "./FileAttachment.js";
@@ -10,6 +10,7 @@ import { renderMarkdown } from "./markdown.js";
 import { PollCard } from "./PollCard.js";
 import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
 import { Icon } from "../../components/Icon.js";
+import { decryptFromPeer } from "../../lib/e2e.js";
 import {
   SmilePlus,
   MessageSquare,
@@ -22,7 +23,8 @@ import {
   Pencil,
   Trash2,
   Sparkles,
-  MoreHorizontal
+  MoreHorizontal,
+  ShieldCheck
 } from "lucide-react";
 
 interface MemberLite {
@@ -61,6 +63,8 @@ interface MessageRowProps {
   /** Module toggles (F7) — hide reaction / thread affordances when off. */
   reactionsEnabled?: boolean;
   threadsEnabled?: boolean;
+  /** DM peer's public key for decrypting E2E content (null = cannot decrypt). */
+  e2ePeerKey?: string | null;
 }
 
 /**
@@ -122,7 +126,8 @@ export function MessageRow({
   inThread = false,
   autoEditNonce = 0,
   reactionsEnabled = true,
-  threadsEnabled = true
+  threadsEnabled = true,
+  e2ePeerKey = null
 }: MessageRowProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
@@ -135,6 +140,14 @@ export function MessageRow({
   const [showActions, setShowActions] = useState(false);
   const isTemp = m.id.startsWith("temp-");
   const isDeleted = !m.content && !m.files?.length && m.contentType === "text";
+  const isE2e = m.contentType === "e2e";
+  // E2E: decrypt at render time on the client. null = this device cannot
+  // decrypt (missing/rotated keys) — an honest placeholder is shown.
+  const displayContent = useMemo(() => {
+    if (!isE2e) return m.content;
+    if (!e2ePeerKey) return null;
+    return decryptFromPeer(m.content, e2ePeerKey);
+  }, [isE2e, m.content, e2ePeerKey]);
   const avatarUrl = useAvatarStore((s) => s.urls[m.authorId]);
 
   function submitEdit() {
@@ -198,8 +211,8 @@ export function MessageRow({
             })}
           </span>
           {m.pinnedAt && (
-            <span className="rounded bg-[var(--warning)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--warning)]">
-              📌 Przypięte
+            <span className="flex items-center gap-1 rounded bg-[var(--warning)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--warning)]">
+              <Icon icon={Pin} size={10} /> Przypięte
             </span>
           )}
         </div>
@@ -259,7 +272,7 @@ export function MessageRow({
               <Icon icon={Pin} className={m.pinnedAt ? "fill-current" : ""} />
             </button>
           )}
-          {onQuote && (
+          {onQuote && !isE2e && (
             <button
               onClick={() => onQuote(m, authorName)}
               title="Cytuj"
@@ -268,7 +281,7 @@ export function MessageRow({
               <Icon icon={Quote} />
             </button>
           )}
-          {onForward && !inThread && (
+          {onForward && !inThread && !isE2e && (
             <button
               onClick={() => onForward(m, authorName)}
               title="Przekaż dalej"
@@ -297,16 +310,18 @@ export function MessageRow({
           )}
           {mine && (
             <>
-              <button
-                onClick={() => {
-                  setEditValue(m.content);
-                  setEditing(true);
-                }}
-                title="Edytuj"
-                className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
-              >
-                <Icon icon={Pencil} />
-              </button>
+              {!isE2e && (
+                <button
+                  onClick={() => {
+                    setEditValue(m.content);
+                    setEditing(true);
+                  }}
+                  title="Edytuj"
+                  className="rounded px-1.5 py-1 hover:bg-[var(--border)]/50"
+                >
+                  <Icon icon={Pencil} />
+                </button>
+              )}
               <button
                 onClick={() => onDelete(m.id)}
                 title="Cofnij wiadomość"
@@ -392,6 +407,25 @@ export function MessageRow({
         <p className="text-[13px] italic leading-relaxed text-[var(--text-dim)]">
           Wiadomość została cofnięta
         </p>
+      ) : isE2e ? (
+        <div className={`relative text-[13px] leading-relaxed ${isTemp ? "opacity-50" : ""}`}>
+          {displayContent === null ? (
+            <p className="flex items-center gap-1.5 italic text-[var(--text-dim)]">
+              <Icon icon={ShieldCheck} size={13} />
+              Zaszyfrowana wiadomość. Nie można jej odczytać na tym urządzeniu.
+            </p>
+          ) : (
+            <>
+              {renderMarkdown(displayContent, members, currentUserId)}
+              <span className="ml-1 inline-flex translate-y-[2px] text-[var(--accent-2)]" title="Wiadomość szyfrowana end-to-end">
+                <Icon icon={ShieldCheck} size={11} />
+              </span>
+              {m.editedAt && (
+                <span className="ml-1 text-xs text-[var(--text-dim)]">(edytowano)</span>
+              )}
+            </>
+          )}
+        </div>
       ) : (
         m.content &&
         m.contentType !== "poll" && (
@@ -462,7 +496,7 @@ export function MessageRow({
           onClick={() => onOpenThread(m.id)}
           className="mt-1 flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline"
         >
-          💬 {m.replyCount} {m.replyCount === 1 ? "odpowiedź" : "odpowiedzi"}
+          <Icon icon={MessageSquare} size={13} /> {m.replyCount} {m.replyCount === 1 ? "odpowiedź" : "odpowiedzi"}
         </button>
       )}
     </div>

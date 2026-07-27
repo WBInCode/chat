@@ -105,17 +105,20 @@ export const retentionPurgeQueue = new Queue(RETENTION_PURGE_QUEUE, {
 });
 
 /**
- * Registers (idempotently) the daily repeatable job that purges messages
- * past each org's configured retention window. Safe to call on every boot
- * — BullMQ's job scheduler dedupes by id, it won't create duplicate
- * recurring jobs.
+ * Registers (idempotently) the recurring purge job: org retention windows
+ * plus per-channel disappearing-message TTLs. Hourly so a 1h TTL is
+ * honoured with reasonable latency (reads hide expired rows immediately;
+ * this sweep makes the deletion physical). BullMQ's scheduler dedupes by
+ * id — safe to call on every boot.
  */
 export async function scheduleRetentionPurge() {
   await retentionPurgeQueue.upsertJobScheduler(
-    "daily-retention-purge",
-    { pattern: "0 3 * * *" }, // every day at 03:00 server time
+    "hourly-retention-purge",
+    { pattern: "0 * * * *" }, // every hour, on the hour
     { name: "purge", data: {} }
   );
+  // Drop the legacy daily scheduler if it exists from an older deploy.
+  await retentionPurgeQueue.removeJobScheduler("daily-retention-purge").catch(() => {});
 }
 
 // ── F4-E: scheduled messages, reminders, status auto-expiry ────────────

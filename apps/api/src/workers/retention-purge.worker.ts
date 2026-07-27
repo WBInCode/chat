@@ -7,9 +7,13 @@ import { queueConnection, RETENTION_PURGE_QUEUE } from "../lib/queue.js";
 import { logAudit } from "../lib/audit.js";
 
 /**
- * Daily job: for every org with `messageRetentionDays` configured, hard-
- * deletes messages (and their S3 files) older than the retention window.
- * Runs org-by-org so a failure in one org doesn't block the rest.
+ * Recurring job with two sweeps:
+ * 1. Org retention: for every org with `messageRetentionDays` configured,
+ *    hard-deletes messages (and their S3 files) older than the window.
+ * 2. Disappearing messages: for every channel with `messageTtlSeconds`,
+ *    hard-deletes messages older than the TTL (reads already hide them,
+ *    this makes the deletion real).
+ * Runs org-by-org / channel-by-channel so one failure doesn't block the rest.
  */
 export function registerRetentionPurgeWorker(fastify: FastifyInstance) {
   const worker = new Worker(
@@ -53,6 +57,47 @@ export function registerRetentionPurgeWorker(fastify: FastifyInstance) {
           fastify.log.info({ orgId: org.id, count: messageIds.length }, "Retention purge completed");
         } catch (err) {
           fastify.log.error({ err, orgId: org.id }, "Retention purge failed for org");
+        }
+      }
+
+      // ── Disappearing messages: per-channel TTL ────────────────────────
+      const ttlChannels = await fastify.prisma.channel.findMany({
+        where: { messageTtlSeconds: { not: null } },
+        select: { id: true, orgId: true, messageTtlSeconds: true }
+      });
+
+      for (const channel of ttlChannels) {
+        const cutoff = new Date(Date.now() - channel.messageTtlSeconds! * 1000);
+        try {
+          const expired = await fastify.prisma.message.findMany({
+            where: { channelId: channel.id, createdAt: { lt: cutoff } },
+            select: { id: true, files: { select: { key: true, thumbKey: true } } }
+          });
+          if (expired.length === 0) continue;
+
+          const fileDeletions = expired.flatMap((m) =>
+            m.files.flatMap((f) => [
+              s3.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key: f.key })),
+              f.thumbKey
+                ? s3.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key: f.thumbKey }))
+                : Promise.resolve()
+            ])
+          );
+          await Promise.allSettled(fileDeletions);
+
+          await fastify.prisma.message.deleteMany({ where: { id: { in: expired.map((m) => m.id) } } });
+
+          await logAudit(fastify, {
+            orgId: channel.orgId,
+            actorId: null,
+            action: "channel.ttl_purge",
+            meta: { channelId: channel.id, purgedCount: expired.length },
+            ip: null
+          });
+
+          fastify.log.info({ channelId: channel.id, count: expired.length }, "Channel TTL purge completed");
+        } catch (err) {
+          fastify.log.error({ err, channelId: channel.id }, "Channel TTL purge failed");
         }
       }
     },

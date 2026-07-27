@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Hash, Lock, User } from "lucide-react";
+import { Icon } from "../../components/Icon.js";
 import type { ChannelItem } from "../../stores/chat.js";
 
 interface MemberLite {
@@ -20,7 +22,7 @@ interface QuickSwitcherProps {
 interface Entry {
   key: string;
   label: string;
-  icon: string;
+  icon: ReactNode;
   onSelect: () => void;
 }
 
@@ -38,13 +40,18 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
     const channelEntries: Entry[] = channels.map((c) => ({
       key: `c-${c.id}`,
       label: c.name ?? "",
-      icon: c.type === "DM" ? "@" : c.type === "PRIVATE" ? "🔒" : "#",
+      icon:
+        c.type === "DM" ? (
+          <span className="w-3.5 text-center text-[var(--text-dim)]">@</span>
+        ) : (
+          <Icon icon={c.type === "PRIVATE" ? Lock : Hash} size={14} className="text-[var(--text-dim)]" />
+        ),
       onSelect: () => onSelectChannel(c.id)
     }));
     const memberEntries: Entry[] = members.map((m) => ({
       key: `m-${m.userId}`,
       label: m.displayName,
-      icon: "👤",
+      icon: <Icon icon={User} size={14} className="text-[var(--text-dim)]" />,
       onSelect: () => onSelectMember(m.userId)
     }));
     const all = [...channelEntries, ...memberEntries, ...actions];
@@ -95,7 +102,7 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
                 i === activeIndex ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--text)]"
               }`}
             >
-              <span>{entry.icon}</span>
+              <span className="flex w-4 shrink-0 items-center justify-center">{entry.icon}</span>
               {entry.label}
             </button>
           ))}

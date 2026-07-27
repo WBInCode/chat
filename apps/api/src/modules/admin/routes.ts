@@ -11,6 +11,7 @@ import { assertOrgPermission, assertOrgMember, forbidden, notFound, HttpError } 
 import { assertModuleEnabled } from "../../lib/modules.js";
 import { logAudit, verifyAuditChain } from "../../lib/audit.js";
 import { revokeSession } from "../../plugins/auth-guard.js";
+import { invalidateOrgEncryptionCache } from "../../lib/message-crypto.js";
 
 export default async function adminRoutes(fastify: FastifyInstance) {
   fastify.addHook("preHandler", fastify.authenticate);
@@ -338,7 +339,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     return {
       require2fa: org.require2fa,
       messageRetentionDays: org.messageRetentionDays,
-      allowedEmailDomains: org.allowedEmailDomains
+      allowedEmailDomains: org.allowedEmailDomains,
+      encryptAtRest: org.encryptAtRest
     };
   });
 
@@ -356,9 +358,11 @@ export default async function adminRoutes(fastify: FastifyInstance) {
           : {}),
         ...(input.allowedEmailDomains !== undefined
           ? { allowedEmailDomains: input.allowedEmailDomains }
-          : {})
+          : {}),
+        ...(input.encryptAtRest !== undefined ? { encryptAtRest: input.encryptAtRest } : {})
       }
     });
+    if (input.encryptAtRest !== undefined) invalidateOrgEncryptionCache(orgId);
 
     await logAudit(fastify, {
       orgId,
@@ -371,7 +375,8 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     return reply.send({
       require2fa: updated.require2fa,
       messageRetentionDays: updated.messageRetentionDays,
-      allowedEmailDomains: updated.allowedEmailDomains
+      allowedEmailDomains: updated.allowedEmailDomains,
+      encryptAtRest: updated.encryptAtRest
     });
   });
 

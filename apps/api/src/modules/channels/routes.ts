@@ -8,7 +8,9 @@ import {
   renameChannelSchema,
   setMutedSchema,
   setFavoriteSchema,
-  reorderChannelsSchema
+  reorderChannelsSchema,
+  setChannelTtlSchema,
+  setChannelE2eSchema
 } from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import {
@@ -75,7 +77,9 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         myRole: m.role,
         muted: !!m.mutedAt,
         favorite: m.favorite,
-        archivedAt: ch.archivedAt?.toISOString() ?? null
+        archivedAt: ch.archivedAt?.toISOString() ?? null,
+        e2ee: ch.e2ee,
+        messageTtlSeconds: ch.messageTtlSeconds
       };
     });
   });
@@ -396,6 +400,106 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     });
 
     return { channelId, favorite: input.favorite };
+  });
+
+  /**
+   * Disappearing messages: set/clear the channel TTL. Channel ADMIN for
+   * regular channels; in DMs (no admin role) any participant may set it,
+   * mirroring consumer messengers. The change is broadcast so every open
+   * client updates its header indicator immediately.
+   */
+  fastify.patch("/channels/:channelId/ttl", async (request) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+    const input = parseOrThrow(setChannelTtlSchema, request.body);
+
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    if (membership.channel.type !== "DM" && membership.role !== "ADMIN") {
+      forbidden("Tylko administrator kanału może zmienić znikanie wiadomości");
+    }
+
+    const updated = await fastify.prisma.channel.update({
+      where: { id: channelId },
+      data: { messageTtlSeconds: input.messageTtlSeconds }
+    });
+
+    await logAudit(fastify, {
+      orgId: membership.channel.orgId,
+      actorId: userId,
+      action: "channel.ttl_changed",
+      meta: { channelId, messageTtlSeconds: input.messageTtlSeconds },
+      ip: request.ip
+    });
+
+    fastify.wsBroadcastChannelSettings?.({ channelId, messageTtlSeconds: updated.messageTtlSeconds });
+
+    return { channelId, messageTtlSeconds: updated.messageTtlSeconds };
+  });
+
+  /**
+   * End-to-end encryption toggle for 1:1 DMs. Requires BOTH participants
+   * to have published an identity key (X25519) — otherwise the peer could
+   * never read anything. Disabling is allowed by either participant and
+   * only affects NEW messages (already-sent ciphertext stays encrypted).
+   */
+  fastify.patch("/channels/:channelId/e2e", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+    const input = parseOrThrow(setChannelE2eSchema, request.body);
+
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    if (membership.channel.type !== "DM") {
+      return sendError(reply, 400, "E2E_DM_ONLY", "Szyfrowanie end-to-end jest dostępne tylko w rozmowach 1:1");
+    }
+
+    const members = await fastify.prisma.channelMember.findMany({
+      where: { channelId },
+      include: { user: { select: { id: true, publicKey: true } } }
+    });
+    if (members.length !== 2) {
+      return sendError(reply, 400, "E2E_DM_ONLY", "Szyfrowanie end-to-end jest dostępne tylko w rozmowach 1:1");
+    }
+    if (input.enabled) {
+      const missing = members.filter((m) => !m.user.publicKey);
+      if (missing.length > 0) {
+        return sendError(
+          reply,
+          409,
+          "E2E_KEY_MISSING",
+          "Obie osoby muszą mieć klucz szyfrowania. Poproś rozmówcę o otwarcie aplikacji."
+        );
+      }
+    }
+
+    const updated = await fastify.prisma.channel.update({
+      where: { id: channelId },
+      data: { e2ee: input.enabled }
+    });
+
+    await logAudit(fastify, {
+      orgId: membership.channel.orgId,
+      actorId: userId,
+      action: input.enabled ? "channel.e2e_enabled" : "channel.e2e_disabled",
+      meta: { channelId },
+      ip: request.ip
+    });
+
+    fastify.wsBroadcastChannelSettings?.({ channelId, e2ee: updated.e2ee });
+
+    return { channelId, e2ee: updated.e2ee };
+  });
+
+  /** Public identity keys of channel members (needed to encrypt/decrypt E2E DMs). */
+  fastify.get("/channels/:channelId/e2e-keys", async (request) => {
+    const { channelId } = request.params as { channelId: string };
+    await assertChannelMember(fastify, request.user!.id, channelId);
+
+    const members = await fastify.prisma.channelMember.findMany({
+      where: { channelId },
+      include: { user: { select: { id: true, publicKey: true } } }
+    });
+
+    return members.map((m) => ({ userId: m.user.id, publicKey: m.user.publicKey }));
   });
 
   /** Rename a channel (channel admin only, PUBLIC/PRIVATE only). */

@@ -64,7 +64,7 @@ export function AdminPanel() {
           </p>
         </div>
         <NavLink to="/" className={`${glassButtonGhost} shrink-0`}>
-          ← Wróć do czatu
+          Wróć do czatu
         </NavLink>
       </div>
 
@@ -238,7 +238,7 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
                   onChange={(e) => changeCustomRole(m.userId, e.target.value || null)}
                   className="rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2 py-1 text-xs"
                 >
-                  <option value="">— brak —</option>
+                  <option value="">brak</option>
                   {roles.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}
@@ -247,7 +247,7 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
                 </select>
               </td>
             )}
-            <td className="text-xs">{m.totpEnabled ? "✅" : "—"}</td>
+            <td className="text-xs">{m.totpEnabled ? <span className="text-[var(--accent-2)]">Tak</span> : <span className="text-[var(--text-dim)]">Nie</span>}</td>
             <td className="text-xs">
               {m.disabled ? (
                 <span className="text-[var(--danger)]">Zdezaktywowany</span>
@@ -264,7 +264,7 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
                     className="rounded-lg px-2 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50"
                     title="Eksportuj dane RODO tego członka"
                   >
-                    {exportingId === m.userId ? "Eksport…" : "⬇ Eksport"}
+                    {exportingId === m.userId ? "Eksport…" : "Eksport"}
                   </button>
                 )}
                 {m.role !== "OWNER" && (
@@ -498,8 +498,8 @@ function ChannelsTab({ orgId }: { orgId: string }) {
       <tbody>
         {channels.map((c) => (
           <tr key={c.id} className="border-b border-[var(--glass-border)]/50">
-            <td className="py-2 font-medium">{c.name ?? "—"}</td>
-            <td className="text-xs">{c.type === "PRIVATE" ? "🔒 prywatny" : "# publiczny"}</td>
+            <td className="py-2 font-medium">{c.name ?? "(bez nazwy)"}</td>
+            <td className="text-xs">{c.type === "PRIVATE" ? "prywatny" : "publiczny"}</td>
             <td className="text-xs">{c.memberCount}</td>
             <td className="text-xs">{c.archived ? "Zarchiwizowany" : "Aktywny"}</td>
             <td className="text-right">
@@ -538,9 +538,9 @@ function AuditTab({ orgId }: { orgId: string }) {
         {verified === null ? (
           <span className="text-[var(--text-dim)]">sprawdzanie...</span>
         ) : verified ? (
-          <span className="font-medium text-[var(--accent-2)]">✓ nienaruszona</span>
+          <span className="font-medium text-[var(--accent-2)]">nienaruszona</span>
         ) : (
-          <span className="font-medium text-[var(--danger)]">✗ WYKRYTO NARUSZENIE</span>
+          <span className="font-medium text-[var(--danger)]">WYKRYTO NARUSZENIE</span>
         )}
       </div>
       <ul className="space-y-2">
@@ -573,6 +573,7 @@ function SettingsTab({ orgId }: { orgId: string }) {
   const [require2fa, setRequire2fa] = useState(false);
   const [retention, setRetention] = useState<string>("");
   const [domains, setDomains] = useState<string>("");
+  const [encryptAtRest, setEncryptAtRest] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -580,10 +581,12 @@ function SettingsTab({ orgId }: { orgId: string }) {
       require2fa: boolean;
       messageRetentionDays: number | null;
       allowedEmailDomains: string | null;
+      encryptAtRest: boolean;
     }>(`/orgs/${orgId}/admin/settings`).then((d) => {
       setRequire2fa(d.require2fa);
       setRetention(d.messageRetentionDays?.toString() ?? "");
       setDomains(d.allowedEmailDomains ?? "");
+      setEncryptAtRest(d.encryptAtRest);
     });
   }, [orgId]);
 
@@ -593,7 +596,8 @@ function SettingsTab({ orgId }: { orgId: string }) {
       body: JSON.stringify({
         require2fa,
         messageRetentionDays: retention ? Number(retention) : null,
-        allowedEmailDomains: domains || null
+        allowedEmailDomains: domains || null,
+        encryptAtRest
       })
     });
     setSaved(true);
@@ -610,6 +614,20 @@ function SettingsTab({ orgId }: { orgId: string }) {
         />
         Wymuś 2FA dla wszystkich członków
       </label>
+      <div className="space-y-1">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={encryptAtRest}
+            onChange={(e) => setEncryptAtRest(e.target.checked)}
+          />
+          Szyfruj treść wiadomości w bazie danych (AES-256)
+        </label>
+        <p className="pl-6 text-xs text-[var(--text-dim)]">
+          Chroni wiadomości przy wycieku kopii bazy. Dotyczy nowych wiadomości.
+          Uwaga: zaszyfrowane wiadomości nie są obejmowane wyszukiwarką pełnotekstową.
+        </p>
+      </div>
       <div>
         <label className="mb-1 block text-sm font-medium">Retencja wiadomości (dni)</label>
         <input
@@ -629,7 +647,7 @@ function SettingsTab({ orgId }: { orgId: string }) {
         />
       </div>
       <button onClick={save} className={glassButtonPrimary}>
-        {saved ? "Zapisano ✓" : "Zapisz ustawienia"}
+        {saved ? "Zapisano" : "Zapisz ustawienia"}
       </button>
     </div>
   );
@@ -706,7 +724,7 @@ function ModulesTab({ orgId }: { orgId: string }) {
               </p>
               <p className="text-xs text-[var(--text-dim)]">
                 {m.description}
-                {m.source === "hub" && " · zarządzane centralnie — lokalna zmiana zostanie nadpisana przy synchronizacji."}
+                {m.source === "hub" && " · zarządzane centralnie, lokalna zmiana zostanie nadpisana przy synchronizacji."}
               </p>
             </div>
             <ModuleSwitch
@@ -838,7 +856,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
         <h2 className="text-sm font-semibold">Integracje przychodzące</h2>
         <p className="text-xs text-[var(--text-dim)]">
           Wygeneruj adres URL, na który zewnętrzne systemy (CI, monitoring, formularze) mogą wysłać zwykłe
-          żądanie POST z JSON — treść trafi jako wiadomość na wybrany kanał.
+          żądanie POST z JSON. Treść trafi jako wiadomość na wybrany kanał.
         </p>
       </div>
 
@@ -876,7 +894,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
       {newToken && (
         <div className="space-y-2 rounded-xl border border-[var(--accent)]/40 bg-[var(--accent)]/10 p-4">
           <p className="text-xs font-semibold text-[var(--accent)]">
-            🔑 Zapisz ten adres — nie zostanie ponownie pokazany
+            Zapisz ten adres. Nie zostanie ponownie pokazany.
           </p>
           <div className="flex items-center gap-2">
             <code className="flex-1 truncate rounded-lg bg-[var(--glass)] px-2 py-1.5 text-xs">
@@ -905,7 +923,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
           >
             <div className="min-w-0">
               <p className="text-sm font-medium">
-                {h.name} <span className="text-xs font-normal text-[var(--text-dim)]">→ #{h.channelName ?? "?"}</span>
+                {h.name} <span className="text-xs font-normal text-[var(--text-dim)]">kanał #{h.channelName ?? "?"}</span>
               </p>
               <p className="text-xs text-[var(--text-dim)]">
                 {h.messageCount} wiadomości
@@ -960,7 +978,7 @@ function DashboardTab({ orgId }: { orgId: string }) {
 
       <div>
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">
-          Wiadomości — ostatnie 30 dni
+          Wiadomości (ostatnie 30 dni)
         </p>
         <div className="flex h-24 items-end gap-0.5">
           {data.messagesLast30d.map((v, i) => (
@@ -1008,7 +1026,7 @@ function DashboardTab({ orgId }: { orgId: string }) {
           <ul className="space-y-1 text-xs">
             {data.recentSecurityEvents.map((e) => (
               <li key={e.id} className="text-[var(--danger)]">
-                {e.action} — {new Date(e.createdAt).toLocaleString("pl-PL")}
+                {e.action} · {new Date(e.createdAt).toLocaleString("pl-PL")}
               </li>
             ))}
           </ul>

@@ -87,7 +87,7 @@ export function VoiceRoom({ channelId, channelName, myUserId, members, onClose }
     manager.start().catch((err) => {
       setError(
         err instanceof DOMException
-          ? "Brak dostępu do mikrofonu — sprawdź uprawnienia przeglądarki."
+          ? "Brak dostępu do mikrofonu. Sprawdź uprawnienia przeglądarki."
           : "Nie udało się uruchomić rozmowy głosowej."
       );
     });

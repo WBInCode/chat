@@ -30,9 +30,10 @@ import { useAvatarStore } from "../../stores/avatars.js";
 import { useIdlePresence } from "../../lib/idlePresence.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
+import { ensureKeyPublished, fetchPeerPublicKey, encryptForPeer } from "../../lib/e2e.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, Timer } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { renderMarkdown } from "./markdown.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
@@ -44,6 +45,16 @@ function isSameDay(a: Date, b: Date): boolean {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
+}
+
+/** Human label for a disappearing-messages TTL (seconds). */
+function formatTtl(seconds: number): string {
+  if (seconds === 3600) return "godzinie";
+  if (seconds === 86400) return "24 godzinach";
+  if (seconds === 604800) return "7 dniach";
+  if (seconds === 2592000) return "30 dniach";
+  const hours = Math.round(seconds / 3600);
+  return `${hours} godz.`;
 }
 
 /** Human day label for a message divider: "Dzisiaj" / "Wczoraj" / full date. */
@@ -139,12 +150,16 @@ export function ChatLayout() {
     setTyping,
     setPresence,
     setReadState,
-    applyReadUpdate
+    applyReadUpdate,
+    applyChannelSettings
   } = useChatStore();
 
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   const [members, setMembers] = useState<MemberItem[]>([]);
+  // E2E: peer public keys per DM channel (null = peer has no key yet).
+  const [peerKeys, setPeerKeys] = useState<Record<string, string | null>>({});
+  const [showTtlMenu, setShowTtlMenu] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; anchor: { x: number; y: number } } | null>(null);
   const avatarUrls = useAvatarStore((s) => s.urls);
   const [pinnedMessages, setPinnedMessages] = useState<MessageDto[]>([]);
@@ -268,7 +283,7 @@ export function ChatLayout() {
     ).then((summary) => {
       if (summary.mentionCount > 0) {
         setDigestToast(
-          `📬 ${summary.mentionCount} ${summary.mentionCount === 1 ? "nowa wzmianka" : "nowe wzmianki"} w ${summary.channelCount} ${summary.channelCount === 1 ? "kanale" : "kanałach"}`
+          `${summary.mentionCount} ${summary.mentionCount === 1 ? "nowa wzmianka" : "nowe wzmianki"} w ${summary.channelCount} ${summary.channelCount === 1 ? "kanale" : "kanałach"}`
         );
         setTimeout(() => setDigestToast(null), 6000);
       }
@@ -330,6 +345,9 @@ export function ChatLayout() {
     socket.on("read:update", ({ channelId, userId, readAt }) =>
       applyReadUpdate(channelId, userId, readAt)
     );
+    socket.on("channel:settings-updated", ({ channelId, e2ee, messageTtlSeconds }) =>
+      applyChannelSettings(channelId, { e2ee, messageTtlSeconds })
+    );
 
     // Connection-state banner (F6-A.3): silence on network drops was
     // confusing — users kept typing into a dead socket.
@@ -349,6 +367,7 @@ export function ChatLayout() {
       socket.off("message:embeds");
       socket.off("reaction:update");
       socket.off("read:update");
+      socket.off("channel:settings-updated");
       socket.off("disconnect", onDisconnect);
       socket.off("connect", onConnect);
       disconnectSocket();
@@ -364,8 +383,14 @@ export function ChatLayout() {
     addEmbeds,
     updateReactions,
     incrementReplyCount,
-    applyReadUpdate
+    applyReadUpdate,
+    applyChannelSettings
   ]);
+
+  // ── E2E bootstrap: publish this device's public key once after login ────
+  useEffect(() => {
+    void ensureKeyPublished();
+  }, []);
 
   // ── history for the active channel ─────────────────────────────────────
   useEffect(() => {
@@ -517,7 +542,7 @@ export function ChatLayout() {
       });
       setDraft(res.result);
     } catch (e) {
-      setAiSummary(e instanceof ApiError ? e.message : "AI nie odpowiedziało — spróbuj ponownie.");
+      setAiSummary(e instanceof ApiError ? e.message : "AI nie odpowiedziało. Spróbuj ponownie.");
     } finally {
       setAiRewriteLoading(false);
     }
@@ -606,6 +631,61 @@ export function ChatLayout() {
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
 
+  // ── E2E: fetch the DM peer's public key when an encrypted DM is opened ──
+  useEffect(() => {
+    if (!activeChannel?.e2ee || activeChannel.type !== "DM" || !user) return;
+    if (peerKeys[activeChannel.id] !== undefined) return;
+    void fetchPeerPublicKey(activeChannel.id, user.id)
+      .then((key) => setPeerKeys((prev) => ({ ...prev, [activeChannel.id]: key })))
+      .catch(() => setPeerKeys((prev) => ({ ...prev, [activeChannel.id]: null })));
+  }, [activeChannel, user, peerKeys]);
+
+  /** E2E toggle for 1:1 DMs. Enabling requires both published keys. */
+  async function toggleE2e(enabled: boolean) {
+    if (!activeChannel) return;
+    try {
+      await ensureKeyPublished();
+      const res = await apiFetch<{ channelId: string; e2ee: boolean }>(
+        `/channels/${activeChannel.id}/e2e`,
+        { method: "PATCH", body: JSON.stringify({ enabled }) }
+      );
+      applyChannelSettings(activeChannel.id, { e2ee: res.e2ee });
+      if (res.e2ee) {
+        // Refresh the peer key so the composer can encrypt right away.
+        setPeerKeys((prev) => {
+          const next = { ...prev };
+          delete next[activeChannel.id];
+          return next;
+        });
+        showToast("Szyfrowanie end-to-end włączone");
+      } else {
+        showToast("Szyfrowanie end-to-end wyłączone");
+      }
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Nie udało się zmienić szyfrowania");
+    }
+  }
+
+  /** Disappearing messages TTL (null = off). */
+  async function setChannelTtl(ttlSeconds: number | null) {
+    if (!activeChannel) return;
+    setShowTtlMenu(false);
+    try {
+      const res = await apiFetch<{ channelId: string; messageTtlSeconds: number | null }>(
+        `/channels/${activeChannel.id}/ttl`,
+        { method: "PATCH", body: JSON.stringify({ messageTtlSeconds: ttlSeconds }) }
+      );
+      applyChannelSettings(activeChannel.id, { messageTtlSeconds: res.messageTtlSeconds });
+      showToast(
+        res.messageTtlSeconds
+          ? `Wiadomości znikają po ${formatTtl(res.messageTtlSeconds)}`
+          : "Znikanie wiadomości wyłączone"
+      );
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Nie udało się zmienić ustawienia");
+    }
+  }
+
   // First unread message in the active channel, snapshotted against the
   // lastReadAt captured when the channel list was loaded (not re-fetched
   // per message, so it stays stable as a "since you last looked" boundary
@@ -676,6 +756,11 @@ export function ChatLayout() {
 
   // ── actions ────────────────────────────────────────────────────────────
   function addFiles(files: FileList | File[]) {
+    // E2E DMs: attachments are not supported (files would bypass encryption).
+    if (activeChannel?.e2ee) {
+      showToast("Załączniki nie są dostępne w rozmowach szyfrowanych end-to-end");
+      return;
+    }
     const list = Array.from(files).slice(0, 10 - pending.length);
     const next: PendingAttachment[] = list.map((file) => ({
       localId: crypto.randomUUID(),
@@ -757,26 +842,48 @@ export function ChatLayout() {
     const hasFiles = pending.length > 0;
     if ((!content && !hasFiles) || !activeChannelId || !user) return;
 
+    // E2E: encrypt before anything touches the wire. Attachments are not
+    // supported in encrypted DMs (files would bypass the encryption).
+    const isE2e = !!activeChannel?.e2ee;
+    let wireContent = content;
+    if (isE2e) {
+      const peerKey = peerKeys[activeChannelId];
+      if (!peerKey) {
+        showToast("Brak klucza rozmówcy. Poproś go o otwarcie aplikacji i spróbuj ponownie.");
+        return;
+      }
+      if (!content) return;
+      wireContent = encryptForPeer(content, peerKey);
+    }
+
     let fileIds: string[] = [];
-    if (hasFiles) {
+    if (hasFiles && !isE2e) {
       fileIds = await uploadPending(activeChannelId);
       if (fileIds.length === 0 && !content) return; // all uploads failed, nothing to send
     }
 
     const tempId = `temp-${crypto.randomUUID()}`;
     // Optimistic UI: render immediately, reconciled by tempId on message:new.
+    // For E2E the optimistic row carries the CIPHERTEXT (same as the echo
+    // from the server) — MessageRow decrypts at render time.
     addMessage({
       id: tempId,
       channelId: activeChannelId,
       authorId: user.id,
-      content,
-      contentType: fileIds.length > 0 ? "file" : "text",
+      content: wireContent,
+      contentType: isE2e ? "e2e" : fileIds.length > 0 ? "file" : "text",
       parentId: null,
       editedAt: null,
       createdAt: new Date().toISOString()
     });
 
-    getSocket().emit("message:send", { channelId: activeChannelId, tempId, content, fileIds });
+    getSocket().emit("message:send", {
+      channelId: activeChannelId,
+      tempId,
+      content: wireContent,
+      ...(isE2e ? { contentType: "e2e" as const } : {}),
+      fileIds
+    });
     getSocket().emit("typing:stop", { channelId: activeChannelId });
     setDraft("");
     if (composerRef.current) composerRef.current.style.height = "auto";
@@ -810,7 +917,7 @@ export function ChatLayout() {
       .split("\n")
       .map((line) => `> ${line}`)
       .join("\n");
-    const content = `↪️ Przekazane od **${authorName}**:\n${quoted}${comment.trim() ? `\n\n${comment.trim()}` : ""}`;
+    const content = `Przekazane od **${authorName}**:\n${quoted}${comment.trim() ? `\n\n${comment.trim()}` : ""}`;
     const tempId = `temp-${crypto.randomUUID()}`;
     if (targetChannelId === activeChannelId) {
       addMessage({
@@ -845,7 +952,7 @@ export function ChatLayout() {
     setDraft("");
     clearDraftPersisted(activeChannelId);
     setShowSchedulePicker(false);
-    showToast("Wiadomość zaplanowana ⏰");
+    showToast("Wiadomość zaplanowana");
   }
 
   async function submitPoll(question: string, options: string[], allowMultiple: boolean) {
@@ -864,7 +971,7 @@ export function ChatLayout() {
       body: JSON.stringify({ messageId: reminderMessageId, remindAt })
     });
     setReminderMessageId(null);
-    showToast("Przypomnienie ustawione 🔔");
+    showToast("Przypomnienie ustawione");
   }
 
   // ── permalink navigation: ?channel=X&msg=Y jumps straight to a message ──
@@ -1087,7 +1194,7 @@ export function ChatLayout() {
       {wsDisconnected && (
         <div className="fixed left-1/2 top-2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[var(--warning)]/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-black/60" />
-          Utracono połączenie — łączenie ponownie…
+          Utracono połączenie. Łączenie ponownie…
         </div>
       )}
       {showMobileSidebar && (
@@ -1180,8 +1287,13 @@ export function ChatLayout() {
                         : "text-[var(--text)] hover:bg-[var(--border)]/50"
                     }`}
                   >
-                    <span>
-                      {c.type === "DM" ? "@" : c.type === "PRIVATE" ? "🔒" : "#"} {c.name}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {c.type === "DM" ? (
+                        <span className="w-3.5 shrink-0 text-center text-[var(--text-dim)]">@</span>
+                      ) : (
+                        <Icon icon={c.type === "PRIVATE" ? Lock : Hash} size={13} className="shrink-0 text-[var(--text-dim)]" />
+                      )}
+                      <span className="truncate">{c.name}</span>
                     </span>
                     {(c.unreadCount ?? 0) > 0 && !c.muted && (
                       <span className="animate-spring-in btn-gradient ml-2 min-w-5 rounded-full px-1.5 text-center text-xs font-semibold text-white shadow-[0_2px_8px_var(--accent-glow)]">
@@ -1251,8 +1363,9 @@ export function ChatLayout() {
                         : "text-[var(--text)] hover:bg-[var(--border)]/50"
                   }`}
                 >
-                  <span className="flex items-center gap-1">
-                    {c.type === "PRIVATE" ? "🔒" : "#"} {c.name} {c.muted && <Icon icon={BellOff} size={12} />}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Icon icon={c.type === "PRIVATE" ? Lock : Hash} size={13} className="shrink-0 text-[var(--text-dim)]" />
+                    <span className="truncate">{c.name}</span> {c.muted && <Icon icon={BellOff} size={12} />}
                     {draftChannels.has(c.id) && (
                       <span className="text-[10px] italic text-[var(--text-dim)]">(szkic)</span>
                     )}
@@ -1328,7 +1441,7 @@ export function ChatLayout() {
         <div className="border-t border-[var(--glass-border)] p-2">
           <UserStatusControl
             userId={user?.id ?? ""}
-            displayName={user?.displayName ?? "—"}
+            displayName={user?.displayName ?? "Użytkownik"}
             avatarUrl={user ? avatarUrls[user.id] : null}
             myPresenceDotClass={presenceDotClass(user ? presenceStatus[user.id] : undefined) || "bg-[var(--accent-2)]"}
           />
@@ -1377,9 +1490,13 @@ export function ChatLayout() {
                   >
                     <Icon icon={Menu} size={22} />
                   </button>
-                  <h1 className="truncate text-base font-semibold md:text-sm">
-                    {activeChannel.type === "DM" ? "@" : activeChannel.type === "PRIVATE" ? "🔒" : "#"}{" "}
-                    {activeChannel.name}
+                  <h1 className="flex min-w-0 items-center gap-1.5 truncate text-base font-semibold md:text-sm">
+                    {activeChannel.type === "DM" ? (
+                      <span className="text-[var(--text-dim)]">@</span>
+                    ) : (
+                      <Icon icon={activeChannel.type === "PRIVATE" ? Lock : Hash} size={15} className="shrink-0 text-[var(--text-dim)]" />
+                    )}
+                    <span className="truncate">{activeChannel.name}</span>
                   </h1>
 
                   {/* Desktop: channel actions inline. */}
@@ -1407,7 +1524,68 @@ export function ChatLayout() {
                         <Icon icon={Users} size={15} />
                       </button>
                     )}
-                    {aiEnabled && moduleEnabled("ai") && (
+                    {/* E2E toggle: 1:1 DMs only */}
+                    {activeChannel.type === "DM" && (
+                      <button
+                        onClick={() => void toggleE2e(!activeChannel.e2ee)}
+                        title={
+                          activeChannel.e2ee
+                            ? "Szyfrowanie end-to-end włączone. Kliknij, aby wyłączyć dla nowych wiadomości"
+                            : "Włącz szyfrowanie end-to-end (tylko Ty i rozmówca przeczytacie wiadomości)"
+                        }
+                        className={activeChannel.e2ee ? "text-[var(--accent-2)]" : "text-[var(--text-dim)] hover:text-[var(--accent-2)]"}
+                      >
+                        <Icon icon={ShieldCheck} size={15} />
+                      </button>
+                    )}
+                    {/* Disappearing messages (channel admin; any member in DMs) */}
+                    {(activeChannel.type === "DM" || activeChannel.myRole === "ADMIN") && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowTtlMenu((v) => !v)}
+                          title={
+                            activeChannel.messageTtlSeconds
+                              ? `Wiadomości znikają po ${formatTtl(activeChannel.messageTtlSeconds)}`
+                              : "Znikające wiadomości"
+                          }
+                          className={activeChannel.messageTtlSeconds ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--text)]"}
+                        >
+                          <Icon icon={Timer} size={15} />
+                        </button>
+                        {showTtlMenu && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setShowTtlMenu(false)} />
+                            <div className="animate-menu-pop absolute left-0 top-full z-20 mt-1 w-60 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] py-1 shadow-xl">
+                              <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-dim)]">
+                                Znikające wiadomości
+                              </p>
+                              {[
+                                { value: null, label: "Wyłączone" },
+                                { value: 3600, label: "Po godzinie" },
+                                { value: 86400, label: "Po 24 godzinach" },
+                                { value: 604800, label: "Po 7 dniach" },
+                                { value: 2592000, label: "Po 30 dniach" }
+                              ].map((opt) => (
+                                <button
+                                  key={String(opt.value)}
+                                  onClick={() => void setChannelTtl(opt.value)}
+                                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--accent)]/10 ${
+                                    (activeChannel.messageTtlSeconds ?? null) === opt.value ? "text-[var(--accent)]" : ""
+                                  }`}
+                                >
+                                  {opt.label}
+                                  {(activeChannel.messageTtlSeconds ?? null) === opt.value && <Icon icon={Check} size={14} />}
+                                </button>
+                              ))}
+                              <p className="border-t border-[var(--glass-border)] px-3 py-2 text-[11px] leading-snug text-[var(--text-dim)]">
+                                Starsze wiadomości i ich pliki są trwale usuwane dla wszystkich uczestników.
+                              </p>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {aiEnabled && moduleEnabled("ai") && !activeChannel.e2ee && (
                       <button
                         onClick={() => void runAiSummary()}
                         disabled={aiSummaryLoading}
@@ -1470,7 +1648,7 @@ export function ChatLayout() {
                             <Icon icon={Users} size={16} /> Członkowie kanału
                           </button>
                         )}
-                        {aiEnabled && moduleEnabled("ai") && (
+                        {aiEnabled && moduleEnabled("ai") && !activeChannel.e2ee && (
                           <button
                             onClick={() => {
                               setShowChannelMenu(false);
@@ -1665,14 +1843,14 @@ export function ChatLayout() {
                 </div>
               )}
               {channelMessages.length === 0 && (
-                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                  <span className="text-4xl">
-                    {activeChannel.type === "DM" ? "👋" : "✨"}
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                    <Icon icon={activeChannel.type === "DM" ? MessageSquare : Hash} size={22} />
                   </span>
                   <p className="text-sm font-medium">
                     {activeChannel.type === "DM"
                       ? `To początek rozmowy z ${activeChannel.name}`
-                      : `Witaj na #${activeChannel.name}!`}
+                      : `To początek kanału #${activeChannel.name}`}
                   </p>
                   <p className="max-w-xs text-xs text-[var(--text-dim)]">
                     Napisz pierwszą wiadomość poniżej. Możesz też przeciągnąć plik, wkleić obrazek,
@@ -1696,7 +1874,7 @@ export function ChatLayout() {
                   }}
                   className="animate-spring-in glass-strong sticky top-2 z-20 float-right flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--accent)] shadow-lg"
                 >
-                  ↓ Najnowsze
+                  <Icon icon={ArrowDown} size={13} /> Najnowsze
                 </button>
               )}
               <div
@@ -1772,7 +1950,8 @@ export function ChatLayout() {
                         isFirstUnread={m.id === firstUnreadId}
                         autoEditNonce={editRequest?.id === m.id ? editRequest.nonce : 0}
                         reactionsEnabled={moduleEnabled("reactions")}
-                        threadsEnabled={moduleEnabled("threads")}
+                        threadsEnabled={moduleEnabled("threads") && !activeChannel?.e2ee}
+                        e2ePeerKey={activeChannel?.e2ee ? peerKeys[activeChannel.id] ?? null : null}
                       />
                     </div>
                   );
@@ -1811,6 +1990,12 @@ export function ChatLayout() {
             </div>
 
             <form onSubmit={handleSend} className="border-t border-[var(--glass-border)] p-3">
+              {activeChannel.e2ee && (
+                <div className="mb-2 flex items-center gap-1.5 text-xs text-[var(--accent-2)]">
+                  <Icon icon={ShieldCheck} size={13} />
+                  Rozmowa szyfrowana end-to-end. Tylko Ty i rozmówca możecie odczytać wiadomości.
+                </div>
+              )}
               {pending.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2">
                   {pending.map((p) => (
@@ -1821,7 +2006,7 @@ export function ChatLayout() {
                       {p.previewUrl ? (
                         <img src={p.previewUrl} alt="" className="h-8 w-8 rounded object-cover" />
                       ) : (
-                        <span className="text-base">📎</span>
+                        <Icon icon={Paperclip} size={16} className="text-[var(--text-dim)]" />
                       )}
                       <span className="max-w-[10rem] truncate">{p.file.name}</span>
                       {p.error ? (
@@ -1918,7 +2103,7 @@ export function ChatLayout() {
                       >
                         <Icon icon={Smile} size={16} /> Emoji
                       </button>
-                      {moduleEnabled("files") && (
+                      {moduleEnabled("files") && !activeChannel.e2ee && (
                         <button
                           type="button"
                           onClick={() => {
@@ -1955,14 +2140,14 @@ export function ChatLayout() {
                           <Icon icon={Clock} size={16} /> Wyślij później
                         </button>
                       )}
-                      {aiEnabled && moduleEnabled("ai") &&
+                      {aiEnabled && moduleEnabled("ai") && !activeChannel.e2ee &&
                         [
                           { mode: "improve", label: "AI: Popraw ton" },
                           { mode: "shorten", label: "AI: Skróć" },
                           { mode: "translate_en", label: "AI: Przetłumacz na EN" },
                           { mode: "translate_pl", label: "AI: Przetłumacz na PL" },
-                          { mode: "corpo", label: "AI: 🤵 Korpo-mowa" },
-                          { mode: "corpo_hard", label: "AI: 🤡 Korpo-mowa (hard)" }
+                          { mode: "corpo", label: "AI: Korpo-mowa" },
+                          { mode: "corpo_hard", label: "AI: Korpo-mowa (hard)" }
                         ].map((opt) => (
                           <button
                             key={opt.mode}
@@ -2048,7 +2233,7 @@ export function ChatLayout() {
                         >
                           <Icon icon={Smile} size={16} /> Emoji
                         </button>
-                        {moduleEnabled("files") && (
+                        {moduleEnabled("files") && !activeChannel.e2ee && (
                           <button
                             type="button"
                             onClick={() => {
@@ -2095,7 +2280,7 @@ export function ChatLayout() {
                       onClose={() => setShowComposerEmoji(false)}
                     />
                   )}
-                  {aiEnabled && moduleEnabled("ai") && (
+                  {aiEnabled && moduleEnabled("ai") && !activeChannel.e2ee && (
                     <div className="relative">
                       <button
                         type="button"
@@ -2113,8 +2298,8 @@ export function ChatLayout() {
                             { mode: "shorten", label: "Skróć" },
                             { mode: "translate_en", label: "Przetłumacz na EN" },
                             { mode: "translate_pl", label: "Przetłumacz na PL" },
-                            { mode: "corpo", label: "🤵 Korpo-mowa" },
-                            { mode: "corpo_hard", label: "🤡 Korpo-mowa (hard)" }
+                            { mode: "corpo", label: "Korpo-mowa" },
+                            { mode: "corpo_hard", label: "Korpo-mowa (hard)" }
                           ].map((opt) => (
                             <button
                               key={opt.mode}
@@ -2241,11 +2426,11 @@ export function ChatLayout() {
                         className="mx-auto mb-5 h-16 w-16 rounded-2xl shadow-lg"
                       />
                       <h2 className="text-xl font-semibold">
-                        <span className="text-brand-gradient">Witaj w {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}</span> 👋
+                        <span className="text-brand-gradient">Witaj w {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}</span>
                       </h2>
                       <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--text-dim)]">
                         Nie masz jeszcze żadnych kanałów. Kanały to miejsca, w których Twój zespół prowadzi
-                        rozmowy — zacznij od utworzenia pierwszego.
+                        rozmowy. Zacznij od utworzenia pierwszego.
                       </p>
                       <div className="mt-6 flex flex-col gap-2.5">
                         <button
@@ -2379,12 +2564,12 @@ export function ChatLayout() {
             setShowQuickSwitcher(false);
           }}
           actions={[
-            { key: "a-create", label: "Utwórz kanał", icon: "➕", onSelect: () => { setShowQuickSwitcher(false); setShowCreateChannel(true); } },
-            { key: "a-browse", label: "Przeglądaj kanały", icon: "🔎", onSelect: () => { setShowQuickSwitcher(false); setShowBrowseChannels(true); } },
-            { key: "a-saved", label: "Zapisane wiadomości", icon: "🔖", onSelect: () => { setShowQuickSwitcher(false); setShowSaved(true); } },
-            { key: "a-settings", label: "Ustawienia", icon: "⚙️", onSelect: () => { setShowQuickSwitcher(false); navigate("/settings"); } },
-            { key: "a-admin", label: "Panel administracyjny", icon: "🛡️", onSelect: () => { setShowQuickSwitcher(false); navigate("/admin/members"); } },
-            { key: "a-logout", label: "Wyloguj", icon: "🚪", onSelect: () => { setShowQuickSwitcher(false); void handleLogout(); } }
+            { key: "a-create", label: "Utwórz kanał", icon: <Icon icon={Plus} size={14} />, onSelect: () => { setShowQuickSwitcher(false); setShowCreateChannel(true); } },
+            { key: "a-browse", label: "Przeglądaj kanały", icon: <Icon icon={Search} size={14} />, onSelect: () => { setShowQuickSwitcher(false); setShowBrowseChannels(true); } },
+            { key: "a-saved", label: "Zapisane wiadomości", icon: <Icon icon={Bookmark} size={14} />, onSelect: () => { setShowQuickSwitcher(false); setShowSaved(true); } },
+            { key: "a-settings", label: "Ustawienia", icon: <Icon icon={Settings} size={14} />, onSelect: () => { setShowQuickSwitcher(false); navigate("/settings"); } },
+            { key: "a-admin", label: "Panel administracyjny", icon: <Icon icon={Shield} size={14} />, onSelect: () => { setShowQuickSwitcher(false); navigate("/admin/members"); } },
+            { key: "a-logout", label: "Wyloguj", icon: <Icon icon={LogOut} size={14} />, onSelect: () => { setShowQuickSwitcher(false); void handleLogout(); } }
           ]}
           onClose={() => setShowQuickSwitcher(false)}
         />
@@ -2425,7 +2610,7 @@ export function ChatLayout() {
                 <div className="whitespace-pre-line text-sm">{aiSummary}</div>
               )}
               <p className="mt-4 text-xs text-[var(--text-dim)]">
-                Treść wygenerowana przez darmowy model AI — może zawierać nieścisłości.
+                Treść wygenerowana przez darmowy model AI. Może zawierać nieścisłości.
               </p>
               <button onClick={() => setAiSummary(null)} className={`${glassButtonGhost} mt-3 w-full`}>
                 Zamknij

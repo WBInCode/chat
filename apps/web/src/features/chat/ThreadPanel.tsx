@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { MessageDto } from "@chatv2/shared";
+import { X } from "lucide-react";
+import { Icon } from "../../components/Icon.js";
 import { apiFetch } from "../../lib/api.js";
 import { getSocket } from "../../lib/socket.js";
 import { MessageRow } from "./MessageRow.js";
@@ -85,9 +87,10 @@ export function ThreadPanel({
         <h2 className="text-sm font-semibold">Wątek</h2>
         <button
           onClick={onClose}
+          aria-label="Zamknij wątek"
           className="rounded-lg px-2 py-0.5 text-sm text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50 hover:text-[var(--text)]"
         >
-          ✕
+          <Icon icon={X} size={16} />
         </button>
       </div>
 
@@ -124,7 +127,7 @@ export function ThreadPanel({
           />
         ))}
         {replies.length === 0 && (
-          <p className="text-xs text-[var(--text-dim)]">Brak odpowiedzi — rozpocznij wątek.</p>
+          <p className="text-xs text-[var(--text-dim)]">Brak odpowiedzi. Rozpocznij wątek.</p>
         )}
       </div>
 

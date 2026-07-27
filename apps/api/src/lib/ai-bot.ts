@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import type { MessageDto } from "@chatv2/shared";
 import { chatCompletion, isAiEnabled, AiQuotaExceededError, AiDisabledError } from "./ai.js";
+import {
+  decryptMessageContent,
+  encryptMessageContent,
+  isOrgEncryptedAtRest
+} from "./message-crypto.js";
 
 /**
  * The "@AI" in-channel assistant bot (F5-D use case 2). Implemented as a
@@ -59,12 +64,18 @@ export async function triggerAiBotReply(
   if (!isAiEnabled()) return;
 
   const recentMessages = await fastify.prisma.message.findMany({
-    where: { channelId, deletedAt: null, ...(parentId ? { OR: [{ id: parentId }, { parentId }] } : {}) },
+    where: {
+      channelId,
+      deletedAt: null,
+      contentType: { not: "e2e" },
+      ...(parentId ? { OR: [{ id: parentId }, { parentId }] } : {})
+    },
     orderBy: { createdAt: "desc" },
     take: 15,
-    include: { author: true }
+    include: { author: true, channel: { select: { orgId: true } } }
   });
   const ordered = recentMessages.slice().reverse();
+  const orgId = recentMessages[0]?.channel.orgId;
 
   const messages = [
     {
@@ -78,13 +89,13 @@ export async function triggerAiBotReply(
     },
     ...ordered.map((m) => ({
       role: (m.author.email === AI_BOT_EMAIL ? "assistant" : "user") as "user" | "assistant",
-      content: `${m.author.email === AI_BOT_EMAIL ? "" : `${m.author.displayName}: `}${m.content}`
+      content: `${m.author.email === AI_BOT_EMAIL ? "" : `${m.author.displayName}: `}${decryptMessageContent(m)}`
     }))
   ];
 
   let replyText: string;
   try {
-    replyText = await chatCompletion(fastify, messages);
+    replyText = await chatCompletion(fastify, messages, orgId ? { orgId } : {});
   } catch (err) {
     if (err instanceof AiQuotaExceededError) {
       replyText = "⚠️ Wyczerpany darmowy dzienny limit zapytań AI — spróbuj ponownie jutro.";
@@ -101,15 +112,23 @@ export async function triggerAiBotReply(
   await ensureBotChannelMembership(fastify, bot.id, channelId);
 
   const replyParentId = parentId ?? triggerMessageId;
+  const encryptAtRest = orgId ? await isOrgEncryptedAtRest(fastify, orgId) : false;
   const message = await fastify.prisma.message.create({
-    data: { channelId, authorId: bot.id, content: replyText, contentType: "text", parentId: replyParentId }
+    data: {
+      channelId,
+      authorId: bot.id,
+      content: encryptAtRest ? encryptMessageContent(replyText) : replyText,
+      encrypted: encryptAtRest,
+      contentType: "text",
+      parentId: replyParentId
+    }
   });
 
   const dto: MessageDto = {
     id: message.id,
     channelId: message.channelId,
     authorId: message.authorId,
-    content: message.content,
+    content: replyText,
     contentType: "text",
     parentId: message.parentId,
     editedAt: null,
