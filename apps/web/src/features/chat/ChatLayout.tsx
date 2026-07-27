@@ -1524,8 +1524,8 @@ export function ChatLayout() {
                         <Icon icon={Users} size={15} />
                       </button>
                     )}
-                    {/* E2E toggle: 1:1 DMs only */}
-                    {activeChannel.type === "DM" && (
+                    {/* E2E toggle: 1:1 DMs only, gated by the hub-synced e2ee module */}
+                    {activeChannel.type === "DM" && moduleEnabled("e2ee") && (
                       <button
                         onClick={() => void toggleE2e(!activeChannel.e2ee)}
                         title={
