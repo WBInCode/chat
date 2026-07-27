@@ -4,7 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate } from "react-router-dom";
 import type { MessageDto, ModuleKey } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
-import { uploadFile, isAllowedFileType, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
+import { uploadFile, uploadEncryptedFile, isAllowedFileType, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
 import { connectSocket, disconnectSocket, getSocket } from "../../lib/socket.js";
 import { useAuthStore } from "../../stores/auth.js";
 import { useChatStore, type ChannelItem } from "../../stores/chat.js";
@@ -35,7 +35,9 @@ import {
   checkPeerKey,
   trustPeerKey,
   encryptForPeer,
-  type PeerKeyStatus
+  encodePayload,
+  type PeerKeyStatus,
+  type E2eFileRef
 } from "../../lib/e2e.js";
 import { E2eVerifyModal } from "./E2eVerifyModal.js";
 import { playMessageChime, startRing, stopRing } from "../../lib/sound.js";
@@ -833,11 +835,6 @@ export function ChatLayout() {
 
   // ── actions ────────────────────────────────────────────────────────────
   function addFiles(files: FileList | File[]) {
-    // E2E DMs: attachments are not supported (files would bypass encryption).
-    if (activeChannel?.e2ee) {
-      showToast("Załączniki nie są dostępne w rozmowach szyfrowanych end-to-end");
-      return;
-    }
     const list = Array.from(files).slice(0, 10 - pending.length);
     const next: PendingAttachment[] = list.map((file) => ({
       localId: crypto.randomUUID(),
@@ -919,8 +916,9 @@ export function ChatLayout() {
     const hasFiles = pending.length > 0;
     if ((!content && !hasFiles) || !activeChannelId || !user) return;
 
-    // E2E: encrypt before anything touches the wire. Attachments are not
-    // supported in encrypted DMs (files would bypass the encryption).
+    // E2E: encrypt before anything touches the wire. Attachments are
+    // encrypted in the browser too, and their keys ride inside the encrypted
+    // message body, so the server only ever stores opaque blobs.
     const isE2e = !!activeChannel?.e2ee;
     let wireContent = content;
     if (isE2e) {
@@ -934,8 +932,31 @@ export function ChatLayout() {
         showToast("Brak klucza rozmówcy. Poproś go o otwarcie aplikacji i spróbuj ponownie.");
         return;
       }
-      if (!content) return;
-      wireContent = encryptForPeer(content, activePeerKey);
+
+      let encryptedFiles: E2eFileRef[] = [];
+      if (hasFiles) {
+        const valid = pending.filter((p) => !p.error);
+        try {
+          encryptedFiles = await Promise.all(
+            valid.map((p) =>
+              uploadEncryptedFile(p.file, activeChannelId, (pct) =>
+                setPending((prev) =>
+                  prev.map((c) => (c.localId === p.localId ? { ...c, progress: pct } : c))
+                )
+              )
+            )
+          );
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : "Nie udało się wysłać załącznika");
+          return;
+        }
+      }
+      if (!content && encryptedFiles.length === 0) return;
+
+      wireContent = encryptForPeer(
+        encodePayload({ text: content, ...(encryptedFiles.length > 0 ? { files: encryptedFiles } : {}) }),
+        activePeerKey
+      );
     }
 
     let fileIds: string[] = [];
@@ -2190,7 +2211,7 @@ export function ChatLayout() {
                       >
                         <Icon icon={Smile} size={16} /> Emoji
                       </button>
-                      {moduleEnabled("files") && !activeChannel.e2ee && (
+                      {moduleEnabled("files") && (
                         <button
                           type="button"
                           onClick={() => {
@@ -2320,7 +2341,7 @@ export function ChatLayout() {
                         >
                           <Icon icon={Smile} size={16} /> Emoji
                         </button>
-                        {moduleEnabled("files") && !activeChannel.e2ee && (
+                        {moduleEnabled("files") && (
                           <button
                             type="button"
                             onClick={() => {

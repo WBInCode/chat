@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { anonymizeIp } from "../lib/ip-privacy.js";
+import { anonymizeIp, minimizeUserAgent } from "../lib/ip-privacy.js";
 
 // IP addresses are personal data. These assertions pin down the exact
 // truncation contract so a future refactor cannot quietly start persisting
@@ -34,5 +34,32 @@ describe("anonymizeIp", () => {
     for (const ip of ["203.0.113.57", "2001:db8:1:2:3:4:5:6"]) {
       expect(anonymizeIp(ip)).not.toBe(ip);
     }
+  });
+});
+
+// The raw User-Agent is a high-entropy fingerprint we never actually use;
+// only the browser/OS family is ever displayed. These assertions keep the
+// stored value reduced to exactly that.
+describe("minimizeUserAgent", () => {
+  const CHROME_WIN =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+  const SAFARI_IOS =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+
+  it("reduces a full UA to browser + OS only", () => {
+    expect(minimizeUserAgent(CHROME_WIN)).toBe("Chrome · Windows");
+    expect(minimizeUserAgent(SAFARI_IOS)).toBe("Safari · iOS");
+  });
+
+  it("drops version numbers and build tags entirely", () => {
+    const out = minimizeUserAgent(CHROME_WIN)!;
+    expect(out).not.toMatch(/\d/); // no version digits survive
+    expect(out.length).toBeLessThan(30);
+  });
+
+  it("returns null for missing input", () => {
+    expect(minimizeUserAgent(null)).toBeNull();
+    expect(minimizeUserAgent(undefined)).toBeNull();
+    expect(minimizeUserAgent("")).toBeNull();
   });
 });

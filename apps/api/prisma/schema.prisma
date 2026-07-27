@@ -367,6 +367,7 @@ model File {
   name         String
   mimeType     String
   size         Int
+  encrypted    Boolean    @default(false) // client-side encrypted (E2E): server holds opaque ciphertext only
   status       FileStatus @default(PENDING)
   width        Int?
   height       Int?

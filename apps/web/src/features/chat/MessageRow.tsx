@@ -10,7 +10,8 @@ import { renderMarkdown } from "./markdown.js";
 import { PollCard } from "./PollCard.js";
 import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
 import { Icon } from "../../components/Icon.js";
-import { decryptFromPeer } from "../../lib/e2e.js";
+import { decryptFromPeer, decodePayload } from "../../lib/e2e.js";
+import { E2eFileAttachment } from "./E2eFileAttachment.js";
 import {
   SmilePlus,
   MessageSquare,
@@ -147,11 +148,14 @@ export function MessageRow({
   const isE2e = m.contentType === "e2e";
   // E2E: decrypt at render time on the client. null = this device cannot
   // decrypt (missing/rotated keys) — an honest placeholder is shown.
-  const displayContent = useMemo(() => {
-    if (!isE2e) return m.content;
+  // The decrypted body may carry attachments alongside the text.
+  const e2ePayload = useMemo(() => {
+    if (!isE2e) return null;
     if (!e2ePeerKey) return null;
-    return decryptFromPeer(m.content, e2ePeerKey);
+    const plain = decryptFromPeer(m.content, e2ePeerKey);
+    return plain === null ? null : decodePayload(plain);
   }, [isE2e, m.content, e2ePeerKey]);
+  const displayContent = e2ePayload?.text ?? null;
   const avatarUrl = useAvatarStore((s) => s.urls[m.authorId]);
   const avatarUrls = useAvatarStore((s) => s.urls);
 
@@ -414,20 +418,26 @@ export function MessageRow({
         </p>
       ) : isE2e ? (
         <div className={`relative text-[14px] leading-relaxed ${isTemp ? "opacity-50" : ""}`}>
-          {displayContent === null ? (
+          {e2ePayload === null ? (
             <p className="flex items-center gap-1.5 italic text-[var(--text-dim)]">
               <Icon icon={ShieldCheck} size={13} />
               Zaszyfrowana wiadomość. Nie można jej odczytać na tym urządzeniu.
             </p>
           ) : (
             <>
-              {renderMarkdown(displayContent, members, currentUserId)}
-              <span className="ml-1 inline-flex translate-y-[2px] text-[var(--accent-2)]" title="Wiadomość szyfrowana end-to-end">
-                <Icon icon={ShieldCheck} size={11} />
-              </span>
+              {displayContent && renderMarkdown(displayContent, members, currentUserId)}
+              {displayContent && (
+                <span
+                  className="ml-1 inline-flex translate-y-[2px] text-[var(--accent-2)]"
+                  title="Wiadomość szyfrowana end-to-end"
+                >
+                  <Icon icon={ShieldCheck} size={11} />
+                </span>
+              )}
               {m.editedAt && (
                 <span className="ml-1 text-xs text-[var(--text-dim)]">(edytowano)</span>
               )}
+              {e2ePayload.files?.map((f) => <E2eFileAttachment key={f.id} file={f} />)}
             </>
           )}
         </div>

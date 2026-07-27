@@ -11,9 +11,13 @@ interface SessionDto {
   current: boolean;
 }
 
-/** Best-effort friendly device/browser label from a raw user-agent string. */
+/** Friendly device/browser label. The API now stores an already-reduced
+ *  "Chrome · Windows" label (raw UA strings are no longer kept), so newer
+ *  rows pass straight through; the parsing path stays for older rows. */
 function describeUserAgent(ua: string | null): string {
   if (!ua) return "Nieznane urządzenie";
+  // Already minimized server-side: no raw UA has this shape.
+  if (!ua.includes("/") && !ua.includes("(")) return ua;
   const browser =
     /Edg\//.test(ua) ? "Edge" :
     /OPR\//.test(ua) || /Opera/.test(ua) ? "Opera" :

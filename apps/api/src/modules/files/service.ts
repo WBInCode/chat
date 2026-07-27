@@ -28,6 +28,7 @@ function toDto(f: FileRow): FileDto {
     height: f.height,
     hasThumb: !!f.thumbKey,
     previewStatus: f.previewStatus as FileDto["previewStatus"],
+    ...(f.encrypted ? { encrypted: true } : {}),
     createdAt: f.createdAt.toISOString()
   };
 }
@@ -36,12 +37,31 @@ export function createFileService(fastify: FastifyInstance) {
   async function presign(
     userId: string,
     orgId: string,
-    input: { channelId: string; name: string; size: number; mimeType: string }
+    input: { channelId: string; name: string; size: number; mimeType: string; encrypted?: boolean }
   ) {
-    await assertChannelMember(fastify, userId, input.channelId);
+    const member = await assertChannelMember(fastify, userId, input.channelId);
+
+    // Encrypted uploads only make sense (and are only accepted) in a channel
+    // that actually has E2E on; conversely an E2E channel must not receive a
+    // readable file, which would quietly defeat the encryption.
+    const encrypted = !!input.encrypted;
+    if (encrypted && !member.channel.e2ee) {
+      throw new HttpError(400, "E2E_NOT_ENABLED", "Kanał nie ma włączonego szyfrowania end-to-end");
+    }
+    if (!encrypted && member.channel.e2ee) {
+      throw new HttpError(
+        400,
+        "E2E_REQUIRED",
+        "W rozmowie szyfrowanej załączniki muszą być zaszyfrowane"
+      );
+    }
 
     const fileId = randomUUID();
-    const key = buildFileKey(orgId, input.channelId, fileId, input.name);
+    // The stored object name is opaque for encrypted files: the real
+    // filename lives inside the encrypted message body, not in S3 keys or
+    // database columns the server can read.
+    const storedName = encrypted ? `${fileId}.bin` : input.name;
+    const key = buildFileKey(orgId, input.channelId, fileId, storedName);
 
     const record = await fastify.prisma.file.create({
       data: {
@@ -50,9 +70,10 @@ export function createFileService(fastify: FastifyInstance) {
         channelId: input.channelId,
         uploaderId: userId,
         key,
-        name: input.name,
+        name: storedName,
         mimeType: input.mimeType,
         size: input.size,
+        encrypted,
         status: "PENDING"
       }
     });
@@ -85,6 +106,20 @@ export function createFileService(fastify: FastifyInstance) {
     if (!head || head.ContentLength !== file.size) {
       await fastify.prisma.file.update({ where: { id: fileId }, data: { status: "FAILED" } });
       throw new HttpError(400, "UPLOAD_MISMATCH", "Przesłany plik nie zgadza się z deklaracją");
+    }
+
+    // Encrypted attachment: the bytes are opaque to us by design, so every
+    // server-side inspection below (magic-byte sniffing, sharp re-encoding,
+    // ClamAV) is impossible rather than skipped for convenience. This is the
+    // explicit trade-off of E2E attachments: confidentiality from the server
+    // means the server also cannot vet the content. Non-E2E channels are
+    // unaffected and keep the full scanning pipeline.
+    if (file.encrypted) {
+      const updated = await fastify.prisma.file.update({
+        where: { id: fileId },
+        data: { status: "CLEAN" }
+      });
+      return toDto(updated);
     }
 
     // Sniff first bytes to confirm the real type matches what was declared.

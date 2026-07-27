@@ -38,3 +38,42 @@ export function anonymizeIp(ip: string | null | undefined): string | null {
   // Unrecognised format: store nothing rather than store something identifying.
   return null;
 }
+
+/**
+ * Reduces a raw User-Agent to just "browser · OS" before storage.
+ *
+ * The full UA string is a high-entropy fingerprint (exact versions, build
+ * tags, device models) and we never actually use it: the session list only
+ * ever renders the browser/OS family so a user can recognise their own
+ * devices. Storing the rest is pure collateral data waiting to leak, so the
+ * reduction happens at write time and the raw string is simply never kept.
+ */
+export function minimizeUserAgent(ua: string | null | undefined): string | null {
+  if (!ua) return null;
+
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /OPR\/|Opera/.test(ua)
+      ? "Opera"
+      : /Firefox\//.test(ua)
+        ? "Firefox"
+        : /Chrome\//.test(ua)
+          ? "Chrome"
+          : /Safari\//.test(ua)
+            ? "Safari"
+            : "Przeglądarka";
+
+  const os = /Windows/.test(ua)
+    ? "Windows"
+    : /Android/.test(ua)
+      ? "Android"
+      : /iPhone|iPad|iOS/.test(ua)
+        ? "iOS"
+        : /Mac OS X|Macintosh/.test(ua)
+          ? "macOS"
+          : /Linux/.test(ua)
+            ? "Linux"
+            : "";
+
+  return os ? `${browser} · ${os}` : browser;
+}

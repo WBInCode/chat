@@ -293,6 +293,84 @@ export function decryptFromPeer(content: string, peerPublicKeyB64: string): stri
   }
 }
 
+// ── attachments ──────────────────────────────────────────────────────────
+// Files in an E2E conversation are encrypted in the browser with a fresh
+// random key and uploaded as an opaque blob. The key, the real filename and
+// the real MIME type travel inside the ENCRYPTED message body, so the server
+// stores bytes it cannot read and metadata it never receives.
+//
+// Trade-off, stated plainly: the server cannot virus-scan what it cannot
+// read. Non-E2E channels keep the full ClamAV pipeline; this path is only
+// reachable in conversations the user explicitly switched to E2E.
+
+export interface E2eFileRef {
+  /** Server-side file id (the only part the server also knows). */
+  id: string;
+  /** Symmetric key for this one file, base64. */
+  k: string;
+  /** Real filename. */
+  n: string;
+  /** Real MIME type. */
+  m: string;
+  /** Plaintext size in bytes. */
+  s: number;
+}
+
+/** Encrypts raw file bytes with a fresh random key. Returns ciphertext + key. */
+export function encryptFileBytes(plain: Uint8Array): { ciphertext: Uint8Array; keyB64: string } {
+  const key = nacl.randomBytes(nacl.secretbox.keyLength);
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+  const box = nacl.secretbox(plain, nonce, key);
+  // Nonce is prepended so the blob is self-contained.
+  const out = new Uint8Array(nonce.length + box.length);
+  out.set(nonce, 0);
+  out.set(box, nonce.length);
+  return { ciphertext: out, keyB64: toBase64(key) };
+}
+
+/** Reverses encryptFileBytes. Returns null if the key is wrong or data tampered. */
+export function decryptFileBytes(ciphertext: Uint8Array, keyB64: string): Uint8Array | null {
+  try {
+    const nonce = ciphertext.subarray(0, nacl.secretbox.nonceLength);
+    const box = ciphertext.subarray(nacl.secretbox.nonceLength);
+    return nacl.secretbox.open(box, nonce, fromBase64(keyB64));
+  } catch {
+    return null;
+  }
+}
+
+// ── structured message payload ───────────────────────────────────────────
+// Text-only messages used to be encrypted as a bare string. Attachments need
+// structure (file refs alongside the text), so the plaintext is now a JSON
+// document behind a sentinel that plain user text cannot realistically
+// contain. Anything without the sentinel is treated as legacy plain text,
+// so previously sent messages keep decrypting.
+const PAYLOAD_SENTINEL = "\u0000e2e-payload-v1\u0000";
+
+export interface E2ePayload {
+  text: string;
+  files?: E2eFileRef[];
+}
+
+export function encodePayload(payload: E2ePayload): string {
+  if (!payload.files || payload.files.length === 0) {
+    // Keep pure-text messages as plain strings: smaller, and readable by
+    // any older client that predates this format.
+    return payload.text;
+  }
+  return PAYLOAD_SENTINEL + JSON.stringify(payload);
+}
+
+export function decodePayload(plaintext: string): E2ePayload {
+  if (!plaintext.startsWith(PAYLOAD_SENTINEL)) return { text: plaintext };
+  try {
+    const parsed = JSON.parse(plaintext.slice(PAYLOAD_SENTINEL.length)) as E2ePayload;
+    return { text: parsed.text ?? "", ...(parsed.files ? { files: parsed.files } : {}) };
+  } catch {
+    return { text: "" };
+  }
+}
+
 // ── device migration ─────────────────────────────────────────────────────
 // Without this, turning E2E on means "my history dies with this browser
 // profile", which in practice stops people from enabling it at all. The

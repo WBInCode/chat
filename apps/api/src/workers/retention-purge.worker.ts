@@ -100,6 +100,29 @@ export function registerRetentionPurgeWorker(fastify: FastifyInstance) {
           fastify.log.error({ err, channelId: channel.id }, "Channel TTL purge failed");
         }
       }
+      // ── Stale session rows ──────────────────────────────────────────────
+      // Sessions were only ever marked revoked/expired, never deleted, so the
+      // table grew into an indefinite login history (device label + coarse
+      // IP + timestamps) long after the session stopped being usable. Once a
+      // session can no longer authenticate anything, keeping the row has no
+      // purpose. A short grace window keeps recent entries visible in the
+      // "active sessions" UI so a user can still spot a suspicious login.
+      try {
+        const graceCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const deleted = await fastify.prisma.session.deleteMany({
+          where: {
+            OR: [
+              { expiresAt: { lt: graceCutoff } },
+              { revokedAt: { lt: graceCutoff } }
+            ]
+          }
+        });
+        if (deleted.count > 0) {
+          fastify.log.info({ count: deleted.count }, "Stale session rows purged");
+        }
+      } catch (err) {
+        fastify.log.error({ err }, "Session purge failed");
+      }
     },
     { connection: queueConnection, concurrency: 1 }
   );
