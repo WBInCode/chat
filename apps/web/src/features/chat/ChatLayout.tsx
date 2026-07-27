@@ -1540,7 +1540,7 @@ export function ChatLayout() {
                     )}
                     {/* Disappearing messages (channel admin; any member in DMs) */}
                     {(activeChannel.type === "DM" || activeChannel.myRole === "ADMIN") && (
-                      <div className="relative">
+                      <div className="relative flex items-center">
                         <button
                           onClick={() => setShowTtlMenu((v) => !v)}
                           title={
@@ -1548,7 +1548,7 @@ export function ChatLayout() {
                               ? `Wiadomości znikają po ${formatTtl(activeChannel.messageTtlSeconds)}`
                               : "Znikające wiadomości"
                           }
-                          className={activeChannel.messageTtlSeconds ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--text)]"}
+                          className={`flex items-center ${activeChannel.messageTtlSeconds ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--text)]"}`}
                         >
                           <Icon icon={Timer} size={15} />
                         </button>
