@@ -110,6 +110,15 @@
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────── */
+/* Comfortable reading scale: bumps the rem base so every Tailwind text/
+   spacing/radius utility (which is expressed in rem) grows ~12% app-wide —
+   the UI was reading noticeably smaller than a typical desktop app. Kept as
+   a root font-size change (not a CSS `zoom`/`transform: scale`) so layout,
+   focus rings and portaled modals all scale together with no side effects. */
+html {
+  font-size: 18px;
+}
+
 html,
 body,
 #root {

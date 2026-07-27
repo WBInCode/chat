@@ -13,6 +13,6 @@ interface IconProps {
  * in every component. Emoji are intentionally NOT touched by this — they
  * remain for user-facing content (reactions, custom status, polls).
  */
-export function Icon({ icon: LucideIconComponent, size = 16, className = "", strokeWidth = 1.75 }: IconProps) {
+export function Icon({ icon: LucideIconComponent, size = 18, className = "", strokeWidth = 1.75 }: IconProps) {
   return <LucideIconComponent size={size} strokeWidth={strokeWidth} className={className} aria-hidden="true" />;
 }

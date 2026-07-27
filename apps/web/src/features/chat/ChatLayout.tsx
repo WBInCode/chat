@@ -1471,7 +1471,7 @@ export function ChatLayout() {
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] transition-colors duration-150 hover:bg-[var(--border)]/50"
                 >
                   <span className="relative shrink-0">
-                    <Avatar userId={m.userId} displayName={m.displayName} url={avatarUrls[m.userId]} size={24} />
+                    <Avatar userId={m.userId} displayName={m.displayName} url={avatarUrls[m.userId]} size={26} />
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-[var(--bg)] transition-colors duration-300 ${presenceDotClass(presenceStatus[m.userId])}`}
                     />
@@ -1996,6 +1996,7 @@ export function ChatLayout() {
                         reactionsEnabled={moduleEnabled("reactions")}
                         threadsEnabled={moduleEnabled("threads") && !activeChannel?.e2ee}
                         e2ePeerKey={activeChannel?.e2ee ? peerKeys[activeChannel.id] ?? null : null}
+                        readBy={m.id === readReceipt?.messageId ? readReceipt.readers : undefined}
                       />
                     </div>
                   );
@@ -2004,7 +2005,7 @@ export function ChatLayout() {
             </div>
 
             <div className="flex h-5 items-center gap-1.5 px-4 text-xs text-[var(--text-dim)]">
-              {typingNames.length > 0 ? (
+              {typingNames.length > 0 && (
                 <>
                   <span className="flex gap-0.5">
                     <span className="typing-dot h-1 w-1 rounded-full bg-[var(--text-dim)]" />
@@ -2013,24 +2014,7 @@ export function ChatLayout() {
                   </span>
                   {typingNames.join(", ")} pisze...
                 </>
-              ) : readReceipt ? (
-                <span className="flex items-center gap-1.5" title={`Przeczytane przez: ${readReceipt.readers.map((r) => r.displayName).join(", ")}`}>
-                  <span>Przeczytane</span>
-                  <span className="flex -space-x-1.5">
-                    {readReceipt.readers.slice(0, 5).map((r) => (
-                      <Avatar
-                        key={r.userId}
-                        userId={r.userId}
-                        displayName={r.displayName}
-                        url={avatarUrls[r.userId]}
-                        size={16}
-                        className="ring-1 ring-[var(--bg)]"
-                      />
-                    ))}
-                  </span>
-                  {readReceipt.readers.length > 5 && <span>+{readReceipt.readers.length - 5}</span>}
-                </span>
-              ) : null}
+              )}
             </div>
 
             <form onSubmit={handleSend} className="border-t border-[var(--glass-border)] p-3">
