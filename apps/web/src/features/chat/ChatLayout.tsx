@@ -31,6 +31,7 @@ import { useIdlePresence } from "../../lib/idlePresence.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import { ensureKeyPublished, fetchPeerPublicKey, encryptForPeer } from "../../lib/e2e.js";
+import { playMessageChime, startRing, stopRing } from "../../lib/sound.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
 import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, Timer } from "lucide-react";
@@ -176,6 +177,9 @@ export function ChatLayout() {
   const permalinkInProgressRef = useRef<string | null>(null);
   const suppressAutoScrollRef = useRef(false);
   const loadingOlderRef = useRef(false);
+  // Last-seen voice participant ids per channel, so a 0 -> 1+ transition
+  // (someone just joined) can be told apart from a page-load snapshot.
+  const voiceParticipantsRef = useRef<Record<string, string[]>>({});
   // Distance from the current scroll position to the bottom of the content,
   // captured right before prepending older messages so we can re-anchor the
   // viewport (the content below the prepend is unchanged).
@@ -204,6 +208,15 @@ export function ChatLayout() {
   const [showAiRewriteMenu, setShowAiRewriteMenu] = useState(false);
   const [aiRewriteLoading, setAiRewriteLoading] = useState(false);
   const [inVoiceChannelId, setInVoiceChannelId] = useState<string | null>(null);
+  // Kept in sync below; read imperatively from the socket handler so joining
+  // a call doesn't require resubscribing the whole socket effect.
+  const inVoiceChannelIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    inVoiceChannelIdRef.current = inVoiceChannelId;
+    // Joining silences any ring for that channel immediately, without
+    // waiting for the next voice:participants broadcast.
+    if (inVoiceChannelId) stopRing();
+  }, [inVoiceChannelId]);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showComposerActions, setShowComposerActions] = useState(false);
@@ -323,6 +336,15 @@ export function ChatLayout() {
     socket.on("message:new", (m) => {
       if (!m.parentId) addMessage(m);
       else incrementReplyCount(m.channelId, m.parentId);
+
+      // Notification ping: skip own messages and muted channels. Reads the
+      // store imperatively (not via the hook) so this handler doesn't need
+      // `user`/`channels` in the effect's dependency array.
+      const me = useAuthStore.getState().user;
+      if (m.authorId !== me?.id) {
+        const chan = useChatStore.getState().channels.find((c) => c.id === m.channelId);
+        if (!chan?.muted) playMessageChime();
+      }
     });
     socket.on("message:updated", (m) => updateMessage(m));
     socket.on("message:deleted", ({ channelId, messageId }) =>
@@ -349,6 +371,26 @@ export function ChatLayout() {
       applyChannelSettings(channelId, { e2ee, messageTtlSeconds })
     );
 
+    // Incoming call "ring": a channel I belong to (but am not currently
+    // joined into) just went from 0 participants to 1+ — someone started
+    // a voice call. Rings until they hang up, I join, or I dismiss it.
+    socket.on("voice:participants", ({ channelId, participants }) => {
+      const prev = voiceParticipantsRef.current[channelId] ?? [];
+      voiceParticipantsRef.current[channelId] = participants.map((p) => p.userId);
+      const me = useAuthStore.getState().user;
+      const others = participants.filter((p) => p.userId !== me?.id);
+      const wasEmpty = prev.filter((id) => id !== me?.id).length === 0;
+      const amInThisCall = inVoiceChannelIdRef.current === channelId;
+      if (wasEmpty && others.length > 0 && !amInThisCall) {
+        const chan = useChatStore.getState().channels.find((c) => c.id === channelId);
+        startRing();
+        showToast(`Połączenie głosowe: ${chan?.name ?? "kanał"}`, 6000);
+      }
+      if (others.length === 0 || amInThisCall) {
+        stopRing();
+      }
+    });
+
     // Connection-state banner (F6-A.3): silence on network drops was
     // confusing — users kept typing into a dead socket.
     const onDisconnect = () => setWsDisconnected(true);
@@ -368,9 +410,11 @@ export function ChatLayout() {
       socket.off("reaction:update");
       socket.off("read:update");
       socket.off("channel:settings-updated");
+      socket.off("voice:participants");
       socket.off("disconnect", onDisconnect);
       socket.off("connect", onConnect);
       disconnectSocket();
+      stopRing();
     };
   }, [
     addMessage,

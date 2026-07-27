@@ -46,7 +46,7 @@ export function CreateChannelModal({ orgId, onClose, onCreated }: CreateChannelM
 
         <label className="block space-y-1 text-sm">
           <span className="text-[var(--text-dim)]">Nazwa kanału</span>
-          <div className="flex items-center gap-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2.5 py-2">
+          <div className="field-pill flex items-center gap-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2.5 py-2">
             <span className="text-[var(--text-dim)]">#</span>
             <input
               autoFocus

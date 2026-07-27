@@ -262,6 +262,29 @@ textarea::placeholder {
   background: var(--accent-hi);
 }
 
+/* ── Composite "pill" fields: a bordered wrapper containing a prefix icon
+   (#, @, search glyph…) plus a bare <input>. The WRAPPER is the visual
+   field, so it must carry the focus ring — otherwise the browser's default
+   :focus-visible ring lands tightly around the inner input box, appearing
+   "inside" the pill instead of around the whole field (looks broken). The
+   `input:focus-visible` override below has higher specificity than the
+   global rule (two selectors vs. one) so it always wins regardless of
+   source order. */
+.field-pill {
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.field-pill:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.field-pill input:focus-visible {
+  outline: none;
+}
+
 /* ── Animations ───────────────────────────────────────────────────────── */
 @keyframes float-in {
   from {
