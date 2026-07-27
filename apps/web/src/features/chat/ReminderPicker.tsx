@@ -1,4 +1,6 @@
 import { createPortal } from "react-dom";
+import { AlarmClock } from "lucide-react";
+import { Icon } from "../../components/Icon.js";
 
 interface ReminderPickerProps {
   onClose: () => void;
@@ -29,7 +31,9 @@ export function ReminderPicker({ onClose, onSubmit }: ReminderPickerProps) {
     <>
       <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-64 -translate-x-1/2 -translate-y-1/2 space-y-1.5 p-4">
-        <h2 className="mb-1 text-sm font-semibold">⏰ Przypomnij mi</h2>
+        <h2 className="mb-1 flex items-center gap-1.5 text-sm font-semibold">
+          <Icon icon={AlarmClock} size={15} className="text-[var(--accent)]" /> Przypomnij mi
+        </h2>
         {PRESETS.map((p) => (
           <button
             key={p.label}
