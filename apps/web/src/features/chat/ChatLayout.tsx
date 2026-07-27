@@ -306,7 +306,7 @@ export function ChatLayout() {
   // ── document title badge: total unread across non-muted channels ──────
   useEffect(() => {
     const total = channels.reduce((sum, c) => (c.muted ? sum : sum + (c.unreadCount ?? 0)), 0);
-    document.title = total > 0 ? `(${total}) chatv2` : "chatv2";
+    document.title = total > 0 ? `(${total}) Chat WB-Platform` : "Chat WB-Platform";
   }, [channels]);
 
   useEffect(() => {
@@ -1266,7 +1266,7 @@ export function ChatLayout() {
               title={orgs.length > 1 ? "Przełącz organizację" : undefined}
             >
               <span className="truncate font-[family-name:var(--font-display)] tracking-tight">
-                {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}
+                {orgs.find((o) => o.id === activeOrgId)?.name ?? "Chat WB-Platform"}
               </span>
               {orgs.length > 1 && <Icon icon={ChevronDown} size={14} className="shrink-0 text-[var(--text-dim)]" />}
             </button>
@@ -2470,7 +2470,7 @@ export function ChatLayout() {
                         className="mx-auto mb-5 h-16 w-16 rounded-2xl shadow-lg"
                       />
                       <h2 className="text-xl font-semibold">
-                        <span className="text-brand-gradient">Witaj w {orgs.find((o) => o.id === activeOrgId)?.name ?? "chatv2"}</span>
+                        <span className="text-brand-gradient">Witaj w {orgs.find((o) => o.id === activeOrgId)?.name ?? "Chat WB-Platform"}</span>
                       </h2>
                       <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--text-dim)]">
                         Nie masz jeszcze żadnych kanałów. Kanały to miejsca, w których Twój zespół prowadzi

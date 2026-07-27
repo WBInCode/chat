@@ -85,7 +85,7 @@ export function LoginPage() {
             className="animate-spring-in mb-4 h-14 w-14 rounded-2xl shadow-[0_8px_24px_var(--accent-glow)]"
           />
           <h1 className="text-brand-gradient text-2xl font-semibold">Zaloguj się</h1>
-          <p className="mt-1 text-sm text-[var(--text-dim)]">chatv2, komunikator firmowy</p>
+          <p className="mt-1 text-sm text-[var(--text-dim)]">Chat WB-Platform, komunikator firmowy</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

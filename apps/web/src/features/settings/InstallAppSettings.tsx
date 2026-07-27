@@ -15,7 +15,7 @@ export function InstallAppSettings() {
     <div className="glass-strong space-y-4 p-6">
       <h2 className="text-base font-semibold text-[var(--text)]">Aplikacja</h2>
       <p className="text-sm text-[var(--text-dim)]">
-        Zainstaluj chatv2 jako aplikację: własne okno, ikona na pulpicie i podstawowy tryb offline.
+        Zainstaluj Chat WB-Platform jako aplikację: własne okno, ikona na pulpicie i podstawowy tryb offline.
       </p>
 
       {installed ? (

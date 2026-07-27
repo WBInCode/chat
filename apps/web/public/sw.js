@@ -83,7 +83,7 @@ self.addEventListener("push", (event) => {
   try {
     payload = event.data.json();
   } catch {
-    payload = { title: "chatv2", body: event.data.text() };
+    payload = { title: "Chat WB-Platform", body: event.data.text() };
   }
 
   event.waitUntil(
