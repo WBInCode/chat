@@ -1391,20 +1391,20 @@ export function ChatLayout() {
             id="channels"
             title="Kanały"
             action={
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => setShowBrowseChannels(true)}
                   title="Przeglądaj kanały publiczne"
-                  className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)]"
+                  className="flex h-8 items-center rounded px-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
                 >
                   Przeglądaj
                 </button>
                 <button
                   onClick={() => setShowCreateChannel(true)}
                   title="Utwórz kanał"
-                  className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)]"
+                  className="flex h-8 w-8 items-center justify-center rounded text-[var(--text-dim)] hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
                 >
-                  <Icon icon={Plus} size={14} />
+                  <Icon icon={Plus} size={16} />
                 </button>
               </div>
             }
@@ -1468,7 +1468,7 @@ export function ChatLayout() {
               <button
                 onClick={() => setShowGroupDmPicker(true)}
                 title="Nowa grupa"
-                className="text-xs text-[var(--text-dim)] hover:text-[var(--accent)]"
+                className="flex h-8 items-center rounded px-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
               >
                 + Grupa
               </button>
@@ -1783,7 +1783,7 @@ export function ChatLayout() {
                       setTopicDraft(activeChannel.topic ?? "");
                       setEditingTopic(true);
                     }}
-                    className={`truncate text-left text-xs text-[var(--text-dim)] ${activeChannel.myRole === "ADMIN" ? "hover:text-[var(--text)]" : ""}`}
+                    className={`min-h-6 truncate py-1 text-left text-xs text-[var(--text-dim)] ${activeChannel.myRole === "ADMIN" ? "hover:text-[var(--text)]" : ""}`}
                   >
                     {activeChannel.topic || (activeChannel.myRole === "ADMIN" ? "+ Dodaj temat kanału" : "")}
                   </button>
@@ -1802,7 +1802,7 @@ export function ChatLayout() {
                   type="button"
                   onClick={() => setShowMobileSearch((v) => !v)}
                   title="Szukaj"
-                  className={`text-[var(--text-dim)] hover:text-[var(--text)] md:hidden ${moduleEnabled("search") ? "" : "hidden"}`}
+                  className={`-m-1.5 flex h-11 w-11 items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)] md:hidden ${moduleEnabled("search") ? "" : "hidden"}`}
                 >
                   <Icon icon={Search} size={18} />
                 </button>
