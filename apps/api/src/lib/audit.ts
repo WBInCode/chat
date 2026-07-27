@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
+import { anonymizeIp } from "./ip-privacy.js";
 
 interface AuditEntryInput {
   orgId: string;
@@ -62,7 +63,9 @@ export async function logAudit(fastify: FastifyInstance, entry: AuditEntryInput)
       actorId: entry.actorId,
       action: entry.action,
       meta: (entry.meta ?? {}) as Prisma.InputJsonValue,
-      ip: entry.ip ?? null,
+      // Truncated before storage: the audit trail keeps its forensic value
+      // without accumulating a precise per-user location history.
+      ip: anonymizeIp(entry.ip),
       prevHash,
       hash,
       createdAt

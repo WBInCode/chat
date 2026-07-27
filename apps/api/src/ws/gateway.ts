@@ -230,8 +230,25 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
       }
     });
 
+    // Typing indicators are a continuous, fine-grained activity stream: the
+    // server observes every keystroke burst, per user, per conversation. In
+    // an E2E conversation that metadata would undo part of what the
+    // encryption buys, so it is not relayed there at all.
+    async function isE2eChannel(channelId: string): Promise<boolean> {
+      const cached = await fastify.redis.get(`e2ee-channel:${channelId}`);
+      if (cached !== null) return cached === "1";
+      const channel = await fastify.prisma.channel.findUnique({
+        where: { id: channelId },
+        select: { e2ee: true }
+      });
+      const value = channel?.e2ee ? "1" : "0";
+      await fastify.redis.set(`e2ee-channel:${channelId}`, value, "EX", 60);
+      return value === "1";
+    }
+
     socket.on(WS_CLIENT_EVENTS.TypingStart, async (payload) => {
       if (!(await allowEvent(userId, "typing", 20))) return;
+      if (await isE2eChannel(payload.channelId)) return;
       socket.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.TypingUpdate, {
         channelId: payload.channelId,
         userId,
@@ -239,7 +256,8 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
       });
     });
 
-    socket.on(WS_CLIENT_EVENTS.TypingStop, (payload) => {
+    socket.on(WS_CLIENT_EVENTS.TypingStop, async (payload) => {
+      if (await isE2eChannel(payload.channelId)) return;
       socket.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.TypingUpdate, {
         channelId: payload.channelId,
         userId,

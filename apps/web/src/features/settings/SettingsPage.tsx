@@ -10,6 +10,7 @@ import { NotificationSettings } from "./NotificationSettings.js";
 import { AppearanceSettings } from "./AppearanceSettings.js";
 import { InstallAppSettings } from "./InstallAppSettings.js";
 import { SessionsSettings } from "./SessionsSettings.js";
+import { E2eKeysSettings } from "./E2eKeysSettings.js";
 
 type SectionKey = "profile" | "appearance" | "notifications" | "app" | "security" | "privacy";
 
@@ -69,6 +70,7 @@ export function SettingsPage() {
           {active === "security" && (
             <>
               <TotpSettings />
+              <E2eKeysSettings />
               <SessionsSettings />
             </>
           )}

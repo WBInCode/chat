@@ -30,11 +30,18 @@ import { useAvatarStore } from "../../stores/avatars.js";
 import { useIdlePresence } from "../../lib/idlePresence.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
-import { ensureKeyPublished, fetchPeerPublicKey, encryptForPeer } from "../../lib/e2e.js";
+import {
+  ensureKeyPublished,
+  checkPeerKey,
+  trustPeerKey,
+  encryptForPeer,
+  type PeerKeyStatus
+} from "../../lib/e2e.js";
+import { E2eVerifyModal } from "./E2eVerifyModal.js";
 import { playMessageChime, startRing, stopRing } from "../../lib/sound.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, Timer } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, ShieldAlert, Timer } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { renderMarkdown } from "./markdown.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
@@ -159,7 +166,11 @@ export function ChatLayout() {
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   const [members, setMembers] = useState<MemberItem[]>([]);
   // E2E: peer public keys per DM channel (null = peer has no key yet).
-  const [peerKeys, setPeerKeys] = useState<Record<string, string | null>>({});
+  // E2E: per-DM key verification state. Holds not just the peer key but
+  // whether it still matches the one pinned on first contact, so a silent
+  // server-side key swap becomes a visible, blocking event.
+  const [peerKeys, setPeerKeys] = useState<Record<string, PeerKeyStatus | undefined>>({});
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [showTtlMenu, setShowTtlMenu] = useState(false);
   const [profileCard, setProfileCard] = useState<{ userId: string; anchor: { x: number; y: number } } | null>(null);
   const avatarUrls = useAvatarStore((s) => s.urls);
@@ -675,14 +686,36 @@ export function ChatLayout() {
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
 
-  // ── E2E: fetch the DM peer's public key when an encrypted DM is opened ──
+  // ── E2E: verify the DM peer's key against the local pin on open ───────
   useEffect(() => {
     if (!activeChannel?.e2ee || activeChannel.type !== "DM" || !user) return;
     if (peerKeys[activeChannel.id] !== undefined) return;
-    void fetchPeerPublicKey(activeChannel.id, user.id)
-      .then((key) => setPeerKeys((prev) => ({ ...prev, [activeChannel.id]: key })))
-      .catch(() => setPeerKeys((prev) => ({ ...prev, [activeChannel.id]: null })));
+    void checkPeerKey(activeChannel.id, user.id)
+      .then((status) => setPeerKeys((prev) => ({ ...prev, [activeChannel.id]: status })))
+      .catch(() => setPeerKeys((prev) => ({ ...prev, [activeChannel.id]: { state: "missing" } })));
   }, [activeChannel, user, peerKeys]);
+
+  const peerKeyStatus = activeChannel?.e2ee ? peerKeys[activeChannel.id] : undefined;
+  const peerKeyChanged = peerKeyStatus?.state === "changed";
+  const activePeerKey = peerKeyStatus?.state === "ok" ? peerKeyStatus.publicKey : null;
+
+  /** Accepts a changed peer key after the user verified the safety number. */
+  function trustChangedPeerKey() {
+    if (!activeChannel || peerKeyStatus?.state !== "changed") return;
+    trustPeerKey(peerKeyStatus.peerUserId, peerKeyStatus.publicKey);
+    setPeerKeys((prev) => ({
+      ...prev,
+      [activeChannel.id]: {
+        state: "ok",
+        peerUserId: peerKeyStatus.peerUserId,
+        publicKey: peerKeyStatus.publicKey,
+        safetyNumber: peerKeyStatus.safetyNumber,
+        firstUse: false
+      }
+    }));
+    setShowVerifyModal(false);
+    showToast("Nowy klucz zaufany");
+  }
 
   /** E2E toggle for 1:1 DMs. Enabling requires both published keys. */
   async function toggleE2e(enabled: boolean) {
@@ -891,13 +924,18 @@ export function ChatLayout() {
     const isE2e = !!activeChannel?.e2ee;
     let wireContent = content;
     if (isE2e) {
-      const peerKey = peerKeys[activeChannelId];
-      if (!peerKey) {
+      // Hard stop on an unverified key change: sending here could mean
+      // encrypting to whoever supplied the substituted key.
+      if (peerKeyChanged) {
+        setShowVerifyModal(true);
+        return;
+      }
+      if (!activePeerKey) {
         showToast("Brak klucza rozmówcy. Poproś go o otwarcie aplikacji i spróbuj ponownie.");
         return;
       }
       if (!content) return;
-      wireContent = encryptForPeer(content, peerKey);
+      wireContent = encryptForPeer(content, activePeerKey);
     }
 
     let fileIds: string[] = [];
@@ -1995,7 +2033,7 @@ export function ChatLayout() {
                         autoEditNonce={editRequest?.id === m.id ? editRequest.nonce : 0}
                         reactionsEnabled={moduleEnabled("reactions")}
                         threadsEnabled={moduleEnabled("threads") && !activeChannel?.e2ee}
-                        e2ePeerKey={activeChannel?.e2ee ? peerKeys[activeChannel.id] ?? null : null}
+                        e2ePeerKey={activePeerKey}
                         readBy={m.id === readReceipt?.messageId ? readReceipt.readers : undefined}
                       />
                     </div>
@@ -2018,12 +2056,33 @@ export function ChatLayout() {
             </div>
 
             <form onSubmit={handleSend} className="border-t border-[var(--glass-border)] p-3">
-              {activeChannel.e2ee && (
+              {peerKeyChanged ? (
+                <button
+                  type="button"
+                  onClick={() => setShowVerifyModal(true)}
+                  className="mb-2 flex w-full items-center gap-2 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-2 text-left text-xs text-[var(--danger)] transition-colors hover:bg-[var(--danger)]/15"
+                >
+                  <Icon icon={ShieldAlert} size={15} className="shrink-0" />
+                  <span>
+                    <span className="font-medium">Klucz szyfrowania rozmówcy się zmienił.</span>{" "}
+                    Wysyłanie wstrzymane. Kliknij, aby zweryfikować numer bezpieczeństwa.
+                  </span>
+                </button>
+              ) : activeChannel.e2ee ? (
                 <div className="mb-2 flex items-center gap-1.5 text-xs text-[var(--accent-2)]">
                   <Icon icon={ShieldCheck} size={13} />
-                  Rozmowa szyfrowana end-to-end. Tylko Ty i rozmówca możecie odczytać wiadomości.
+                  <span>Rozmowa szyfrowana end-to-end. Tylko Ty i rozmówca możecie odczytać wiadomości.</span>
+                  {peerKeyStatus?.state === "ok" && (
+                    <button
+                      type="button"
+                      onClick={() => setShowVerifyModal(true)}
+                      className="underline decoration-dotted underline-offset-2 hover:no-underline"
+                    >
+                      Zweryfikuj
+                    </button>
+                  )}
                 </div>
-              )}
+              ) : null}
               {pending.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-2">
                   {pending.map((p) => (
@@ -2611,6 +2670,16 @@ export function ChatLayout() {
         <CreatePollModal
           onClose={() => setShowPollModal(false)}
           onSubmit={(q, opts, multi) => void submitPoll(q, opts, multi)}
+        />
+      )}
+
+      {showVerifyModal && peerKeyStatus && peerKeyStatus.state !== "missing" && (
+        <E2eVerifyModal
+          peerName={activeChannel?.name ?? "rozmówcą"}
+          safetyNumber={peerKeyStatus.safetyNumber}
+          changed={peerKeyStatus.state === "changed"}
+          onTrust={trustChangedPeerKey}
+          onClose={() => setShowVerifyModal(false)}
         />
       )}
 

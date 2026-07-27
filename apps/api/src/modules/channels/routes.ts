@@ -490,6 +490,10 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       ip: request.ip
     });
 
+    // Invalidate the gateway's e2ee lookup cache so typing-indicator
+    // suppression takes effect immediately, not after the TTL expires.
+    await fastify.redis.del(`e2ee-channel:${channelId}`);
+
     fastify.wsBroadcastChannelSettings?.({ channelId, e2ee: updated.e2ee });
 
     return { channelId, e2ee: updated.e2ee };

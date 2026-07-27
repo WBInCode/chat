@@ -7,6 +7,7 @@ import { signAccessToken } from "../../lib/jwt.js";
 import { generateRefreshToken, generateFamilyId, hashToken } from "../../lib/tokens.js";
 import { env } from "../../config/env.js";
 import { revokeSession } from "../../plugins/auth-guard.js";
+import { anonymizeIp } from "../../lib/ip-privacy.js";
 import type { FastifyInstance } from "fastify";
 
 // Tolerate ±1 time-step (±30s) for clock skew between server and the user's
@@ -66,7 +67,9 @@ export function createAuthService(fastify: FastifyInstance, repo: AuthRepo) {
       refreshHash: hashToken(refreshToken),
       familyId,
       userAgent: meta.userAgent,
-      ip: meta.ip,
+      // Truncated: enough to spot "this login came from a different network"
+      // in the session list, not enough to track where someone was.
+      ip: anonymizeIp(meta.ip),
       expiresAt
     });
 
