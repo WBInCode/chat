@@ -1,17 +1,29 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import type { ChannelCategoryDto } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 
 interface CreateChannelModalProps {
   orgId: string;
+  categories: ChannelCategoryDto[];
+  /** Kategoria wybrana kliknięciem "+" przy jej nagłówku. */
+  initialCategoryId: string | null;
   onClose: () => void;
   onCreated: (channelId: string) => void;
 }
 
 /** Modal to create a new PUBLIC or PRIVATE channel. */
-export function CreateChannelModal({ orgId, onClose, onCreated }: CreateChannelModalProps) {
+export function CreateChannelModal({
+  orgId,
+  categories,
+  initialCategoryId,
+  onClose,
+  onCreated
+}: CreateChannelModalProps) {
   const [name, setName] = useState("");
   const [type, setType] = useState<"PUBLIC" | "PRIVATE">("PUBLIC");
+  const [kind, setKind] = useState<"TEXT" | "ANNOUNCEMENT">("TEXT");
+  const [categoryId, setCategoryId] = useState<string | null>(initialCategoryId);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +40,7 @@ export function CreateChannelModal({ orgId, onClose, onCreated }: CreateChannelM
     try {
       const channel = await apiFetch<{ id: string }>(`/orgs/${orgId}/channels`, {
         method: "POST",
-        body: JSON.stringify({ name: normalized, type })
+        body: JSON.stringify({ name: normalized, type, kind, categoryId })
       });
       onCreated(channel.id);
     } catch (e) {
@@ -79,6 +91,41 @@ export function CreateChannelModal({ orgId, onClose, onCreated }: CreateChannelM
             </span>
           </label>
         </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block space-y-1 text-sm">
+            <span className="text-[var(--text-dim)]">Rodzaj</span>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as "TEXT" | "ANNOUNCEMENT")}
+              className="w-full rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2.5 py-2 text-sm outline-none"
+            >
+              <option value="TEXT">Tekstowy</option>
+              <option value="ANNOUNCEMENT">Ogłoszeniowy</option>
+            </select>
+          </label>
+          <label className="block space-y-1 text-sm">
+            <span className="text-[var(--text-dim)]">Kategoria</span>
+            <select
+              value={categoryId ?? ""}
+              onChange={(e) => setCategoryId(e.target.value === "" ? null : e.target.value)}
+              className="w-full rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2.5 py-2 text-sm outline-none"
+            >
+              <option value="">Bez kategorii</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {kind === "ANNOUNCEMENT" && (
+          <p className="text-xs text-[var(--text-dim)]">
+            W kanale ogłoszeniowym pisać mogą tylko administratorzy kanału. Pozostali go czytają.
+          </p>
+        )}
 
         {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
 

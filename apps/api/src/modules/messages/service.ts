@@ -255,6 +255,35 @@ export function createMessageService(fastify: FastifyInstance) {
     }
     const isE2e = contentTypeInput === "e2e";
 
+    // Kanał ogłoszeniowy: czytają wszyscy członkowie, pisać mogą tylko
+    // administratorzy kanału. Odpowiednik discordowego kanału ogłoszeń.
+    if (member.channel.kind === "ANNOUNCEMENT" && member.role !== "ADMIN") {
+      forbidden("To kanał ogłoszeniowy. Pisać mogą tylko administratorzy kanału.");
+    }
+
+    // Slowmode: minimalny odstęp między kolejnymi wiadomościami tego samego
+    // autora. Administratorów kanału nie dotyczy, tak jak w Discordzie.
+    // Liczymy od ostatniej wiadomości w kanale, a nie od licznika w pamięci,
+    // więc limit przetrwa restart procesu i działa przy wielu instancjach API.
+    if (member.channel.slowmodeSeconds > 0 && member.role !== "ADMIN") {
+      const last = await fastify.prisma.message.findFirst({
+        where: { channelId, authorId: userId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true }
+      });
+      if (last) {
+        const elapsedMs = Date.now() - last.createdAt.getTime();
+        const waitMs = member.channel.slowmodeSeconds * 1000 - elapsedMs;
+        if (waitMs > 0) {
+          throw new HttpError(
+            429,
+            "SLOWMODE_ACTIVE",
+            `Tryb wolny jest włączony. Odczekaj ${Math.ceil(waitMs / 1000)} s.`
+          );
+        }
+      }
+    }
+
     if (parentId) {
       await assertModuleEnabled(fastify, member.channel.orgId, "threads");
       const parent = await fastify.prisma.message.findUnique({ where: { id: parentId } });

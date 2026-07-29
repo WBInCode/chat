@@ -28,6 +28,8 @@ export const WS_SERVER_EVENTS = {
   ChannelCreated: "channel:created",
   ChannelMemberJoined: "channel:member-joined",
   ChannelSettingsUpdated: "channel:settings-updated",
+  ChannelDeleted: "channel:deleted",
+  ChannelsLayoutUpdated: "channels:layout-updated",
   FileStatus: "file:status",
   FilePreview: "file:preview",
   MessageEmbeds: "message:embeds",
@@ -101,6 +103,13 @@ export interface ServerToClientEvents {
     e2ee?: boolean;
     messageTtlSeconds?: number | null;
   }) => void;
+  [WS_SERVER_EVENTS.ChannelDeleted]: (payload: {
+    channelId: string;
+    orgId: string;
+  }) => void;
+  // Zmiana kategorii, kolejności lub przypisania kanałów — klient przeładowuje
+  // listę kanałów, bo układ jest wspólny dla całej organizacji.
+  [WS_SERVER_EVENTS.ChannelsLayoutUpdated]: (payload: { orgId: string }) => void;
   [WS_SERVER_EVENTS.FileStatus]: (payload: {
     fileId: string;
     channelId: string;

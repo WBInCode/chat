@@ -167,6 +167,18 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
       await socket.join(`channel:${m.channelId}`);
     }
     await socket.join(`user:${userId}`);
+
+    // Pokój organizacji — używany do rozgłaszania zmian układu kanałów
+    // (kategorie, kolejność, usunięcie kanału), które dotyczą całej listy,
+    // a nie pojedynczego kanału. Tylko aktywne członkostwa.
+    const orgMemberships = await fastify.prisma.membership.findMany({
+      where: { userId, disabledAt: null },
+      select: { orgId: true }
+    });
+    for (const om of orgMemberships) {
+      await socket.join(`org:${om.orgId}`);
+    }
+
     await setPresence(userId, "online");
 
     // Heartbeat refresh of presence TTL.

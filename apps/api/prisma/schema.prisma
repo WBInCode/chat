@@ -20,6 +20,13 @@ enum ChannelType {
   DM
 }
 
+// Rodzaj kanału tekstowego. ANNOUNCEMENT działa jak discordowy kanał
+// ogłoszeniowy: czytają wszyscy, pisać mogą wyłącznie administratorzy kanału.
+enum ChannelKind {
+  TEXT
+  ANNOUNCEMENT
+}
+
 enum ChannelRole {
   ADMIN
   MEMBER
@@ -36,6 +43,7 @@ model Organization {
   createdAt      DateTime     @default(now())
   members        Membership[]
   channels       Channel[]
+  channelCategories ChannelCategory[]
   invites        Invite[]
   auditLogs      AuditLog[]
   roles          Role[]
@@ -266,25 +274,47 @@ model Invite {
   @@map("invites")
 }
 
+// Kategoria kanałów — odpowiednik discordowej kategorii. Grupuje kanały
+// w bocznym pasku i wyznacza kolejność wyświetlania w obrębie organizacji.
+model ChannelCategory {
+  id        String   @id @default(uuid())
+  orgId     String
+  name      String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  channels Channel[]
+
+  @@index([orgId, position])
+  @@map("channel_categories")
+}
+
 model Channel {
   id         String      @id @default(uuid())
   orgId      String
   type       ChannelType
+  kind       ChannelKind @default(TEXT)
   name       String?
   topic      String?
   createdBy  String
+  categoryId String? // null = kanał poza kategoriami, u góry listy
+  position   Int         @default(0) // kolejność w obrębie kategorii, wspólna dla całej organizacji
+  slowmodeSeconds Int    @default(0) // 0 = wyłączony; minimalny odstęp między wiadomościami jednego autora
   e2ee       Boolean     @default(false) // end-to-end encryption enabled (DM only); content is client-side ciphertext
   messageTtlSeconds Int? // disappearing messages: purge messages older than this (null = off)
   archivedAt DateTime?
   createdAt  DateTime    @default(now())
 
   org     Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  category ChannelCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   members ChannelMember[]
   messages Message[]
   integrationWebhooks IntegrationWebhook[]
   documents Document[]
 
   @@index([orgId])
+  @@index([orgId, categoryId, position])
   @@map("channels")
 }
 
@@ -296,7 +326,10 @@ model ChannelMember {
   lastReadAt DateTime?
   mutedAt    DateTime?
   favorite   Boolean     @default(false)
-  sortOrder  Int         @default(0) // per-user custom ordering in the sidebar channel list (F5-I)
+  /// PRZESTARZAŁE: kolejność kanałów jest teraz wspólna dla organizacji
+  /// (Channel.position + ChannelCategory.position). Kolumna zostaje do czasu
+  /// potwierdzenia wdrożenia, żeby ewentualne cofnięcie kodu nie wywróciło API.
+  sortOrder  Int         @default(0)
   createdAt  DateTime    @default(now())
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)

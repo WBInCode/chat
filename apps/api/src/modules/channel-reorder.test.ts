@@ -2,7 +2,9 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 
-// F5-I: per-user custom channel ordering in the sidebar (ChannelMember.sortOrder).
+// Kolejność kanałów jest wspólna dla całej organizacji (Channel.position +
+// ChannelCategory.position) i ustawiają ją administratorzy, tak jak w Discordzie.
+// Zastąpiło to dawne sortowanie prywatne dla każdego użytkownika.
 
 let app: FastifyInstance;
 const uniq = Date.now().toString(36);
@@ -72,7 +74,7 @@ afterAll(async () => {
   await app.close();
 });
 
-describe("Channel reordering (F5-I)", () => {
+describe("Kolejność kanałów wspólna dla organizacji", () => {
   it("channels default to creation order", async () => {
     const res = await app.inject({
       method: "GET",
@@ -88,12 +90,19 @@ describe("Channel reordering (F5-I)", () => {
     expect(ids.indexOf(chanB)).toBeLessThan(ids.indexOf(chanC));
   });
 
-  it("owner can reorder their own sidebar (gamma, alpha, beta)", async () => {
+  it("owner can reorder the channel list for the whole org (gamma, alpha, beta)", async () => {
     const res = await app.inject({
       method: "PATCH",
-      url: `/api/v1/orgs/${orgId}/channels/reorder`,
+      url: `/api/v1/orgs/${orgId}/channel-layout`,
       headers: auth(owner.token),
-      payload: { orderedChannelIds: [chanC, chanA, chanB] }
+      payload: {
+        categories: [],
+        channels: [
+          { id: chanC, categoryId: null, position: 0 },
+          { id: chanA, categoryId: null, position: 1 },
+          { id: chanB, categoryId: null, position: 2 }
+        ]
+      }
     });
     expect(res.statusCode).toBe(200);
 
@@ -108,26 +117,48 @@ describe("Channel reordering (F5-I)", () => {
     expect(ids).toEqual([chanC, chanA, chanB]);
   });
 
-  it("a non-member cannot reorder channels they don't belong to (silently ignored, no crash)", async () => {
+  it("the new order is shared — a second member sees exactly the same list", async () => {
+    // Kolejność przestała być prywatna: to układ organizacji, nie preferencja
+    // pojedynczej osoby. Ten test pilnuje właśnie tej zmiany.
     await app.prisma.membership.create({ data: { userId: outsider.userId, orgId, role: "MEMBER" } });
+    for (const channelId of [chanA, chanB, chanC]) {
+      await app.prisma.channelMember.create({ data: { channelId, userId: outsider.userId, role: "MEMBER" } });
+    }
+
+    const list = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/channels`,
+      headers: auth(outsider.token)
+    });
+    const ids = (list.json() as { id: string }[])
+      .map((c) => c.id)
+      .filter((id) => [chanA, chanB, chanC].includes(id));
+    expect(ids).toEqual([chanC, chanA, chanB]);
+  });
+
+  it("a plain member cannot change the org-wide order", async () => {
     const res = await app.inject({
       method: "PATCH",
-      url: `/api/v1/orgs/${orgId}/channels/reorder`,
+      url: `/api/v1/orgs/${orgId}/channel-layout`,
       headers: auth(outsider.token),
-      payload: { orderedChannelIds: [chanA, chanB, chanC] }
+      payload: {
+        categories: [],
+        channels: [{ id: chanA, categoryId: null, position: 0 }]
+      }
     });
-    // Outsider isn't a member of any of these channels (PUBLIC channels
-    // auto-join at creation time, before the outsider joined the org) —
-    // the request succeeds but touches zero rows.
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(403);
+
+    // Układ musi zostać nietknięty.
+    const unchanged = await app.prisma.channel.findUnique({ where: { id: chanA } });
+    expect(unchanged!.position).toBe(1);
   });
 
   it("rejects a malformed payload", async () => {
     const res = await app.inject({
       method: "PATCH",
-      url: `/api/v1/orgs/${orgId}/channels/reorder`,
+      url: `/api/v1/orgs/${orgId}/channel-layout`,
       headers: auth(owner.token),
-      payload: { orderedChannelIds: ["not-a-uuid"] }
+      payload: { categories: [], channels: [{ id: "not-a-uuid", categoryId: null, position: 0 }] }
     });
     expect(res.statusCode).toBe(400);
   });
