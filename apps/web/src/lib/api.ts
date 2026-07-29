@@ -91,3 +91,27 @@ export async function apiFetch<T>(
 
   return (await res.json()) as T;
 }
+
+/**
+ * Downloads an authenticated endpoint straight to a file. Needed for
+ * responses that are not JSON (CSV export), where `apiFetch` cannot be used
+ * and a plain `<a href>` would omit the bearer token.
+ */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const { accessToken } = useAuthStore.getState();
+  const res = await fetch(`${API_BASE}/api/v1${path}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    credentials: "include"
+  });
+  if (!res.ok) throw new ApiError(res.status, "DOWNLOAD_FAILED", "Nie udało się pobrać pliku");
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fallbackName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

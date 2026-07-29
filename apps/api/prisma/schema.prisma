@@ -40,6 +40,7 @@ model Organization {
   auditLogs      AuditLog[]
   roles          Role[]
   modules        OrganizationModule[]
+  documents      Document[]
 
   @@map("organizations")
 }
@@ -134,12 +135,20 @@ model Reminder {
   @@map("reminders")
 }
 
+/// A poll attached to exactly one message. `hideVoters` is decided at creation
+/// time and is irreversible on purpose: promising voters that nobody will see
+/// their choice and then revealing it later would be a betrayal. Note the flag
+/// hides identities from the API and UI, it does not make the ballot
+/// cryptographically anonymous — the vote rows still reference the user, which
+/// is what makes "one vote per person" and un-voting possible at all.
 model Poll {
   id        String       @id @default(uuid())
   messageId String       @unique
   question  String
   allowMultiple Boolean  @default(false)
+  hideVoters Boolean     @default(false)
   closesAt  DateTime?
+  closedAt  DateTime?
   createdAt DateTime     @default(now())
 
   message Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
@@ -152,6 +161,7 @@ model PollOption {
   id       String     @id @default(uuid())
   pollId   String
   text     String
+  emoji    String?
   position Int
 
   poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
@@ -171,6 +181,7 @@ model PollVote {
   user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([pollOptionId, userId])
+  @@index([userId])
   @@map("poll_votes")
 }
 
@@ -261,6 +272,7 @@ model Channel {
   members ChannelMember[]
   messages Message[]
   integrationWebhooks IntegrationWebhook[]
+  documents Document[]
 
   @@index([orgId])
   @@map("channels")
@@ -484,4 +496,87 @@ model AuditLog {
 
   @@index([orgId, createdAt])
   @@map("audit_logs")
+}
+
+/// Shared document pinned to a channel (F8). Access follows channel
+/// membership: there is no separate document ACL, so a document is readable
+/// and editable by exactly the people who can already read the channel.
+model Document {
+  id         String    @id @default(uuid())
+  orgId      String
+  channelId  String
+  title      String
+  icon       String?
+  createdBy  String
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  org       Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  channel   Channel            @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  blocks    DocumentBlock[]
+  revisions DocumentRevision[]
+  comments  DocumentComment[]
+
+  @@index([channelId, updatedAt])
+  @@index([orgId])
+  @@map("documents")
+}
+
+/// One ordered unit of a document (heading, paragraph, table, checklist,
+/// divider). `data` holds the type-specific payload, validated against a
+/// discriminated union before every write. `version` powers the optimistic
+/// concurrency check: a save carrying a stale version is refused, so two
+/// people editing the same block never silently overwrite each other.
+model DocumentBlock {
+  id          String   @id @default(uuid())
+  documentId  String
+  type        String
+  position    Int
+  data        Json
+  version     Int      @default(1)
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  document Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  comments DocumentComment[]
+
+  @@index([documentId, position])
+  @@map("document_blocks")
+}
+
+/// Point-in-time snapshot of every block, written before a change when the
+/// previous snapshot is stale or came from a different author. Lets the team
+/// see what a document looked like earlier and roll back to it.
+model DocumentRevision {
+  id         String   @id @default(uuid())
+  documentId String
+  authorId   String?
+  summary    String
+  snapshot   Json
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
+  @@map("document_revisions")
+}
+
+/// Comment on a document, optionally anchored to one block. Deleting the
+/// block keeps the comment on the document (blockId becomes null) so the
+/// discussion is not lost together with the content it referred to.
+model DocumentComment {
+  id         String    @id @default(uuid())
+  documentId String
+  blockId    String?
+  authorId   String
+  body       String
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  document Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  block    DocumentBlock? @relation(fields: [blockId], references: [id], onDelete: SetNull)
+
+  @@index([documentId, createdAt])
+  @@map("document_comments")
 }

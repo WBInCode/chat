@@ -13,13 +13,14 @@ import { MessageRow } from "./MessageRow.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 import { ProfileCard } from "./ProfileCard.js";
 import { SavedPanel } from "./SavedPanel.js";
+import { DocumentsPanel } from "./documents/DocumentsPanel.js";
 import { ForwardPicker } from "./ForwardPicker.js";
 import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
 import { ChannelMembersPanel } from "./ChannelMembersPanel.js";
 import { GroupDmPicker } from "./GroupDmPicker.js";
 import { QuickSwitcher } from "./QuickSwitcher.js";
 import { SchedulePicker } from "./SchedulePicker.js";
-import { CreatePollModal } from "./CreatePollModal.js";
+import { CreatePollModal, type NewPollInput } from "./CreatePollModal.js";
 import { ReminderPicker } from "./ReminderPicker.js";
 import { VoiceRoom } from "./VoiceRoom.js";
 import { UserStatusControl } from "../../components/UserStatusControl.js";
@@ -43,7 +44,7 @@ import { E2eVerifyModal } from "./E2eVerifyModal.js";
 import { playMessageChime, startRing, stopRing } from "../../lib/sound.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
-import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, ShieldAlert, Timer } from "lucide-react";
+import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, ShieldAlert, Timer, FileText } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
 import { renderMarkdown } from "./markdown.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
@@ -200,6 +201,7 @@ export function ChatLayout() {
   const [editingTopic, setEditingTopic] = useState(false);
   const [topicDraft, setTopicDraft] = useState("");
   const [showMembersPanel, setShowMembersPanel] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(false);
   const [showGroupDmPicker, setShowGroupDmPicker] = useState(false);
   const [groupDmSelection, setGroupDmSelection] = useState<Set<string>>(new Set());
   const [showCreateChannel, setShowCreateChannel] = useState(false);
@@ -1058,11 +1060,11 @@ export function ChatLayout() {
     showToast("Wiadomość zaplanowana");
   }
 
-  async function submitPoll(question: string, options: string[], allowMultiple: boolean) {
+  async function submitPoll(input: NewPollInput) {
     if (!activeChannelId) return;
     await apiFetch(`/channels/${activeChannelId}/polls`, {
       method: "POST",
-      body: JSON.stringify({ question, options, allowMultiple })
+      body: JSON.stringify(input)
     });
     setShowPollModal(false);
   }
@@ -1627,6 +1629,15 @@ export function ChatLayout() {
                         <Icon icon={Users} size={15} />
                       </button>
                     )}
+                    {moduleEnabled("documents") && !activeChannel.e2ee && (
+                      <button
+                        onClick={() => setShowDocuments((v) => !v)}
+                        title="Dokumenty kanału"
+                        className={showDocuments ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--text)]"}
+                      >
+                        <Icon icon={FileText} size={15} />
+                      </button>
+                    )}
                     {/* E2E toggle: 1:1 DMs only, gated by the hub-synced e2ee module */}
                     {activeChannel.type === "DM" && moduleEnabled("e2ee") && (
                       <button
@@ -1749,6 +1760,17 @@ export function ChatLayout() {
                             className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
                           >
                             <Icon icon={Users} size={16} /> Członkowie kanału
+                          </button>
+                        )}
+                        {moduleEnabled("documents") && !activeChannel.e2ee && (
+                          <button
+                            onClick={() => {
+                              setShowChannelMenu(false);
+                              setShowDocuments(true);
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                          >
+                            <Icon icon={FileText} size={16} /> Dokumenty kanału
                           </button>
                         )}
                         {aiEnabled && moduleEnabled("ai") && !activeChannel.e2ee && (
@@ -2604,6 +2626,15 @@ export function ChatLayout() {
         />
       )}
 
+      {showDocuments && activeChannelId && user && (
+        <DocumentsPanel
+          channelId={activeChannelId}
+          currentUserId={user.id}
+          members={members}
+          onClose={() => setShowDocuments(false)}
+        />
+      )}
+
       {profileCard && activeOrgId && (
         <ProfileCard
           orgId={activeOrgId}
@@ -2690,7 +2721,7 @@ export function ChatLayout() {
       {showPollModal && (
         <CreatePollModal
           onClose={() => setShowPollModal(false)}
-          onSubmit={(q, opts, multi) => void submitPoll(q, opts, multi)}
+          onSubmit={(input) => void submitPoll(input)}
         />
       )}
 

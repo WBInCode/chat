@@ -156,34 +156,58 @@ describe("polls", () => {
   let pollMessageId: string;
   let optionAId: string;
 
-  it("creates a poll message", async () => {
-    const res = await app.inject({
+  async function createPoll(
+    token: string,
+    payload: Record<string, unknown>
+  ): Promise<ReturnType<typeof app.inject>> {
+    return app.inject({
       method: "POST",
       url: `/api/v1/channels/${channelId}/polls`,
-      headers: auth(owner.token),
-      payload: { question: "Kiedy spotkanie?", options: ["Poniedziałek", "Środa"], allowMultiple: false }
+      headers: auth(token),
+      payload
+    });
+  }
+
+  async function readPoll(messageIdToRead: string, token: string) {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/messages/${messageIdToRead}/poll`,
+      headers: auth(token)
+    });
+    return res.json();
+  }
+
+  it("creates a poll message with per-option emoji", async () => {
+    const res = await createPoll(owner.token, {
+      question: "Kiedy spotkanie?",
+      options: [{ text: "Poniedziałek", emoji: "📅" }, { text: "Środa" }],
+      allowMultiple: false
     });
     expect(res.statusCode).toBe(201);
     pollMessageId = res.json().messageId;
 
-    const poll = await app.inject({
-      method: "GET",
-      url: `/api/v1/messages/${pollMessageId}/poll`,
-      headers: auth(member.token)
+    const poll = await readPoll(pollMessageId, member.token);
+    expect(poll.options).toHaveLength(2);
+    expect(poll.options[0].emoji).toBe("📅");
+    expect(poll.options[1].emoji).toBeNull();
+    expect(poll.closed).toBe(false);
+    optionAId = poll.options[0].id;
+  });
+
+  it("rejects a deadline in the past", async () => {
+    const res = await createPoll(owner.token, {
+      question: "Za późno?",
+      options: [{ text: "Tak" }, { text: "Nie" }],
+      closesAt: new Date(Date.now() - 60_000).toISOString()
     });
-    expect(poll.statusCode).toBe(200);
-    expect(poll.json().options).toHaveLength(2);
-    optionAId = poll.json().options[0].id;
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("CLOSES_AT_IN_PAST");
   });
 
   it("lets members vote, toggle their vote, and enforces single-choice", async () => {
-    const pollRes = await app.inject({
-      method: "GET",
-      url: `/api/v1/messages/${pollMessageId}/poll`,
-      headers: auth(member.token)
-    });
-    const pollId = pollRes.json().id;
-    const secondOptionId = pollRes.json().options[1].id;
+    const poll = await readPoll(pollMessageId, member.token);
+    const pollId = poll.id;
+    const secondOptionId = poll.options[1].id;
 
     const vote1 = await app.inject({
       method: "POST",
@@ -211,5 +235,125 @@ describe("polls", () => {
       payload: { optionId: secondOptionId }
     });
     expect(vote3.json().totalVotes).toBe(0);
+  });
+
+  it("counts ballots and people separately when multiple answers are allowed", async () => {
+    const created = await createPoll(owner.token, {
+      question: "Co zamawiamy?",
+      options: [{ text: "Pizza" }, { text: "Sushi" }],
+      allowMultiple: true
+    });
+    const poll = await readPoll(created.json().messageId, member.token);
+
+    for (const option of poll.options) {
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/polls/${poll.id}/vote`,
+        headers: auth(member.token),
+        payload: { optionId: option.id }
+      });
+    }
+
+    const after = await readPoll(created.json().messageId, member.token);
+    expect(after.totalVotes).toBe(2);
+    expect(after.voterCount).toBe(1);
+  });
+
+  it("exposes who voted, and reports the viewer's own vote independently", async () => {
+    const created = await createPoll(owner.token, {
+      question: "Kto dołącza?",
+      options: [{ text: "Ja" }, { text: "Nie tym razem" }]
+    });
+    const poll = await readPoll(created.json().messageId, owner.token);
+    const firstOption = poll.options[0].id;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/polls/${poll.id}/vote`,
+      headers: auth(member.token),
+      payload: { optionId: firstOption }
+    });
+
+    const voters = await app.inject({
+      method: "GET",
+      url: `/api/v1/polls/${poll.id}/voters`,
+      headers: auth(owner.token)
+    });
+    expect(voters.statusCode).toBe(200);
+    const group = voters.json().options.find((o: { optionId: string }) => o.optionId === firstOption);
+    expect(group.voters.map((v: { id: string }) => v.id)).toEqual([member.userId]);
+
+    // The owner sees the member's vote but must not be told they voted themselves.
+    const asOwner = await readPoll(created.json().messageId, owner.token);
+    expect(asOwner.options[0].voterPreview).toHaveLength(1);
+    expect(asOwner.options[0].votedByMe).toBe(false);
+    const asMember = await readPoll(created.json().messageId, member.token);
+    expect(asMember.options[0].votedByMe).toBe(true);
+  });
+
+  it("refuses to reveal voters when the poll was created with them hidden", async () => {
+    const created = await createPoll(owner.token, {
+      question: "Czy podwyżki są sprawiedliwe?",
+      options: [{ text: "Tak" }, { text: "Nie" }],
+      hideVoters: true
+    });
+    const poll = await readPoll(created.json().messageId, member.token);
+
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/polls/${poll.id}/vote`,
+      headers: auth(member.token),
+      payload: { optionId: poll.options[0].id }
+    });
+
+    const after = await readPoll(created.json().messageId, owner.token);
+    expect(after.hideVoters).toBe(true);
+    expect(after.options[0].votes).toBe(1);
+    expect(after.options[0].voterPreview).toEqual([]);
+
+    // Not even the author may look behind the curtain.
+    const voters = await app.inject({
+      method: "GET",
+      url: `/api/v1/polls/${poll.id}/voters`,
+      headers: auth(owner.token)
+    });
+    expect(voters.statusCode).toBe(403);
+  });
+
+  it("lets the author close a poll early and then rejects further votes", async () => {
+    const created = await createPoll(owner.token, {
+      question: "Zamykamy?",
+      options: [{ text: "Tak" }, { text: "Nie" }]
+    });
+    const poll = await readPoll(created.json().messageId, owner.token);
+    expect(poll.canClose).toBe(true);
+
+    const asMember = await readPoll(created.json().messageId, member.token);
+    expect(asMember.canClose).toBe(false);
+
+    const memberCloses = await app.inject({
+      method: "POST",
+      url: `/api/v1/polls/${poll.id}/close`,
+      headers: auth(member.token)
+    });
+    expect(memberCloses.statusCode).toBe(403);
+
+    const close = await app.inject({
+      method: "POST",
+      url: `/api/v1/polls/${poll.id}/close`,
+      headers: auth(owner.token)
+    });
+    expect(close.statusCode).toBe(200);
+    expect(close.json().closed).toBe(true);
+    expect(close.json().canClose).toBe(false);
+
+    const lateVote = await app.inject({
+      method: "POST",
+      url: `/api/v1/polls/${poll.id}/vote`,
+      headers: auth(member.token),
+      payload: { optionId: poll.options[0].id }
+    });
+    expect(lateVote.statusCode).toBe(409);
+    expect(lateVote.json().error.code).toBe("POLL_CLOSED");
   });
 });

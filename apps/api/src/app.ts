@@ -19,6 +19,7 @@ import accountRoutes from "./modules/account/routes.js";
 import profileRoutes from "./modules/profile/routes.js";
 import notificationRoutes from "./modules/notifications/routes.js";
 import productivityRoutes from "./modules/productivity/routes.js";
+import documentRoutes from "./modules/documents/routes.js";
 import rolesRoutes from "./modules/roles/routes.js";
 import modulesRoutes from "./modules/modules/routes.js";
 import integrationsRoutes, { incomingWebhookRoute } from "./modules/integrations/routes.js";
@@ -112,6 +113,7 @@ export async function buildApp() {
   await fastify.register(profileRoutes, { prefix: "/api/v1" });
   await fastify.register(notificationRoutes, { prefix: "/api/v1" });
   await fastify.register(productivityRoutes, { prefix: "/api/v1" });
+  await fastify.register(documentRoutes, { prefix: "/api/v1" });
   await fastify.register(rolesRoutes, { prefix: "/api/v1" });
   await fastify.register(modulesRoutes, { prefix: "/api/v1" });
   await fastify.register(integrationsRoutes, { prefix: "/api/v1" });

@@ -14,7 +14,9 @@ import {
   type ServerToClientEvents,
   type MessageDto,
   type ReactionGroupDto,
-  type PollDto
+  type PollDto,
+  type DocumentBlockDto,
+  type DocumentLockDto
 } from "@chatv2/shared";
 import { env } from "../config/env.js";
 import { verifyAccessToken } from "../lib/jwt.js";
@@ -44,6 +46,18 @@ declare module "fastify" {
       channelId: string;
       e2ee?: boolean;
       messageTtlSeconds?: number | null;
+    }) => void;
+    wsBroadcastDocumentUpdate?: (payload: {
+      documentId: string;
+      channelId: string;
+      kind: "meta" | "block" | "structure" | "comments" | "deleted";
+      actorId: string;
+      block?: DocumentBlockDto;
+    }) => void;
+    wsBroadcastDocumentLocks?: (payload: {
+      documentId: string;
+      channelId: string;
+      locks: DocumentLockDto[];
     }) => void;
   }
 }
@@ -405,6 +419,24 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
     "wsBroadcastChannelSettings",
     (payload: { channelId: string; e2ee?: boolean; messageTtlSeconds?: number | null }) => {
       io.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.ChannelSettingsUpdated, payload);
+    }
+  );
+  fastify.decorate(
+    "wsBroadcastDocumentUpdate",
+    (payload: {
+      documentId: string;
+      channelId: string;
+      kind: "meta" | "block" | "structure" | "comments" | "deleted";
+      actorId: string;
+      block?: DocumentBlockDto;
+    }) => {
+      io.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.DocumentUpdate, payload);
+    }
+  );
+  fastify.decorate(
+    "wsBroadcastDocumentLocks",
+    (payload: { documentId: string; channelId: string; locks: DocumentLockDto[] }) => {
+      io.to(`channel:${payload.channelId}`).emit(WS_SERVER_EVENTS.DocumentLocks, payload);
     }
   );
 

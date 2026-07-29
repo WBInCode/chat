@@ -3,12 +3,16 @@ import {
   scheduleMessageSchema,
   createReminderSchema,
   createPollSchema,
+  votePollSchema,
+  POLL_VOTER_PREVIEW,
   type ScheduledMessageDto,
   type ReminderDto,
-  type PollDto
+  type PollDto,
+  type PollVoterDto,
+  type PollVotersDto
 } from "@chatv2/shared";
 import { parseOrThrow } from "../../lib/validation.js";
-import { assertChannelMember, notFound, HttpError } from "../../lib/authz.js";
+import { assertChannelMember, notFound, forbidden, HttpError } from "../../lib/authz.js";
 import { assertModuleEnabled } from "../../lib/modules.js";
 import { sendError } from "../../lib/validation.js";
 
@@ -151,26 +155,94 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
   });
 
   // ── polls ─────────────────────────────────────────────────────────────
-  async function toPollDto(pollId: string, viewerId: string): Promise<PollDto> {
+
+  /**
+   * A poll is over once it was closed by hand or its deadline passed. Resolved
+   * server-side and shipped as a plain boolean so the client never has to
+   * compare timestamps against a clock we do not control.
+   */
+  function isClosed(poll: { closedAt: Date | null; closesAt: Date | null }): boolean {
+    if (poll.closedAt) return true;
+    return poll.closesAt !== null && poll.closesAt.getTime() <= Date.now();
+  }
+
+  function toVoterDto(user: { id: string; displayName: string; avatarUrl: string | null }): PollVoterDto {
+    return { id: user.id, displayName: user.displayName, avatarUrl: user.avatarUrl };
+  }
+
+  /**
+   * The poll author and channel admins may end a poll early. Org-level admins
+   * are deliberately not special-cased: in a private channel they are not
+   * members at all, so channel membership is the honest boundary here.
+   */
+  function canClosePoll(authorId: string, viewerId: string, channelRole: string): boolean {
+    return authorId === viewerId || channelRole === "ADMIN";
+  }
+
+  async function toPollDto(pollId: string, viewerId: string, channelRole: string): Promise<PollDto> {
     const poll = await fastify.prisma.poll.findUniqueOrThrow({
       where: { id: pollId },
-      include: { options: { include: { votes: true }, orderBy: { position: "asc" } } }
+      include: {
+        message: { select: { authorId: true } },
+        options: {
+          orderBy: { position: "asc" },
+          include: {
+            votes: {
+              orderBy: { createdAt: "asc" },
+              include: { user: { select: { id: true, displayName: true, avatarUrl: true } } }
+            }
+          }
+        }
+      }
     });
+
     const options = poll.options.map((o) => ({
       id: o.id,
       text: o.text,
+      emoji: o.emoji,
       votes: o.votes.length,
-      votedByMe: o.votes.some((v) => v.userId === viewerId)
+      votedByMe: o.votes.some((v) => v.userId === viewerId),
+      voterPreview: poll.hideVoters
+        ? []
+        : o.votes.slice(0, POLL_VOTER_PREVIEW).map((v) => toVoterDto(v.user))
     }));
+
+    // With multi-choice, ballots outnumber people. Percentages in the UI are
+    // per person, so the distinct count has to be computed, not summed.
+    const distinctVoters = new Set<string>();
+    for (const option of poll.options) {
+      for (const vote of option.votes) distinctVoters.add(vote.userId);
+    }
+
     return {
       id: poll.id,
       messageId: poll.messageId,
+      authorId: poll.message.authorId,
       question: poll.question,
       allowMultiple: poll.allowMultiple,
+      hideVoters: poll.hideVoters,
       closesAt: poll.closesAt?.toISOString() ?? null,
+      closedAt: poll.closedAt?.toISOString() ?? null,
+      closed: isClosed(poll),
       totalVotes: options.reduce((sum, o) => sum + o.votes, 0),
+      voterCount: distinctVoters.size,
+      canClose: !isClosed(poll) && canClosePoll(poll.message.authorId, viewerId, channelRole),
       options
     };
+  }
+
+  /**
+   * Loads a poll together with the caller's channel membership, rejecting
+   * non-members before anything about the poll is revealed.
+   */
+  async function loadPollForViewer(pollId: string, viewerId: string) {
+    const poll = await fastify.prisma.poll.findUnique({
+      where: { id: pollId },
+      include: { message: true }
+    });
+    if (!poll) notFound("Ankieta nie istnieje");
+    const membership = await assertChannelMember(fastify, viewerId, poll.message.channelId);
+    return { poll, membership };
   }
 
   fastify.post("/channels/:channelId/polls", async (request, reply) => {
@@ -179,6 +251,10 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
     const input = parseOrThrow(createPollSchema, { ...(request.body as object), channelId });
     const membership = await assertChannelMember(fastify, userId, channelId);
     await assertModuleEnabled(fastify, membership.channel.orgId, "polls");
+
+    if (input.closesAt && new Date(input.closesAt).getTime() <= Date.now()) {
+      return sendError(reply, 400, "CLOSES_AT_IN_PAST", "Termin zakończenia musi być w przyszłości");
+    }
 
     const message = await fastify.prisma.$transaction(async (tx) => {
       const created = await tx.message.create({
@@ -189,9 +265,14 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
           messageId: created.id,
           question: input.question,
           allowMultiple: input.allowMultiple,
+          hideVoters: input.hideVoters,
           closesAt: input.closesAt ? new Date(input.closesAt) : null,
           options: {
-            create: input.options.map((text, position) => ({ text, position }))
+            create: input.options.map((option, position) => ({
+              text: option.text,
+              emoji: option.emoji ?? null,
+              position
+            }))
           }
         }
       });
@@ -217,21 +298,22 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
     const userId = request.user!.id;
     const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
     if (!message) notFound("Wiadomość nie istnieje");
-    await assertChannelMember(fastify, userId, message.channelId);
+    const membership = await assertChannelMember(fastify, userId, message.channelId);
 
     const poll = await fastify.prisma.poll.findUnique({ where: { messageId } });
     if (!poll) notFound("Ankieta nie istnieje");
-    return toPollDto(poll.id, userId);
+    return toPollDto(poll.id, userId, membership.role);
   });
 
-  fastify.post("/polls/:pollId/vote", async (request) => {
+  fastify.post("/polls/:pollId/vote", async (request, reply) => {
     const { pollId } = request.params as { pollId: string };
-    const { optionId } = request.body as { optionId: string };
     const userId = request.user!.id;
+    const { optionId } = parseOrThrow(votePollSchema, request.body);
+    const { poll, membership } = await loadPollForViewer(pollId, userId);
 
-    const poll = await fastify.prisma.poll.findUnique({ where: { id: pollId }, include: { message: true } });
-    if (!poll) notFound("Ankieta nie istnieje");
-    await assertChannelMember(fastify, userId, poll.message.channelId);
+    if (isClosed(poll)) {
+      return sendError(reply, 409, "POLL_CLOSED", "Ankieta została zakończona");
+    }
 
     const option = await fastify.prisma.pollOption.findFirst({ where: { id: optionId, pollId } });
     if (!option) notFound("Opcja nie istnieje");
@@ -252,8 +334,62 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
       await fastify.prisma.pollVote.create({ data: { pollOptionId: optionId, userId } });
     }
 
-    const dto = await toPollDto(pollId, userId);
+    const dto = await toPollDto(pollId, userId, membership.role);
     fastify.wsBroadcastPollUpdate?.({ messageId: poll.messageId, channelId: poll.message.channelId, poll: dto });
     return dto;
+  });
+
+  /** Ends a poll early. Idempotent: closing an already closed poll is a no-op. */
+  fastify.post("/polls/:pollId/close", async (request, reply) => {
+    const { pollId } = request.params as { pollId: string };
+    const userId = request.user!.id;
+    const { poll, membership } = await loadPollForViewer(pollId, userId);
+
+    if (!canClosePoll(poll.message.authorId, userId, membership.role)) {
+      forbidden("Tylko autor ankiety lub administrator kanału może ją zakończyć");
+    }
+
+    if (!isClosed(poll)) {
+      await fastify.prisma.poll.update({ where: { id: pollId }, data: { closedAt: new Date() } });
+    }
+
+    const dto = await toPollDto(pollId, userId, membership.role);
+    fastify.wsBroadcastPollUpdate?.({ messageId: poll.messageId, channelId: poll.message.channelId, poll: dto });
+    return reply.send(dto);
+  });
+
+  /**
+   * Full voter lists, grouped by option. Loaded on demand by the "who voted"
+   * panel. Refused outright when the poll was created with hidden voters —
+   * the promise made at creation time is enforced here, not in the UI.
+   */
+  fastify.get("/polls/:pollId/voters", async (request) => {
+    const { pollId } = request.params as { pollId: string };
+    const userId = request.user!.id;
+    const { poll } = await loadPollForViewer(pollId, userId);
+
+    if (poll.hideVoters) {
+      forbidden("Ta ankieta ukrywa, kto jak zagłosował");
+    }
+
+    const options = await fastify.prisma.pollOption.findMany({
+      where: { pollId },
+      orderBy: { position: "asc" },
+      include: {
+        votes: {
+          orderBy: { createdAt: "asc" },
+          include: { user: { select: { id: true, displayName: true, avatarUrl: true } } }
+        }
+      }
+    });
+
+    const result: PollVotersDto = {
+      pollId,
+      options: options.map((o) => ({
+        optionId: o.id,
+        voters: o.votes.map((v) => toVoterDto(v.user))
+      }))
+    };
+    return result;
   });
 }
