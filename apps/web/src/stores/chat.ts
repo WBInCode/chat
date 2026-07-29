@@ -5,8 +5,12 @@ export interface ChannelItem {
   id: string;
   orgId: string;
   type: "PUBLIC" | "PRIVATE" | "DM";
+  kind?: "TEXT" | "ANNOUNCEMENT";
   name: string | null;
   topic?: string | null;
+  categoryId?: string | null;
+  position?: number;
+  slowmodeSeconds?: number;
   createdAt: string;
   unreadCount?: number;
   myRole?: "ADMIN" | "MEMBER";

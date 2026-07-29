@@ -22,8 +22,12 @@ export interface ChannelDto {
   id: string;
   orgId: string;
   type: "PUBLIC" | "PRIVATE" | "DM";
+  kind?: "TEXT" | "ANNOUNCEMENT";
   name: string | null;
   topic?: string | null;
+  categoryId?: string | null;
+  position?: number;
+  slowmodeSeconds?: number;
   createdBy: string;
   createdAt: string;
   unreadCount?: number;

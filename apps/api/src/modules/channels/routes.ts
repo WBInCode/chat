@@ -8,19 +8,49 @@ import {
   renameChannelSchema,
   setMutedSchema,
   setFavoriteSchema,
-  reorderChannelsSchema,
   setChannelTtlSchema,
-  setChannelE2eSchema
+  setChannelE2eSchema,
+  updateChannelSchema,
+  updateChannelLayoutSchema,
+  createCategorySchema,
+  renameCategorySchema
 } from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import {
   assertOrgMember,
+  assertOrgPermission,
   assertChannelMember,
   forbidden,
   notFound
 } from "../../lib/authz.js";
 import { assertModuleEnabled } from "../../lib/modules.js";
 import { logAudit } from "../../lib/audit.js";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { s3 } from "../../lib/s3.js";
+import { env } from "../../config/env.js";
+
+/**
+ * Kasuje obiekty w magazynie należące do kanału. Wywoływane PRZED usunięciem
+ * wiersza kanału — kaskada w bazie zabrałaby klucze i bloby zostałyby
+ * osierocone w S3 na zawsze.
+ */
+async function purgeChannelFiles(fastify: FastifyInstance, channelId: string) {
+  const files = await fastify.prisma.file.findMany({
+    where: { channelId },
+    select: { key: true, thumbKey: true, previewKey: true }
+  });
+  const keys = files.flatMap((f) => [f.key, f.thumbKey, f.previewKey]).filter((k): k is string => !!k);
+  if (keys.length === 0) return 0;
+
+  const results = await Promise.allSettled(
+    keys.map((Key) => s3.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key })))
+  );
+  const failed = results.filter((r) => r.status === "rejected").length;
+  if (failed > 0) {
+    fastify.log.warn({ channelId, failed, total: keys.length }, "Część plików kanału została w magazynie");
+  }
+  return keys.length - failed;
+}
 
 export default async function channelRoutes(fastify: FastifyInstance) {
   fastify.addHook("preHandler", fastify.authenticate);
@@ -36,6 +66,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       include: {
         channel: {
           include: {
+            category: { select: { id: true, name: true, position: true } },
             members: {
               include: { user: { select: { id: true, displayName: true } } }
             },
@@ -52,7 +83,21 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       orderBy: [{ sortOrder: "asc" }, { channel: { createdAt: "asc" } }]
     });
 
-    return memberships.map((m) => {
+    // Kolejność listy jest wspólna dla całej organizacji (jak w Discordzie):
+    // najpierw pozycja kategorii, potem pozycja kanału w kategorii. Kanały bez
+    // kategorii trafiają na górę. Rozmowy prywatne mają osobną sekcję w interfejsie,
+    // więc ich kolejność zostaje przy dacie utworzenia.
+    const ordered = [...memberships].sort((a, b) => {
+      const ca = a.channel;
+      const cb = b.channel;
+      const catA = ca.category?.position ?? -1;
+      const catB = cb.category?.position ?? -1;
+      if (catA !== catB) return catA - catB;
+      if (ca.position !== cb.position) return ca.position - cb.position;
+      return ca.createdAt.getTime() - cb.createdAt.getTime();
+    });
+
+    return ordered.map((m) => {
       const ch = m.channel;
       // For DMs, display name = other participant(s)' name(s) (comma-joined for group DMs).
       let name = ch.name;
@@ -69,8 +114,12 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         id: ch.id,
         orgId: ch.orgId,
         type: ch.type,
+        kind: ch.kind,
         name,
         topic: ch.topic,
+        categoryId: ch.categoryId,
+        position: ch.position,
+        slowmodeSeconds: ch.slowmodeSeconds,
         createdBy: ch.createdBy,
         createdAt: ch.createdAt.toISOString(),
         lastReadAt: m.lastReadAt?.toISOString() ?? null,
@@ -86,35 +135,177 @@ export default async function channelRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * Persist the user's custom sidebar ordering for their channels in this
-   * org (F5-I) — per-user (ChannelMember.sortOrder), never affects other
-   * members. Only touches memberships that both belong to the caller AND
-   * are in the given org, so a caller cannot reorder (or probe) another
-   * org's channels by id.
+   * Układ listy kanałów wspólny dla całej organizacji — pozycje kategorii oraz
+   * przypisanie i kolejność kanałów. Odpowiednik przeciągania w Discordzie.
+   * Wymaga uprawnienia channel.manage, bo zmiana dotyka wszystkich w organizacji.
    */
-  fastify.patch("/orgs/:orgId/channels/reorder", async (request, reply) => {
+  fastify.patch("/orgs/:orgId/channel-layout", async (request, reply) => {
     const { orgId } = request.params as { orgId: string };
     const userId = request.user!.id;
-    await assertOrgMember(fastify, userId, orgId);
-    const input = parseOrThrow(reorderChannelsSchema, request.body);
+    await assertOrgPermission(fastify, userId, orgId, "channel.manage");
+    const input = parseOrThrow(updateChannelLayoutSchema, request.body);
 
-    const memberships = await fastify.prisma.channelMember.findMany({
-      where: { userId, channelId: { in: input.orderedChannelIds }, channel: { orgId } },
-      select: { channelId: true }
-    });
-    const ownedIds = new Set(memberships.map((m) => m.channelId));
+    // Filtrujemy po orgId, żeby identyfikatorem z innej organizacji nie dało się
+    // ani nic zmienić, ani wysondować istnienia zasobu.
+    const [ownCategories, ownChannels] = await Promise.all([
+      fastify.prisma.channelCategory.findMany({
+        where: { orgId, id: { in: input.categories.map((c) => c.id) } },
+        select: { id: true }
+      }),
+      fastify.prisma.channel.findMany({
+        where: { orgId, type: { not: "DM" }, id: { in: input.channels.map((c) => c.id) } },
+        select: { id: true }
+      })
+    ]);
+    const categoryIds = new Set(ownCategories.map((c) => c.id));
+    const channelIds = new Set(ownChannels.map((c) => c.id));
 
-    await fastify.prisma.$transaction(
-      input.orderedChannelIds
-        .filter((id) => ownedIds.has(id))
-        .map((channelId, index) =>
-          fastify.prisma.channelMember.update({
-            where: { channelId_userId: { channelId, userId } },
-            data: { sortOrder: index }
+    // Kanał nie może trafić do kategorii spoza tej organizacji.
+    const targetCategoryIds = input.channels
+      .map((c) => c.categoryId)
+      .filter((id): id is string => id !== null);
+    if (targetCategoryIds.length > 0) {
+      const valid = await fastify.prisma.channelCategory.findMany({
+        where: { orgId, id: { in: targetCategoryIds } },
+        select: { id: true }
+      });
+      const validIds = new Set(valid.map((c) => c.id));
+      if (targetCategoryIds.some((id) => !validIds.has(id))) {
+        return sendError(reply, 400, "CATEGORY_NOT_FOUND", "Wskazana kategoria nie istnieje");
+      }
+    }
+
+    await fastify.prisma.$transaction([
+      ...input.categories
+        .filter((c) => categoryIds.has(c.id))
+        .map((c) =>
+          fastify.prisma.channelCategory.update({ where: { id: c.id }, data: { position: c.position } })
+        ),
+      ...input.channels
+        .filter((c) => channelIds.has(c.id))
+        .map((c) =>
+          fastify.prisma.channel.update({
+            where: { id: c.id },
+            data: { categoryId: c.categoryId, position: c.position }
           })
         )
-    );
+    ]);
 
+    await logAudit(fastify, {
+      orgId,
+      actorId: userId,
+      action: "channel.layoutChanged",
+      meta: { categories: input.categories.length, channels: input.channels.length },
+      ip: request.ip
+    });
+
+    fastify.io.to(`org:${orgId}`).emit("channels:layout-updated", { orgId });
+    return reply.send({ ok: true });
+  });
+
+  /** Lista kategorii kanałów organizacji. */
+  fastify.get("/orgs/:orgId/categories", async (request) => {
+    const { orgId } = request.params as { orgId: string };
+    await assertOrgMember(fastify, request.user!.id, orgId);
+
+    const categories = await fastify.prisma.channelCategory.findMany({
+      where: { orgId },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }]
+    });
+    return categories.map((c) => ({ id: c.id, orgId: c.orgId, name: c.name, position: c.position }));
+  });
+
+  /** Utwórz kategorię (wymaga channel.manage). Nowa kategoria ląduje na końcu listy. */
+  fastify.post("/orgs/:orgId/categories", async (request, reply) => {
+    const { orgId } = request.params as { orgId: string };
+    const userId = request.user!.id;
+    await assertOrgPermission(fastify, userId, orgId, "channel.manage");
+    const input = parseOrThrow(createCategorySchema, request.body);
+
+    const duplicate = await fastify.prisma.channelCategory.findFirst({ where: { orgId, name: input.name } });
+    if (duplicate) {
+      return sendError(reply, 409, "CATEGORY_EXISTS", "Kategoria o tej nazwie już istnieje");
+    }
+
+    const last = await fastify.prisma.channelCategory.findFirst({
+      where: { orgId },
+      orderBy: { position: "desc" },
+      select: { position: true }
+    });
+    const created = await fastify.prisma.channelCategory.create({
+      data: { orgId, name: input.name, position: (last?.position ?? -1) + 1 }
+    });
+
+    await logAudit(fastify, {
+      orgId,
+      actorId: userId,
+      action: "category.created",
+      meta: { categoryId: created.id, name: created.name },
+      ip: request.ip
+    });
+
+    fastify.io.to(`org:${orgId}`).emit("channels:layout-updated", { orgId });
+    return reply.code(201).send({ id: created.id, orgId, name: created.name, position: created.position });
+  });
+
+  /** Zmień nazwę kategorii (wymaga channel.manage). */
+  fastify.patch("/categories/:categoryId", async (request, reply) => {
+    const { categoryId } = request.params as { categoryId: string };
+    const userId = request.user!.id;
+
+    const category = await fastify.prisma.channelCategory.findUnique({ where: { id: categoryId } });
+    if (!category) notFound("Kategoria nie istnieje");
+    await assertOrgPermission(fastify, userId, category.orgId, "channel.manage");
+    const input = parseOrThrow(renameCategorySchema, request.body);
+
+    const duplicate = await fastify.prisma.channelCategory.findFirst({
+      where: { orgId: category.orgId, name: input.name, id: { not: categoryId } }
+    });
+    if (duplicate) {
+      return sendError(reply, 409, "CATEGORY_EXISTS", "Kategoria o tej nazwie już istnieje");
+    }
+
+    const updated = await fastify.prisma.channelCategory.update({
+      where: { id: categoryId },
+      data: { name: input.name }
+    });
+
+    await logAudit(fastify, {
+      orgId: category.orgId,
+      actorId: userId,
+      action: "category.renamed",
+      meta: { categoryId, name: input.name },
+      ip: request.ip
+    });
+
+    fastify.io.to(`org:${category.orgId}`).emit("channels:layout-updated", { orgId: category.orgId });
+    return reply.send({ id: updated.id, orgId: updated.orgId, name: updated.name, position: updated.position });
+  });
+
+  /**
+   * Usuń kategorię (wymaga channel.manage). Kanały z tej kategorii NIE są usuwane —
+   * lądują poza kategoriami, tak jak w Discordzie.
+   */
+  fastify.delete("/categories/:categoryId", async (request, reply) => {
+    const { categoryId } = request.params as { categoryId: string };
+    const userId = request.user!.id;
+
+    const category = await fastify.prisma.channelCategory.findUnique({ where: { id: categoryId } });
+    if (!category) notFound("Kategoria nie istnieje");
+    await assertOrgPermission(fastify, userId, category.orgId, "channel.manage");
+
+    // onDelete: SetNull na relacji zdejmuje przypisanie kanałów.
+    await fastify.prisma.channelCategory.delete({ where: { id: categoryId } });
+
+    await logAudit(fastify, {
+      orgId: category.orgId,
+      actorId: userId,
+      action: "category.deleted",
+      meta: { categoryId, name: category.name },
+      ip: request.ip
+    });
+
+    fastify.io.to(`org:${category.orgId}`).emit("channels:layout-updated", { orgId: category.orgId });
     return reply.send({ ok: true });
   });
 
@@ -132,9 +323,36 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       return sendError(reply, 409, "CHANNEL_EXISTS", "Kanał o tej nazwie już istnieje");
     }
 
+    // Kategoria musi należeć do tej samej organizacji, inaczej kanał powstałby
+    // od razu niewidoczny dla własnego zespołu.
+    if (input.categoryId) {
+      const category = await fastify.prisma.channelCategory.findUnique({
+        where: { id: input.categoryId },
+        select: { orgId: true }
+      });
+      if (!category || category.orgId !== orgId) {
+        return sendError(reply, 400, "CATEGORY_NOT_FOUND", "Wskazana kategoria nie istnieje");
+      }
+    }
+
+    // Nowy kanał ląduje na końcu swojej kategorii, tak jak w Discordzie.
+    const last = await fastify.prisma.channel.findFirst({
+      where: { orgId, categoryId: input.categoryId ?? null, type: { not: "DM" } },
+      orderBy: { position: "desc" },
+      select: { position: true }
+    });
+
     const channel = await fastify.prisma.$transaction(async (tx) => {
       const created = await tx.channel.create({
-        data: { orgId, type: input.type, name: input.name, createdBy: userId }
+        data: {
+          orgId,
+          type: input.type,
+          kind: input.kind,
+          name: input.name,
+          createdBy: userId,
+          categoryId: input.categoryId ?? null,
+          position: (last?.position ?? -1) + 1
+        }
       });
       await tx.channelMember.create({
         data: { channelId: created.id, userId, role: "ADMIN" }
@@ -163,7 +381,11 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       id: channel.id,
       orgId: channel.orgId,
       type: channel.type,
+      kind: channel.kind,
       name: channel.name,
+      categoryId: channel.categoryId,
+      position: channel.position,
+      slowmodeSeconds: channel.slowmodeSeconds,
       createdBy: channel.createdBy,
       createdAt: channel.createdAt.toISOString()
     });
@@ -512,38 +734,115 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     return members.map((m) => ({ userId: m.user.id, publicKey: m.user.publicKey }));
   });
 
-  /** Rename a channel (channel admin only, PUBLIC/PRIVATE only). */
+  /**
+   * Zbiorcza edycja ustawień kanału (administrator kanału, bez rozmów prywatnych).
+   * Obsługuje nazwę, temat, rodzaj kanału, slowmode i przypisanie do kategorii.
+   * Zastępuje dawny endpoint zmieniający wyłącznie nazwę — stary kształt żądania
+   * ({ name }) nadal działa, bo wszystkie pola są opcjonalne.
+   */
   fastify.patch("/channels/:channelId", async (request, reply) => {
     const { channelId } = request.params as { channelId: string };
     const userId = request.user!.id;
-    const input = parseOrThrow(renameChannelSchema, request.body);
+    const input = parseOrThrow(updateChannelSchema, request.body);
 
     const membership = await assertChannelMember(fastify, userId, channelId);
     if (membership.channel.type === "DM") {
-      return sendError(reply, 400, "DM_IMMUTABLE", "Nie można zmienić nazwy rozmowy prywatnej");
+      return sendError(reply, 400, "DM_IMMUTABLE", "Nie można zmienić ustawień rozmowy prywatnej");
     }
     if (membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może zmienić nazwę");
+      forbidden("Tylko administrator kanału może zmienić ustawienia");
+    }
+    const orgId = membership.channel.orgId;
+
+    if (input.name !== undefined) {
+      const duplicate = await fastify.prisma.channel.findFirst({
+        where: { orgId, name: input.name, type: { not: "DM" }, id: { not: channelId } }
+      });
+      if (duplicate) {
+        return sendError(reply, 409, "CHANNEL_EXISTS", "Kanał o tej nazwie już istnieje");
+      }
     }
 
-    const duplicate = await fastify.prisma.channel.findFirst({
-      where: { orgId: membership.channel.orgId, name: input.name, type: { not: "DM" }, id: { not: channelId } }
+    // Kategoria musi należeć do tej samej organizacji, inaczej kanał zniknąłby
+    // z listy wszystkim członkom, a obcy administrator zyskałby nad nim wpływ.
+    if (input.categoryId) {
+      const category = await fastify.prisma.channelCategory.findUnique({
+        where: { id: input.categoryId },
+        select: { orgId: true }
+      });
+      if (!category || category.orgId !== orgId) {
+        return sendError(reply, 400, "CATEGORY_NOT_FOUND", "Wskazana kategoria nie istnieje");
+      }
+    }
+
+    const updated = await fastify.prisma.channel.update({
+      where: { id: channelId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.topic !== undefined ? { topic: input.topic } : {}),
+        ...(input.kind !== undefined ? { kind: input.kind } : {}),
+        ...(input.slowmodeSeconds !== undefined ? { slowmodeSeconds: input.slowmodeSeconds } : {}),
+        ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {})
+      }
     });
-    if (duplicate) {
-      return sendError(reply, 409, "CHANNEL_EXISTS", "Kanał o tej nazwie już istnieje");
-    }
-
-    const updated = await fastify.prisma.channel.update({ where: { id: channelId }, data: { name: input.name } });
 
     await logAudit(fastify, {
-      orgId: membership.channel.orgId,
+      orgId,
       actorId: userId,
-      action: "channel.renamed",
-      meta: { channelId, name: input.name },
+      action: "channel.updated",
+      meta: { channelId, changed: Object.keys(input) },
       ip: request.ip
     });
 
-    return { id: updated.id, name: updated.name };
+    fastify.io.to(`org:${orgId}`).emit("channels:layout-updated", { orgId });
+
+    return {
+      id: updated.id,
+      name: updated.name,
+      topic: updated.topic,
+      kind: updated.kind,
+      slowmodeSeconds: updated.slowmodeSeconds,
+      categoryId: updated.categoryId
+    };
+  });
+
+  /**
+   * Trwałe usunięcie kanału wraz z całą historią. Do tej pory dostępna była
+   * wyłącznie archiwizacja, przez co porzucone kanały zostawały na liście
+   * na zawsze. Wymaga uprawnienia organizacji channel.manage, a nie samej roli
+   * administratora kanału — skutki są nieodwracalne i dotyczą wszystkich.
+   */
+  fastify.delete("/channels/:channelId", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    const userId = request.user!.id;
+
+    const membership = await assertChannelMember(fastify, userId, channelId);
+    if (membership.channel.type === "DM") {
+      return sendError(reply, 400, "DM_IMMUTABLE", "Nie można usunąć rozmowy prywatnej");
+    }
+    const orgId = membership.channel.orgId;
+    await assertOrgPermission(fastify, userId, orgId, "channel.manage");
+
+    const name = membership.channel.name;
+
+    // Kasujemy pliki z magazynu przed usunięciem wierszy — kaskada w bazie
+    // zabrałaby klucze obiektów i zostałyby osierocone bloby.
+    await purgeChannelFiles(fastify, channelId).catch((err: unknown) =>
+      fastify.log.warn({ err, channelId }, "Nie udało się usunąć plików kanału")
+    );
+
+    await fastify.prisma.channel.delete({ where: { id: channelId } });
+
+    await logAudit(fastify, {
+      orgId,
+      actorId: userId,
+      action: "channel.deleted",
+      meta: { channelId, name },
+      ip: request.ip
+    });
+
+    fastify.io.to(`org:${orgId}`).emit("channel:deleted", { channelId, orgId });
+    return reply.send({ ok: true });
   });
 
   /** Archive/unarchive a channel (channel admin only). Archived channels stay readable but hidden by default. */

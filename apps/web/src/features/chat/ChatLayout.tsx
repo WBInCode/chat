@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, 
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate } from "react-router-dom";
-import type { MessageDto, ModuleKey } from "@chatv2/shared";
+import type { MessageDto, ModuleKey, ChannelCategoryDto } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { uploadFile, uploadEncryptedFile, isAllowedFileType, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
 import { connectSocket, disconnectSocket, getSocket } from "../../lib/socket.js";
@@ -16,13 +16,15 @@ import { SavedPanel } from "./SavedPanel.js";
 import { DocumentsPanel } from "./documents/DocumentsPanel.js";
 import { ForwardPicker } from "./ForwardPicker.js";
 import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
-import { ChannelMembersPanel } from "./ChannelMembersPanel.js";
+import { ChannelMembersTab } from "./ChannelMembersTab.js";
 import { GroupDmPicker } from "./GroupDmPicker.js";
 import { QuickSwitcher } from "./QuickSwitcher.js";
 import { SchedulePicker } from "./SchedulePicker.js";
 import { CreatePollModal, type NewPollInput } from "./CreatePollModal.js";
 import { ReminderPicker } from "./ReminderPicker.js";
 import { VoiceRoom } from "./VoiceRoom.js";
+import { ChannelTree } from "./ChannelTree.js";
+import { ChannelSettingsModal } from "./ChannelSettingsModal.js";
 import { UserStatusControl } from "../../components/UserStatusControl.js";
 import { SidebarSection } from "../../components/SidebarSection.js";
 import { ThemeToggle } from "../settings/ThemeToggle.js";
@@ -200,12 +202,21 @@ export function ChatLayout() {
   const restoreBottomGapRef = useRef<number | null>(null);
   const [editingTopic, setEditingTopic] = useState(false);
   const [topicDraft, setTopicDraft] = useState("");
-  const [showMembersPanel, setShowMembersPanel] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showGroupDmPicker, setShowGroupDmPicker] = useState(false);
   const [groupDmSelection, setGroupDmSelection] = useState<Set<string>>(new Set());
   const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [createChannelCategoryId, setCreateChannelCategoryId] = useState<string | null>(null);
   const [showBrowseChannels, setShowBrowseChannels] = useState(false);
+  const [categories, setCategories] = useState<ChannelCategoryDto[]>([]);
+  const [settingsChannelId, setSettingsChannelId] = useState<string | null>(null);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"overview" | "members" | "permissions">(
+    "overview"
+  );
+  // Uchwyty na funkcje wołane z obsługi zdarzeń gniazda. Sam efekt gniazda
+  // montuje się raz, więc bez refów trzymałby pierwsze, nieaktualne domknięcia.
+  const reloadChannelsRef = useRef<(() => Promise<void>) | null>(null);
+  const removeChannelFromViewRef = useRef<((channelId: string) => void) | null>(null);
   const [digestToast, setDigestToast] = useState<string | null>(null);
 
   // Generic short-lived feedback toast (F6-A.4) — reuses the digest toast UI.
@@ -240,7 +251,6 @@ export function ChatLayout() {
   const [showComposerMenu, setShowComposerMenu] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showChannelMenu, setShowChannelMenu] = useState(false);
-  const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
   const [wsDisconnected, setWsDisconnected] = useState(false);
   useIdlePresence(user ? getSocket() : null);
 
@@ -294,6 +304,14 @@ export function ChatLayout() {
   }, [setOpenThread]);
 
   // ── bootstrap: orgs → channels → socket ────────────────────────────────
+
+  // Układ kanałów jest wspólny dla organizacji, więc przeciąganie, kategorie
+  // i usuwanie kanałów są dostępne tylko dla ról, które mogą nim zarządzać.
+  const canManageChannels = (() => {
+    const role = orgs.find((o) => o.id === activeOrgId)?.role;
+    return role === "OWNER" || role === "ADMIN";
+  })();
+
   useEffect(() => {
     void apiFetch<OrgItem[]>("/orgs").then((data) => {
       setOrgs(data);
@@ -331,6 +349,7 @@ export function ChatLayout() {
       if (data[0]) setActiveChannel(data[0].id);
       setDraftChannels(new Set(data.filter((c) => hasDraft(c.id)).map((c) => c.id)));
     });
+    void apiFetch<ChannelCategoryDto[]>(`/orgs/${activeOrgId}/categories`).then(setCategories);
     void apiFetch<MemberItem[]>(`/orgs/${activeOrgId}/members`).then((data) => {
       setMembers(data);
       useAvatarStore.getState().ensure(data.map((m) => m.userId));
@@ -385,6 +404,16 @@ export function ChatLayout() {
     socket.on("channel:settings-updated", ({ channelId, e2ee, messageTtlSeconds }) =>
       applyChannelSettings(channelId, { e2ee, messageTtlSeconds })
     );
+
+    // Układ kanałów jest wspólny, więc zmiana u administratora musi od razu
+    // pojawić się u wszystkich. Przeładowujemy listę zamiast łatać stan
+    // lokalnie — zmiana mogła dotknąć wielu kanałów i kategorii naraz.
+    socket.on("channels:layout-updated", () => {
+      void reloadChannelsRef.current?.();
+    });
+    socket.on("channel:deleted", ({ channelId }) => {
+      removeChannelFromViewRef.current?.(channelId);
+    });
 
     // Incoming call "ring": a channel I belong to (but am not currently
     // joined into) just went from 0 participants to 1+ — someone started
@@ -551,28 +580,138 @@ export function ChatLayout() {
     setChannels(channels.map((c) => (c.id === channelId ? { ...c, favorite } : c)));
   }
 
-  // Drag-and-drop reordering of the "Kanały" list (F5-I). Optimistic
-  // reorder in local state first, then persist per-user via PATCH — a
-  // failure just leaves the sidebar order out of sync with the server
-  // until next reload, never breaks anything, so no rollback needed.
-  function moveNonDmChannel(draggedId: string, targetId: string) {
-    if (draggedId === targetId || !activeOrgId) return;
-    const nonDm = channels.filter((c) => c.type !== "DM");
-    const dmAndFav = channels.filter((c) => c.type === "DM");
-    const fromIdx = nonDm.findIndex((c) => c.id === draggedId);
-    const toIdx = nonDm.findIndex((c) => c.id === targetId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const reordered = [...nonDm];
-    const [moved] = reordered.splice(fromIdx, 1);
-    reordered.splice(toIdx, 0, moved!);
-    setChannels([...reordered, ...dmAndFav]);
-    void apiFetch(`/orgs/${activeOrgId}/channels/reorder`, {
+  // Układ listy kanałów jest wspólny dla całej organizacji, więc zapis idzie
+  // jednym żądaniem i dotyczy wszystkich. Najpierw zmieniamy stan lokalny, żeby
+  // przeciąganie było płynne, a gdy serwer odmówi — przywracamy poprzedni układ
+  // i mówimy o tym wprost, zamiast zostawiać widok rozjechany z bazą.
+  function applyLayout(
+    nextCategories: Array<{ id: string; position: number }>,
+    nextChannels: Array<{ id: string; categoryId: string | null; position: number }>
+  ) {
+    if (!activeOrgId) return;
+    const previousChannels = channels;
+    const previousCategories = categories;
+
+    const channelPatch = new Map(nextChannels.map((c) => [c.id, c]));
+    setChannels(
+      channels.map((c) => {
+        const patch = channelPatch.get(c.id);
+        return patch ? { ...c, categoryId: patch.categoryId, position: patch.position } : c;
+      })
+    );
+    const categoryPatch = new Map(nextCategories.map((c) => [c.id, c.position]));
+    setCategories(
+      [...categories]
+        .map((c) => ({ ...c, position: categoryPatch.get(c.id) ?? c.position }))
+        .sort((a, b) => a.position - b.position)
+    );
+
+    void apiFetch(`/orgs/${activeOrgId}/channel-layout`, {
       method: "PATCH",
-      body: JSON.stringify({ orderedChannelIds: reordered.map((c) => c.id) })
-    }).catch(() => {
-      // Non-fatal — sidebar order just won't persist across reload this time.
+      body: JSON.stringify({ categories: nextCategories, channels: nextChannels })
+    }).catch((e) => {
+      setChannels(previousChannels);
+      setCategories(previousCategories);
+      showToast(e instanceof ApiError ? e.message : "Nie udało się zapisać układu kanałów.");
     });
   }
+
+  function openChannelSettings(channelId: string, tab: "overview" | "members" | "permissions" = "overview") {
+    setSettingsInitialTab(tab);
+    setSettingsChannelId(channelId);
+  }
+
+  async function reloadChannels() {
+    if (!activeOrgId) return;
+    const [freshChannels, freshCategories] = await Promise.all([
+      apiFetch<ChannelItem[]>(`/orgs/${activeOrgId}/channels`),
+      apiFetch<ChannelCategoryDto[]>(`/orgs/${activeOrgId}/categories`)
+    ]);
+    setChannels(freshChannels);
+    setCategories(freshCategories);
+  }
+
+  async function createCategory() {
+    if (!activeOrgId) return;
+    const name = window.prompt("Nazwa nowej kategorii");
+    if (!name?.trim()) return;
+    try {
+      const created = await apiFetch<ChannelCategoryDto>(`/orgs/${activeOrgId}/categories`, {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim() })
+      });
+      setCategories((prev) => [...prev, created]);
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : "Nie udało się utworzyć kategorii.");
+    }
+  }
+
+  async function renameCategory(category: ChannelCategoryDto) {
+    const name = window.prompt("Nowa nazwa kategorii", category.name);
+    if (!name?.trim() || name.trim() === category.name) return;
+    try {
+      const updated = await apiFetch<ChannelCategoryDto>(`/categories/${category.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: name.trim() })
+      });
+      setCategories((prev) => prev.map((c) => (c.id === category.id ? updated : c)));
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : "Nie udało się zmienić nazwy kategorii.");
+    }
+  }
+
+  async function deleteCategory(category: ChannelCategoryDto) {
+    const channelsInside = channels.filter((c) => c.categoryId === category.id).length;
+    const question =
+      channelsInside > 0
+        ? `Usunąć kategorię "${category.name}"? ${channelsInside} kanał(y) trafią poza kategorie — same kanały zostaną nietknięte.`
+        : `Usunąć kategorię "${category.name}"?`;
+    if (!window.confirm(question)) return;
+    try {
+      await apiFetch(`/categories/${category.id}`, { method: "DELETE" });
+      setCategories((prev) => prev.filter((c) => c.id !== category.id));
+      setChannels(channels.map((c) => (c.categoryId === category.id ? { ...c, categoryId: null } : c)));
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : "Nie udało się usunąć kategorii.");
+    }
+  }
+
+  async function archiveChannel(channel: ChannelItem) {
+    if (!window.confirm(`Zarchiwizować kanał "${channel.name}"? Zniknie z listy, ale historia zostaje.`)) return;
+    try {
+      await apiFetch(`/channels/${channel.id}/archive`, { method: "POST" });
+      setChannels(channels.map((c) => (c.id === channel.id ? { ...c, archivedAt: new Date().toISOString() } : c)));
+      showToast("Kanał zarchiwizowany.");
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : "Nie udało się zarchiwizować kanału.");
+    }
+  }
+
+  function removeChannelFromView(channelId: string) {
+    const remaining = channels.filter((c) => c.id !== channelId);
+    setChannels(remaining);
+    if (activeChannelId === channelId) setActiveChannel(remaining[0]?.id ?? null);
+  }
+
+  async function deleteChannel(channel: ChannelItem) {
+    if (
+      !window.confirm(
+        `Usunąć kanał "${channel.name}" wraz z całą historią i załącznikami? Tej operacji nie da się cofnąć.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await apiFetch(`/channels/${channel.id}`, { method: "DELETE" });
+      removeChannelFromView(channel.id);
+      showToast("Kanał usunięty.");
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : "Nie udało się usunąć kanału.");
+    }
+  }
+
+  reloadChannelsRef.current = reloadChannels;
+  removeChannelFromViewRef.current = removeChannelFromView;
 
   async function runAiSummary() {
     if (!activeChannelId) return;
@@ -689,6 +828,21 @@ export function ChatLayout() {
   }, [members]);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
+
+  // W kanale ogłoszeniowym pisać mogą tylko administratorzy kanału. Blokujemy
+  // pole od razu, zamiast pozwolić napisać wiadomość i odrzucić ją przy wysyłce.
+  const readOnlyAnnouncement =
+    activeChannel?.kind === "ANNOUNCEMENT" && activeChannel.myRole !== "ADMIN";
+
+  // Tryb wolny obowiązuje wszystkich poza administratorami kanału. Sam limit
+  // egzekwuje serwer; tutaj tylko uprzedzamy, żeby odmowa nie była zaskoczeniem.
+  const slowmodeNotice = (() => {
+    const seconds = activeChannel?.slowmodeSeconds ?? 0;
+    if (seconds <= 0 || activeChannel?.myRole === "ADMIN") return null;
+    if (seconds < 60) return `tryb wolny: ${seconds} s`;
+    if (seconds < 3600) return `tryb wolny: ${Math.round(seconds / 60)} min`;
+    return `tryb wolny: ${Math.round(seconds / 3600)} godz.`;
+  })();
 
   // ── E2E: verify the DM peer's key against the local pin on open ───────
   useEffect(() => {
@@ -1410,79 +1564,38 @@ export function ChatLayout() {
             </SidebarSection>
           )}
 
-          <SidebarSection
-            id="channels"
-            title="Kanały"
-            action={
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setShowBrowseChannels(true)}
-                  title="Przeglądaj kanały publiczne"
-                  className="flex h-8 items-center rounded px-1.5 text-xs text-[var(--text-dim)] hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
-                >
-                  Przeglądaj
-                </button>
-                <button
-                  onClick={() => setShowCreateChannel(true)}
-                  title="Utwórz kanał"
-                  className="flex h-8 w-8 items-center justify-center rounded text-[var(--text-dim)] hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
-                >
-                  <Icon icon={Plus} size={16} />
-                </button>
-              </div>
-            }
-          >
-            {channels
-              .filter((c) => c.type !== "DM")
-              .map((c) => (
-                <button
-                  key={c.id}
-                  draggable
-                  onDragStart={(e) => {
-                    setDraggedChannelId(c.id);
-                    e.dataTransfer.effectAllowed = "move";
-                    // Source of truth for the drop handler — reading via
-                    // dataTransfer (not React state) avoids any risk of a
-                    // stale closure if drop fires before a re-render.
-                    e.dataTransfer.setData("text/chatv2-channel-id", c.id);
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const sourceId = e.dataTransfer.getData("text/chatv2-channel-id");
-                    if (sourceId) moveNonDmChannel(sourceId, c.id);
-                    setDraggedChannelId(null);
-                  }}
-                  onDragEnd={() => setDraggedChannelId(null)}
-                  onClick={() => setActiveChannel(c.id)}
-                  title="Przeciągnij, aby zmienić kolejność"
-                  className={`nav-item flex w-full cursor-grab items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 active:cursor-grabbing ${
-                    draggedChannelId === c.id ? "opacity-40" : ""
-                  } ${
-                    c.id === activeChannelId
-                      ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent-ring)]"
-                      : c.muted
-                        ? "text-[var(--text-dim)] hover:bg-[var(--border)]/50"
-                        : "text-[var(--text)] hover:bg-[var(--border)]/50"
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <Icon icon={c.type === "PRIVATE" ? Lock : Hash} size={13} className="shrink-0 text-[var(--text-dim)]" />
-                    <span className="truncate">{c.name}</span> {c.muted && <Icon icon={BellOff} size={12} />}
-                    {draftChannels.has(c.id) && (
-                      <span className="text-[10px] italic text-[var(--text-dim)]">(szkic)</span>
-                    )}
-                  </span>
-                  {(c.unreadCount ?? 0) > 0 && !c.muted && (
-                    <span className="animate-spring-in btn-gradient ml-2 min-w-5 rounded-full px-1.5 text-center text-xs font-semibold text-white shadow-[0_2px_8px_var(--accent-glow)]">
-                      {c.unreadCount}
-                    </span>
-                  )}
-                </button>
-              ))}
-          </SidebarSection>
+          <div className="mt-3">
+            <div className="flex justify-end px-2">
+              <button
+                onClick={() => setShowBrowseChannels(true)}
+                title="Przeglądaj kanały publiczne"
+                className="rounded px-1.5 py-0.5 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
+              >
+                Przeglądaj
+              </button>
+            </div>
+            <ChannelTree
+              channels={channels}
+              categories={categories}
+              activeChannelId={activeChannelId}
+              draftChannels={draftChannels}
+              canManage={canManageChannels}
+              onSelect={setActiveChannel}
+              onToggleMute={(channelId, muted) => void toggleMute(channelId, muted)}
+              onToggleFavorite={(channelId, favorite) => void toggleFavorite(channelId, favorite)}
+              onOpenSettings={(channelId) => openChannelSettings(channelId, "overview")}
+              onDelete={(channel) => void deleteChannel(channel)}
+              onArchive={(channel) => void archiveChannel(channel)}
+              onCreateChannel={(categoryId) => {
+                setCreateChannelCategoryId(categoryId);
+                setShowCreateChannel(true);
+              }}
+              onCreateCategory={() => void createCategory()}
+              onRenameCategory={(category) => void renameCategory(category)}
+              onDeleteCategory={(category) => void deleteCategory(category)}
+              onLayoutChange={applyLayout}
+            />
+          </div>
 
           <SidebarSection
             id="dms"
@@ -1622,7 +1735,7 @@ export function ChatLayout() {
                     </button>
                     {activeChannel.type !== "DM" && (
                       <button
-                        onClick={() => setShowMembersPanel(true)}
+                        onClick={() => openChannelSettings(activeChannel.id, "members")}
                         title="Członkowie kanału"
                         className="text-[var(--text-dim)] hover:text-[var(--text)]"
                       >
@@ -1755,11 +1868,22 @@ export function ChatLayout() {
                           <button
                             onClick={() => {
                               setShowChannelMenu(false);
-                              setShowMembersPanel(true);
+                              openChannelSettings(activeChannel.id, "members");
                             }}
                             className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
                           >
                             <Icon icon={Users} size={16} /> Członkowie kanału
+                          </button>
+                        )}
+                        {activeChannel.type !== "DM" && activeChannel.myRole === "ADMIN" && (
+                          <button
+                            onClick={() => {
+                              setShowChannelMenu(false);
+                              openChannelSettings(activeChannel.id, "overview");
+                            }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                          >
+                            <Icon icon={Settings} size={16} /> Ustawienia kanału
                           </button>
                         )}
                         {moduleEnabled("documents") && !activeChannel.e2ee && (
@@ -1978,8 +2102,9 @@ export function ChatLayout() {
                       : `To początek kanału #${activeChannel.name}`}
                   </p>
                   <p className="max-w-xs text-xs text-[var(--text-dim)]">
-                    Napisz pierwszą wiadomość poniżej. Możesz też przeciągnąć plik, wkleić obrazek,
-                    utworzyć ankietę (+) albo wspomnieć kogoś przez @.
+                    {readOnlyAnnouncement
+                      ? "To kanał ogłoszeniowy. Pojawią się tu wpisy administratorów kanału."
+                      : "Napisz pierwszą wiadomość poniżej. Możesz też przeciągnąć plik, wkleić obrazek, utworzyć ankietę (+) albo wspomnieć kogoś przez @."}
                   </p>
                 </div>
               )}
@@ -2510,9 +2635,16 @@ export function ChatLayout() {
                     }
                   }}
                   onPaste={handlePaste}
-                  placeholder={`Napisz na ${activeChannel.type === "DM" ? "@" : "#"}${activeChannel.name}`}
+                  disabled={readOnlyAnnouncement}
+                  placeholder={
+                    readOnlyAnnouncement
+                      ? "Tylko administratorzy kanału mogą tu pisać"
+                      : slowmodeNotice
+                        ? `Napisz na #${activeChannel.name} — ${slowmodeNotice}`
+                        : `Napisz na ${activeChannel.type === "DM" ? "@" : "#"}${activeChannel.name}`
+                  }
                   maxLength={8000}
-                  className="composer-glow min-w-0 flex-1 resize-none rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm leading-snug outline-none backdrop-blur-sm focus:ring-0"
+                  className="composer-glow min-w-0 flex-1 resize-none rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm leading-snug outline-none backdrop-blur-sm focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 {draft.length > 7000 && (
                   <span className="absolute -top-5 right-24 text-xs text-[var(--warning)]">
@@ -2521,8 +2653,8 @@ export function ChatLayout() {
                 )}
                 <button
                   type="submit"
-                  disabled={!draft.trim() && pending.length === 0}
-                  title="Wyślij"
+                  disabled={readOnlyAnnouncement || (!draft.trim() && pending.length === 0)}
+                  title={readOnlyAnnouncement ? "Kanał ogłoszeniowy — brak uprawnień do pisania" : "Wyślij"}
                   className="btn-gradient flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_var(--accent-glow)] transition-all duration-150 hover:brightness-[1.06] active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 sm:px-4"
                 >
                   <Icon icon={Send} className="sm:hidden" />
@@ -2652,19 +2784,6 @@ export function ChatLayout() {
         />
       )}
 
-      {showMembersPanel && activeChannelId && (
-        <ChannelMembersPanel
-          channelId={activeChannelId}
-          channelName={activeChannel?.name ?? null}
-          isDm={activeChannel?.type === "DM"}
-          isAdmin={activeChannel?.myRole === "ADMIN"}
-          orgMembers={members}
-          onClose={() => setShowMembersPanel(false)}
-          onRenamed={(name) => setChannels(channels.map((c) => (c.id === activeChannelId ? { ...c, name } : c)))}
-          onArchived={() => setChannels(channels.filter((c) => c.id !== activeChannelId))}
-        />
-      )}
-
       {showGroupDmPicker && (
         <GroupDmPicker
           members={members.filter((m) => m.userId !== user?.id)}
@@ -2772,6 +2891,8 @@ export function ChatLayout() {
       {showCreateChannel && activeOrgId && (
         <CreateChannelModal
           orgId={activeOrgId}
+          categories={categories}
+          initialCategoryId={createChannelCategoryId}
           onClose={() => setShowCreateChannel(false)}
           onCreated={(channelId) => {
             setShowCreateChannel(false);
@@ -2782,6 +2903,39 @@ export function ChatLayout() {
           }}
         />
       )}
+
+      {settingsChannelId &&
+        (() => {
+          const channel = channels.find((c) => c.id === settingsChannelId);
+          if (!channel) return null;
+          return (
+            <ChannelSettingsModal
+              channel={channel}
+              categories={categories}
+              canManage={canManageChannels}
+              initialTab={settingsInitialTab}
+              membersSlot={
+                <ChannelMembersTab
+                  channelId={channel.id}
+                  isDm={channel.type === "DM"}
+                  isAdmin={channel.myRole === "ADMIN"}
+                  orgMembers={members}
+                />
+              }
+              onClose={() => setSettingsChannelId(null)}
+              onSaved={(patch) => {
+                setChannels(channels.map((c) => (c.id === settingsChannelId ? { ...c, ...patch } : c)));
+                setSettingsChannelId(null);
+                showToast("Ustawienia kanału zapisane.");
+              }}
+              onDeleted={(channelId) => {
+                setSettingsChannelId(null);
+                removeChannelFromView(channelId);
+                showToast("Kanał usunięty.");
+              }}
+            />
+          );
+        })()}
 
       {showBrowseChannels && activeOrgId && (
         <BrowseChannelsModal

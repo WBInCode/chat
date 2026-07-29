@@ -6,14 +6,21 @@ export type ChannelType = z.infer<typeof channelTypeSchema>;
 export const channelRoleSchema = z.enum(["ADMIN", "MEMBER"]);
 export type ChannelRole = z.infer<typeof channelRoleSchema>;
 
+export const channelKindSchema = z.enum(["TEXT", "ANNOUNCEMENT"]);
+export type ChannelKind = z.infer<typeof channelKindSchema>;
+
+export const channelNameSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(80)
+  .regex(/^[a-z0-9-]+$/, "Tylko małe litery, cyfry i myślniki");
+
 export const createChannelSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(2)
-    .max(80)
-    .regex(/^[a-z0-9-]+$/, "Tylko małe litery, cyfry i myślniki"),
-  type: z.enum(["PUBLIC", "PRIVATE"])
+  name: channelNameSchema,
+  type: z.enum(["PUBLIC", "PRIVATE"]),
+  kind: channelKindSchema.default("TEXT"),
+  categoryId: z.string().uuid().nullish()
 });
 export type CreateChannelInput = z.infer<typeof createChannelSchema>;
 
@@ -38,14 +45,56 @@ export const setChannelTopicSchema = z.object({
 export type SetChannelTopicInput = z.infer<typeof setChannelTopicSchema>;
 
 export const renameChannelSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(2)
-    .max(80)
-    .regex(/^[a-z0-9-]+$/, "Tylko małe litery, cyfry i myślniki")
+  name: channelNameSchema
 });
 export type RenameChannelInput = z.infer<typeof renameChannelSchema>;
+
+// Zbiorcza edycja ustawień kanału z zakładki "Przegląd". Wszystkie pola
+// opcjonalne — wysyłamy tylko to, co faktycznie zmieniono.
+export const updateChannelSchema = z
+  .object({
+    name: channelNameSchema,
+    topic: z.string().trim().max(250).nullable(),
+    kind: channelKindSchema,
+    slowmodeSeconds: z.number().int().min(0).max(21600),
+    categoryId: z.string().uuid().nullable()
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: "Brak pól do zmiany" });
+export type UpdateChannelInput = z.infer<typeof updateChannelSchema>;
+
+// Wartości slowmode oferowane w interfejsie (sekundy). 0 = wyłączony.
+export const SLOWMODE_OPTIONS = [0, 5, 10, 15, 30, 60, 120, 300, 600, 900, 3600, 7200, 21600] as const;
+
+export const createCategorySchema = z.object({
+  name: z.string().trim().min(1).max(60)
+});
+export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+
+export const renameCategorySchema = createCategorySchema;
+
+// Układ listy kanałów wspólny dla całej organizacji — ustawiają go administratorzy,
+// odpowiednik przeciągania kanałów i kategorii w Discordzie.
+export const updateChannelLayoutSchema = z.object({
+  categories: z.array(z.object({ id: z.string().uuid(), position: z.number().int().min(0) })).max(200),
+  channels: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        categoryId: z.string().uuid().nullable(),
+        position: z.number().int().min(0)
+      })
+    )
+    .max(500)
+});
+export type UpdateChannelLayoutInput = z.infer<typeof updateChannelLayoutSchema>;
+
+export interface ChannelCategoryDto {
+  id: string;
+  orgId: string;
+  name: string;
+  position: number;
+}
 
 export interface BrowseChannelDto {
   id: string;
@@ -66,11 +115,6 @@ export const setFavoriteSchema = z.object({
   favorite: z.boolean()
 });
 export type SetFavoriteInput = z.infer<typeof setFavoriteSchema>;
-
-export const reorderChannelsSchema = z.object({
-  orderedChannelIds: z.array(z.string().uuid()).min(1).max(500)
-});
-export type ReorderChannelsInput = z.infer<typeof reorderChannelsSchema>;
 
 // Disappearing messages: allowed TTL values (seconds). null = off.
 export const CHANNEL_TTL_OPTIONS = [3600, 86400, 604800, 2592000] as const;
