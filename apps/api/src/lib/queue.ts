@@ -144,3 +144,28 @@ export async function scheduleDueSweep() {
   );
 }
 
+// ── Zbiorcze powiadomienia e-mail ──────────────────────────────────────
+// Zadanie opóźnione, jedno na odbiorcę. Nie planujemy go dla każdej
+// wiadomości — pilnuje tego znacznik w Redisie (patrz lib/email-digest.ts),
+// dzięki czemu seria trzydziestu wiadomości tworzy jedno zadanie, nie
+// trzydzieści.
+export const EMAIL_DIGEST_QUEUE = "email-digest";
+
+export interface EmailDigestJobData {
+  userId: string;
+}
+
+export const emailDigestQueue = new Queue<EmailDigestJobData>(EMAIL_DIGEST_QUEUE, {
+  connection: queueConnection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: "exponential", delay: 30_000 },
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 100 }
+  }
+});
+
+export async function enqueueEmailDigest(data: EmailDigestJobData, delayMs: number) {
+  await emailDigestQueue.add("digest", data, { delay: delayMs });
+}
+

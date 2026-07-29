@@ -8,6 +8,26 @@ export const setNotifyModeSchema = z.object({
 });
 export type SetNotifyModeInput = z.infer<typeof setNotifyModeSchema>;
 
+/**
+ * Zakres zbiorczych powiadomień e-mail. Wysyłka jest dodatkowo zawężona
+ * przez `notifyMode` i wyciszenie kanału, a mail powstaje tylko wtedy, gdy
+ * odbiorca nie ma otwartej aplikacji.
+ */
+export const emailDigestModeSchema = z.enum(["OFF", "MENTIONS", "ALL"]);
+export type EmailDigestModeDto = z.infer<typeof emailDigestModeSchema>;
+
+export const setEmailDigestSchema = z.object({
+  mode: emailDigestModeSchema
+});
+export type SetEmailDigestInput = z.infer<typeof setEmailDigestSchema>;
+
+export interface NotificationPreferencesDto {
+  mode: NotifyModeDto;
+  emailDigest: EmailDigestModeDto;
+  /** Gdy false, serwer nie ma skonfigurowanego SMTP i opcje e-mail są nieaktywne. */
+  emailAvailable: boolean;
+}
+
 export const pushSubscribeSchema = z.object({
   endpoint: z.string().url(),
   keys: z.object({

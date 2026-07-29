@@ -1,11 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import {
   setNotifyModeSchema,
+  setEmailDigestSchema,
   pushSubscribeSchema,
-  pushUnsubscribeSchema
+  pushUnsubscribeSchema,
+  type NotificationPreferencesDto
 } from "@chatv2/shared";
 import { parseOrThrow } from "../../lib/validation.js";
 import { env } from "../../config/env.js";
+import { isMailConfigured } from "../../lib/mailer.js";
 
 /**
  * Web Push plumbing: publish the VAPID public key for the client to use
@@ -53,7 +56,25 @@ export default async function notificationRoutes(fastify: FastifyInstance) {
 
   fastify.get("/me/notification-preferences", async (request) => {
     const user = await fastify.prisma.user.findUnique({ where: { id: request.user!.id } });
-    return { mode: user?.notifyMode ?? "ALL" };
+    const result: NotificationPreferencesDto = {
+      mode: user?.notifyMode ?? "ALL",
+      emailDigest: user?.emailDigest ?? "MENTIONS",
+      emailAvailable: isMailConfigured()
+    };
+    return result;
+  });
+
+  /**
+   * Zakres powiadomien e-mail. Osobno od `notifyMode`, bo to dwa rozne
+   * pytania: o czym chce wiedziec (mode) i ktoredy ma o tym uslyszec.
+   */
+  fastify.patch("/me/email-digest", async (request) => {
+    const input = parseOrThrow(setEmailDigestSchema, request.body);
+    const user = await fastify.prisma.user.update({
+      where: { id: request.user!.id },
+      data: { emailDigest: input.mode }
+    });
+    return { emailDigest: user.emailDigest };
   });
 
   /**
