@@ -34,6 +34,8 @@ export const WS_SERVER_EVENTS = {
   ReactionUpdate: "reaction:update",
   ReadUpdate: "read:update",
   PollUpdate: "poll:update",
+  DocumentUpdate: "document:update",
+  DocumentLocks: "document:locks",
   VoiceParticipants: "voice:participants",
   VoiceOffer: "voice:offer",
   VoiceAnswer: "voice:answer",
@@ -122,6 +124,25 @@ export interface ServerToClientEvents {
     messageId: string;
     channelId: string;
     poll: import("./schemas/productivity.js").PollDto;
+  }) => void;
+  /**
+   * One event covers every document mutation. `kind` tells the client whether
+   * it can patch a single block in place or has to refetch the whole document
+   * because the block order changed.
+   */
+  [WS_SERVER_EVENTS.DocumentUpdate]: (payload: {
+    documentId: string;
+    channelId: string;
+    kind: "meta" | "block" | "structure" | "comments" | "deleted";
+    /** Present for `kind: "block"` so a single block can be patched locally. */
+    block?: import("./schemas/documents.js").DocumentBlockDto;
+    /** The user whose action produced this event, so the sender can ignore its own echo. */
+    actorId: string;
+  }) => void;
+  [WS_SERVER_EVENTS.DocumentLocks]: (payload: {
+    documentId: string;
+    channelId: string;
+    locks: import("./schemas/documents.js").DocumentLockDto[];
   }) => void;
   [WS_SERVER_EVENTS.ReadUpdate]: (payload: {
     channelId: string;

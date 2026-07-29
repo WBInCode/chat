@@ -1,0 +1,292 @@
+import type { FastifyInstance } from "fastify";
+import type { Prisma } from "@prisma/client";
+import {
+  documentBlockDataSchema,
+  DOCUMENT_LOCK_TTL_SECONDS,
+  type DocumentBlockData,
+  type DocumentBlockDto,
+  type DocumentDto,
+  type DocumentLockDto,
+  type DocumentSummaryDto
+} from "@chatv2/shared";
+import { HttpError } from "../../lib/authz.js";
+
+/** A new snapshot is written when the last one is older than this. */
+const REVISION_MAX_AGE_MS = 5 * 60 * 1000;
+
+/** Positions are renumbered in steps so a later insert rarely rewrites siblings. */
+const POSITION_STEP = 1000;
+
+type BlockRow = {
+  id: string;
+  position: number;
+  version: number;
+  data: Prisma.JsonValue;
+  updatedById: string | null;
+  updatedAt: Date;
+};
+
+/**
+ * Blocks are stored as JSON, so anything already in the database is parsed
+ * defensively on read. A row that somehow fails validation degrades to an
+ * empty paragraph rather than crashing the whole document.
+ */
+export function parseBlockData(raw: unknown): DocumentBlockData {
+  const parsed = documentBlockDataSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  return { type: "text", text: "" };
+}
+
+export function toBlockDto(row: BlockRow): DocumentBlockDto {
+  return {
+    id: row.id,
+    position: row.position,
+    version: row.version,
+    data: parseBlockData(row.data),
+    updatedById: row.updatedById,
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+export function toSummaryDto(row: {
+  id: string;
+  channelId: string;
+  title: string;
+  icon: string | null;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+  _count?: { blocks: number };
+  openCommentCount?: number;
+}): DocumentSummaryDto {
+  return {
+    id: row.id,
+    channelId: row.channelId,
+    title: row.title,
+    icon: row.icon,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    blockCount: row._count?.blocks ?? 0,
+    openCommentCount: row.openCommentCount ?? 0
+  };
+}
+
+export async function loadDocumentDto(
+  fastify: FastifyInstance,
+  documentId: string
+): Promise<DocumentDto> {
+  const doc = await fastify.prisma.document.findUniqueOrThrow({
+    where: { id: documentId },
+    include: { blocks: { orderBy: { position: "asc" } } }
+  });
+  const openCommentCount = await fastify.prisma.documentComment.count({
+    where: { documentId, resolvedAt: null }
+  });
+  return {
+    ...toSummaryDto({ ...doc, _count: { blocks: doc.blocks.length }, openCommentCount }),
+    blocks: doc.blocks.map(toBlockDto)
+  };
+}
+
+// ── soft locks ─────────────────────────────────────────────────────────────
+
+function lockKey(documentId: string, blockId: string) {
+  return `doc-lock:${documentId}:${blockId}`;
+}
+
+/**
+ * Claims a block for editing. Returns the current holder either way, so the
+ * caller can tell "I got it" from "someone else has it". The lock is advisory
+ * and short-lived: it stops two people typing into the same table at once,
+ * and it expires on its own if a browser tab disappears without releasing.
+ */
+export async function claimLock(
+  fastify: FastifyInstance,
+  documentId: string,
+  blockId: string,
+  userId: string
+): Promise<{ acquired: boolean; holderId: string }> {
+  const key = lockKey(documentId, blockId);
+  const existing = await fastify.redis.get(key);
+  if (existing && existing !== userId) return { acquired: false, holderId: existing };
+  await fastify.redis.set(key, userId, "EX", DOCUMENT_LOCK_TTL_SECONDS);
+  return { acquired: true, holderId: userId };
+}
+
+export async function releaseLock(
+  fastify: FastifyInstance,
+  documentId: string,
+  blockId: string,
+  userId: string
+): Promise<void> {
+  const key = lockKey(documentId, blockId);
+  const existing = await fastify.redis.get(key);
+  // Only the holder may release, otherwise a stale tab could free someone
+  // else's freshly acquired lock.
+  if (existing === userId) await fastify.redis.del(key);
+}
+
+export async function listLocks(
+  fastify: FastifyInstance,
+  documentId: string,
+  blockIds: string[]
+): Promise<DocumentLockDto[]> {
+  if (blockIds.length === 0) return [];
+  const values = await fastify.redis.mget(blockIds.map((id) => lockKey(documentId, id)));
+  const locks: DocumentLockDto[] = [];
+  values.forEach((userId, index) => {
+    if (userId) locks.push({ blockId: blockIds[index]!, userId });
+  });
+  return locks;
+}
+
+export async function assertNotLockedByOther(
+  fastify: FastifyInstance,
+  documentId: string,
+  blockId: string,
+  userId: string
+): Promise<void> {
+  const holder = await fastify.redis.get(lockKey(documentId, blockId));
+  if (holder && holder !== userId) {
+    throw new HttpError(409, "BLOCK_LOCKED", "Ktoś inny właśnie edytuje ten element");
+  }
+}
+
+// ── revisions ──────────────────────────────────────────────────────────────
+
+/**
+ * Writes a snapshot before a change, but only when it adds information:
+ * either enough time has passed since the previous one, or a different person
+ * is now editing. Without this, every keystroke-sized save would bury the
+ * history in near-identical entries.
+ */
+export async function maybeSnapshot(
+  fastify: FastifyInstance,
+  documentId: string,
+  authorId: string,
+  summary: string
+): Promise<void> {
+  const last = await fastify.prisma.documentRevision.findFirst({
+    where: { documentId },
+    orderBy: { createdAt: "desc" }
+  });
+
+  const stale = !last || Date.now() - last.createdAt.getTime() > REVISION_MAX_AGE_MS;
+  const differentAuthor = last?.authorId !== authorId;
+  if (last && !stale && !differentAuthor) return;
+
+  const blocks = await fastify.prisma.documentBlock.findMany({
+    where: { documentId },
+    orderBy: { position: "asc" }
+  });
+  // Nothing to preserve yet; an empty first snapshot would only add noise.
+  if (blocks.length === 0 && !last) return;
+
+  await fastify.prisma.documentRevision.create({
+    data: {
+      documentId,
+      authorId,
+      summary,
+      snapshot: blocks.map((b) => ({
+        type: b.type,
+        position: b.position,
+        data: b.data
+      })) as Prisma.InputJsonValue
+    }
+  });
+}
+
+// ── positions ──────────────────────────────────────────────────────────────
+
+/**
+ * Resolves the sort key for a block inserted after `afterBlockId`. When there
+ * is no gap left between two neighbours the whole document is renumbered,
+ * which is rare and cheap at document scale.
+ */
+export async function positionAfter(
+  fastify: FastifyInstance,
+  documentId: string,
+  afterBlockId: string | null
+): Promise<number> {
+  const blocks = await fastify.prisma.documentBlock.findMany({
+    where: { documentId },
+    orderBy: { position: "asc" },
+    select: { id: true, position: true }
+  });
+
+  if (blocks.length === 0) return POSITION_STEP;
+  if (!afterBlockId) return blocks[blocks.length - 1]!.position + POSITION_STEP;
+
+  const index = blocks.findIndex((b) => b.id === afterBlockId);
+  if (index === -1) return blocks[blocks.length - 1]!.position + POSITION_STEP;
+  if (index === blocks.length - 1) return blocks[index]!.position + POSITION_STEP;
+
+  const before = blocks[index]!.position;
+  const after = blocks[index + 1]!.position;
+  if (after - before > 1) return Math.floor((before + after) / 2);
+
+  await renumber(fastify, documentId);
+  return positionAfter(fastify, documentId, afterBlockId);
+}
+
+export async function renumber(fastify: FastifyInstance, documentId: string): Promise<void> {
+  const blocks = await fastify.prisma.documentBlock.findMany({
+    where: { documentId },
+    orderBy: { position: "asc" },
+    select: { id: true }
+  });
+  await fastify.prisma.$transaction(
+    blocks.map((b, i) =>
+      fastify.prisma.documentBlock.update({
+        where: { id: b.id },
+        data: { position: (i + 1) * POSITION_STEP }
+      })
+    )
+  );
+}
+
+/** Moves a block to a zero-based index, renumbering the document afterwards. */
+export async function moveBlock(
+  fastify: FastifyInstance,
+  documentId: string,
+  blockId: string,
+  targetIndex: number
+): Promise<void> {
+  const blocks = await fastify.prisma.documentBlock.findMany({
+    where: { documentId },
+    orderBy: { position: "asc" },
+    select: { id: true }
+  });
+  const current = blocks.findIndex((b) => b.id === blockId);
+  if (current === -1) throw new HttpError(404, "NOT_FOUND", "Element nie istnieje");
+
+  const ordered = blocks.map((b) => b.id);
+  ordered.splice(current, 1);
+  ordered.splice(Math.min(targetIndex, ordered.length), 0, blockId);
+
+  await fastify.prisma.$transaction(
+    ordered.map((id, i) =>
+      fastify.prisma.documentBlock.update({
+        where: { id },
+        data: { position: (i + 1) * POSITION_STEP }
+      })
+    )
+  );
+}
+
+// ── CSV export ─────────────────────────────────────────────────────────────
+
+/**
+ * RFC 4180 quoting. Also neutralises the leading characters that spreadsheet
+ * software executes as a formula, so a cell typed as `=cmd|...` opens as text
+ * instead of running when the export is opened in Excel (CSV injection).
+ */
+export function toCsv(rows: string[][]): string {
+  const escapeCell = (cell: string) => {
+    const dangerous = /^[=+\-@\t\r]/.test(cell);
+    const value = dangerous ? `'${cell}` : cell;
+    return `"${value.replace(/"/g, '""')}"`;
+  };
+  return rows.map((row) => row.map(escapeCell).join(",")).join("\r\n");
+}

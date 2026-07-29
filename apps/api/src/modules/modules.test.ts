@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { MODULE_KEYS } from "@chatv2/shared";
 import { buildApp } from "../app.js";
 
 // F7-A: per-organization module toggles + gating.
@@ -146,7 +147,9 @@ describe("module toggles (F7-A)", () => {
     });
     expect(res.statusCode).toBe(200);
     const rows = res.json() as { key: string; core: boolean; enabled: boolean; source: string }[];
-    expect(rows).toHaveLength(15);
+    // Counted from the shared registry, so registering a new module does not
+    // fail this test for the wrong reason.
+    expect(rows).toHaveLength(MODULE_KEYS.length);
     const messaging = rows.find((r) => r.key === "messaging");
     expect(messaging?.core).toBe(true);
     expect(messaging?.source).toBe("core");

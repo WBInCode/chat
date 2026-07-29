@@ -24,6 +24,7 @@ export const MODULE_KEYS = [
   "reactions",
   "integrations",
   "e2ee",
+  "documents",
   "analytics"
 ] as const;
 
@@ -52,6 +53,7 @@ export const MODULE_CATALOG: Record<ModuleKey, ModuleMeta> = {
   reactions: { key: "reactions", label: "Reakcje", description: "Reakcje emoji na wiadomościach.", core: false },
   integrations: { key: "integrations", label: "Integracje", description: "Webhooki przychodzące (CI, monitoring) do kanałów.", core: false },
   e2ee: { key: "e2ee", label: "Szyfrowanie E2EE", description: "Szyfrowanie end-to-end wiadomości bezpośrednich.", core: false },
+  documents: { key: "documents", label: "Dokumenty", description: "Wspólne dokumenty w kanale: tabele, listy zadań, historia wersji i komentarze.", core: false },
   analytics: { key: "analytics", label: "Analityka", description: "Analityka workspace dla administratorów.", core: false }
 };
 

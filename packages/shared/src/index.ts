@@ -14,3 +14,4 @@ export * from "./schemas/productivity.js";
 export * from "./schemas/platform-admin.js";
 export * from "./schemas/modules.js";
 export * from "./schemas/integrations.js";
+export * from "./schemas/documents.js";
