@@ -318,21 +318,32 @@ export default async function productivityRoutes(fastify: FastifyInstance) {
     const option = await fastify.prisma.pollOption.findFirst({ where: { id: optionId, pollId } });
     if (!option) notFound("Opcja nie istnieje");
 
-    const existingVote = await fastify.prisma.pollVote.findUnique({
-      where: { pollOptionId_userId: { pollOptionId: optionId, userId } }
-    });
+    // Zmiana głosu musi być szeregowana per osoba i ankieta. Sama transakcja
+    // nie wystarcza: przy domyślnym poziomie izolacji drugie żądanie nie widzi
+    // niezatwierdzonego głosu pierwszego, więc oba przechodzą przez kasowanie
+    // i oba wstawiają swój — w ankiecie jednokrotnego wyboru zostają dwa głosy.
+    // Blokada doradcza obejmuje dokładnie tę parę i zwalnia się z transakcją,
+    // więc głosy innych osób nie czekają na siebie nawzajem.
+    await fastify.prisma.$transaction(async (tx) => {
+      // $executeRaw, nie $queryRaw: funkcja zwraca typ void, ktorego Prisma
+      // nie potrafi zdeserializowac jako kolumny wyniku.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`poll-vote:${pollId}:${userId}`}))`;
 
-    if (existingVote) {
-      await fastify.prisma.pollVote.delete({ where: { id: existingVote.id } });
-    } else {
+      const existingVote = await tx.pollVote.findUnique({
+        where: { pollOptionId_userId: { pollOptionId: optionId, userId } }
+      });
+
+      if (existingVote) {
+        await tx.pollVote.delete({ where: { id: existingVote.id } });
+        return;
+      }
+
       if (!poll.allowMultiple) {
         // Single-choice: remove any other votes by this user on this poll first.
-        await fastify.prisma.pollVote.deleteMany({
-          where: { userId, option: { pollId } }
-        });
+        await tx.pollVote.deleteMany({ where: { userId, option: { pollId } } });
       }
-      await fastify.prisma.pollVote.create({ data: { pollOptionId: optionId, userId } });
-    }
+      await tx.pollVote.create({ data: { pollOptionId: optionId, userId } });
+    });
 
     const dto = await toPollDto(pollId, userId, membership.role);
     fastify.wsBroadcastPollUpdate?.({ messageId: poll.messageId, channelId: poll.message.channelId, poll: dto });

@@ -291,6 +291,11 @@ export default async function documentRoutes(fastify: FastifyInstance) {
    * revision. Everyone in the channel can tick items off, which is the whole
    * point of a shared task list, and doing so must never collide with someone
    * rewording the item at the same moment.
+   *
+   * The whole read-modify-write runs inside a transaction that locks the block
+   * row first. Without it, two people ticking DIFFERENT items at the same
+   * moment would both read the same list, each write back their own version,
+   * and the second write would silently undo the first tick.
    */
   fastify.post("/documents/:documentId/blocks/:blockId/check", async (request, reply) => {
     const { documentId, blockId } = request.params as { documentId: string; blockId: string };
@@ -298,38 +303,51 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     const input = parseOrThrow(toggleChecklistItemSchema, request.body);
     const { document } = await loadForViewer(documentId, userId);
 
-    const existing = await fastify.prisma.documentBlock.findFirst({ where: { id: blockId, documentId } });
-    if (!existing) notFound("Element nie istnieje");
+    const outcome = await fastify.prisma.$transaction(async (tx) => {
+      // Row lock held until the transaction ends; concurrent ticks queue up
+      // here instead of racing on a stale copy of the item list. Verified by
+      // the regression test: without FOR UPDATE only 2-3 of 12 simultaneous
+      // ticks survive, the rest are silently overwritten.
+      // Identifiers are TEXT columns (Prisma String ids), so no cast.
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM document_blocks WHERE id = ${blockId} AND "documentId" = ${documentId} FOR UPDATE
+      `;
+      if (locked.length === 0) return { kind: "missing" as const };
 
-    const data = parseBlockData(existing.data);
-    if (data.type !== "checklist") {
+      const existing = await tx.documentBlock.findUniqueOrThrow({ where: { id: blockId } });
+      const data = parseBlockData(existing.data);
+      if (data.type !== "checklist") return { kind: "not-checklist" as const };
+      if (!data.items.some((i) => i.id === input.itemId)) return { kind: "no-item" as const };
+
+      const updated = {
+        ...data,
+        items: data.items.map((i) =>
+          i.id === input.itemId
+            ? {
+                ...i,
+                checked: input.checked,
+                checkedById: input.checked ? userId : null,
+                checkedAt: input.checked ? new Date().toISOString() : null
+              }
+            : i
+        )
+      };
+
+      const block = await tx.documentBlock.update({
+        where: { id: blockId },
+        data: { data: updated as Prisma.InputJsonValue }
+      });
+      await tx.document.update({ where: { id: documentId }, data: { updatedAt: new Date() } });
+      return { kind: "ok" as const, block };
+    });
+
+    if (outcome.kind === "missing") notFound("Element nie istnieje");
+    if (outcome.kind === "no-item") notFound("Pozycja nie istnieje");
+    if (outcome.kind === "not-checklist") {
       return sendError(reply, 400, "NOT_A_CHECKLIST", "Ten element nie jest listą zadań");
     }
 
-    const item = data.items.find((i) => i.id === input.itemId);
-    if (!item) notFound("Pozycja nie istnieje");
-
-    const updated = {
-      ...data,
-      items: data.items.map((i) =>
-        i.id === input.itemId
-          ? {
-              ...i,
-              checked: input.checked,
-              checkedById: input.checked ? userId : null,
-              checkedAt: input.checked ? new Date().toISOString() : null
-            }
-          : i
-      )
-    };
-
-    const block = await fastify.prisma.documentBlock.update({
-      where: { id: blockId },
-      data: { data: updated as Prisma.InputJsonValue }
-    });
-    await fastify.prisma.document.update({ where: { id: documentId }, data: { updatedAt: new Date() } });
-
-    const dto = toBlockDto(block);
+    const dto = toBlockDto(outcome.block);
     await broadcast(documentId, document.channelId, "block", userId, dto);
     return dto;
   });

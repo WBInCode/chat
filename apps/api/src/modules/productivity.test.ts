@@ -320,6 +320,38 @@ describe("polls", () => {
     expect(voters.statusCode).toBe(403);
   });
 
+  it("nie pozwala obejsc jednokrotnego wyboru rownoczesnymi glosami", async () => {
+    const created = await createPoll(owner.token, {
+      question: "Podwojne klikniecie",
+      options: [{ text: "A" }, { text: "B" }, { text: "C" }, { text: "D" }]
+    });
+    const poll = await readPoll(created.json().messageId, member.token);
+
+    // Kilka glosow tej samej osoby na rozne opcje, wyslanych naraz. Przy
+    // jednym glosie na raz wyscig lapal sie tylko czasem, wiec zadan jest
+    // wiecej - dzieki temu test wykrywa blad powtarzalnie.
+    const responses = await Promise.all(
+      poll.options.map((o: { id: string }) =>
+        app.inject({
+          method: "POST",
+          url: `/api/v1/polls/${poll.id}/vote`,
+          headers: auth(member.token),
+          payload: { optionId: o.id }
+        })
+      )
+    );
+    // Bez tego test przechodzilby rowniez wtedy, gdy WSZYSTKIE zadania
+    // zakoncza sie bledem - zero glosow tez spelnia warunek "nie wiecej niz
+    // jeden". Asercja na kody odpowiedzi zamyka te luke.
+    expect(responses.map((r) => r.statusCode)).toEqual(poll.options.map(() => 200));
+
+    const after = await readPoll(created.json().messageId, member.token);
+    // Ankieta jednokrotnego wyboru: dokladnie jeden glos jednej osoby,
+    // niezaleznie od tego ile zadan poszlo naraz.
+    expect(after.voterCount).toBe(1);
+    expect(after.totalVotes).toBe(1);
+  });
+
   it("lets the author close a poll early and then rejects further votes", async () => {
     const created = await createPoll(owner.token, {
       question: "Zamykamy?",
