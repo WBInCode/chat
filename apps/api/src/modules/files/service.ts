@@ -202,6 +202,19 @@ export function createFileService(fastify: FastifyInstance) {
     const file = await fastify.prisma.file.findUnique({ where: { id: fileId } });
     if (!file) notFound("Plik nie istnieje");
     await assertChannelMember(fastify, userId, file.channelId);
+
+    // Załącznik usuniętej wiadomości przestaje być dostępny. Druga warstwa
+    // obrony: przy usuwaniu wiadomości kasujemy też wiersze plików, ale gdy
+    // ta operacja zawiedzie (awaria magazynu, przerwana transakcja), wiersz
+    // zostaje i bez tego sprawdzenia plik nadal dałoby się pobrać.
+    if (file.messageId) {
+      const owner = await fastify.prisma.message.findUnique({
+        where: { id: file.messageId },
+        select: { deletedAt: true }
+      });
+      if (!owner || owner.deletedAt) notFound("Plik nie istnieje");
+    }
+
     if (file.status === "INFECTED") {
       throw new HttpError(410, "FILE_INFECTED", "Plik został usunięty ze względów bezpieczeństwa");
     }
@@ -280,7 +293,38 @@ export function createFileService(fastify: FastifyInstance) {
     return map;
   }
 
-  return { presign, complete, getDownloadUrl, attachToMessage, listForMessages, toDto };
+  /**
+   * Usuwa załączniki skasowanej wiadomości razem z obiektami w magazynie.
+   *
+   * Samo odcięcie dostępu nie wystarcza: gdy organizacja nie ma ustawionej
+   * retencji (a domyślnie nie ma), sprzątacz nigdy nie dotknie tych plików
+   * i blob zostaje w magazynie bezterminowo. Skoro treść wiadomości znika
+   * nieodwracalnie, załącznik ma zniknąć razem z nią.
+   *
+   * Błąd magazynu nie może wywrócić usuwania wiadomości — kasowanie z bazy
+   * idzie dalej, a osierocony obiekt wychwyci sprzątacz retencji.
+   */
+  async function deleteForMessage(messageId: string): Promise<number> {
+    const files = await fastify.prisma.file.findMany({
+      where: { messageId },
+      select: { id: true, key: true, thumbKey: true, previewKey: true }
+    });
+    if (files.length === 0) return 0;
+
+    const keys = files.flatMap((f) => [f.key, f.thumbKey, f.previewKey].filter(Boolean) as string[]);
+    const results = await Promise.allSettled(
+      keys.map((Key) => s3.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key })))
+    );
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed > 0) {
+      fastify.log.warn({ messageId, failed }, "Nie udało się usunąć części obiektów z magazynu");
+    }
+
+    await fastify.prisma.file.deleteMany({ where: { messageId } });
+    return files.length;
+  }
+
+  return { presign, complete, getDownloadUrl, attachToMessage, listForMessages, deleteForMessage, toDto };
 }
 
 export type FileService = ReturnType<typeof createFileService>;

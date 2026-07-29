@@ -43,13 +43,31 @@ function toDto(
   reactions?: ReactionGroupDto[],
   replyCount?: number
 ): MessageDto {
+  // Usunięta wiadomość zostawia sam ślad w historii. Wcześniej czyszczona
+  // była wyłącznie treść, a załączniki, karty podglądu linków, reakcje i
+  // licznik odpowiedzi jechały dalej — po odświeżeniu strony "usunięta"
+  // wiadomość znów pokazywała plik i podgląd linku, których nie dało się
+  // już usunąć, bo samej wiadomości nie można skasować drugi raz.
+  if (m.deletedAt) {
+    return {
+      id: m.id,
+      channelId: m.channelId,
+      authorId: m.authorId,
+      content: "",
+      contentType: m.contentType as MessageDto["contentType"],
+      parentId: m.parentId,
+      editedAt: null,
+      createdAt: m.createdAt.toISOString(),
+      pinnedAt: null
+    };
+  }
+
   return {
     id: m.id,
     channelId: m.channelId,
     authorId: m.authorId,
-    // Soft-deleted messages keep their slot but content is blanked out.
     // At-rest encrypted rows are decrypted here (single read chokepoint).
-    content: m.deletedAt ? "" : decryptMessageContent(m),
+    content: decryptMessageContent(m),
     contentType: m.contentType as MessageDto["contentType"],
     parentId: m.parentId,
     editedAt: m.editedAt?.toISOString() ?? null,
@@ -441,6 +459,17 @@ export function createMessageService(fastify: FastifyInstance) {
       where: { id: messageId },
       data: { deletedAt: new Date() }
     });
+
+    // Załączniki i karty podglądu linków znikają razem z wiadomością.
+    // Bez tego "usunięta" wiadomość po odświeżeniu strony nadal pokazywała
+    // plik i podgląd linku, a pliku nie dało się już usunąć, bo samej
+    // wiadomości nie można skasować drugi raz.
+    await files
+      .deleteForMessage(messageId)
+      .catch((err) => fastify.log.warn({ err, messageId }, "Nie udało się usunąć załączników"));
+    await fastify.prisma.linkEmbed
+      .deleteMany({ where: { messageId } })
+      .catch((err: unknown) => fastify.log.warn({ err, messageId }, "Nie udało się usunąć podglądów linków"));
 
     return { messageId, channelId: message.channelId };
   }
