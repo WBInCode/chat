@@ -304,6 +304,47 @@ describe("documents", () => {
     ).toBe(true);
   });
 
+  it("nie gubi odhaczenia, gdy wiele osob zaznacza rozne pozycje jednoczesnie", async () => {
+    const COUNT = 12;
+    const doc = (await createDocument("Wyscig na liscie")).json();
+    const block = (
+      await addBlock(doc.id, {
+        type: "checklist",
+        items: Array.from({ length: COUNT }, (_, i) => ({
+          id: `i${i}`,
+          text: `Pozycja ${i}`,
+          checked: false,
+          checkedById: null,
+          checkedAt: null
+        }))
+      })
+    ).json();
+
+    // Kazde zadanie czyta liste, zmienia jedna pozycje i zapisuje calosc.
+    // Bez blokady wiersza zapisy nadpisuja sie nawzajem i czesc odhaczen ginie.
+    const results = await Promise.all(
+      Array.from({ length: COUNT }, (_, i) =>
+        app.inject({
+          method: "POST",
+          url: `/api/v1/documents/${doc.id}/blocks/${block.id}/check`,
+          headers: auth(i % 2 === 0 ? owner.token : member.token),
+          payload: { itemId: `i${i}`, checked: true }
+        })
+      )
+    );
+    expect(results.every((r) => r.statusCode === 200)).toBe(true);
+
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${doc.id}`,
+      headers: auth(owner.token)
+    });
+    const items = after.json().blocks.find((b: { id: string }) => b.id === block.id).data.items;
+    const checked = items.filter((i: { checked: boolean }) => i.checked).length;
+    // Wszystkie odhaczenia musza przetrwac.
+    expect(checked).toBe(COUNT);
+  });
+
   it("keeps comments when the block they point at is deleted", async () => {
     const doc = (await createDocument("Komentarze")).json();
     const block = (await addBlock(doc.id, { type: "text", text: "do omówienia" })).json();
