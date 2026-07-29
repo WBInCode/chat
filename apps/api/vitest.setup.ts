@@ -16,3 +16,12 @@ process.on("unhandledRejection", (reason) => {
   }
   throw reason;
 });
+
+// Powiadomienia e-mail są wyłączone, gdy brakuje SMTP_URL, więc bez tego
+// cała ścieżka buforowania byłaby w testach martwa. Adres celowo wskazuje
+// port, na którym nic nie nasłuchuje: testy sprawdzają logikę grupowania i
+// nigdy nie uruchamiają workera, więc żaden list nie zostanie wysłany.
+// Ustawiane tutaj, bo setupFiles wykonują się przed zaimportowaniem
+// config/env.ts, który parsuje środowisko raz przy załadowaniu modułu.
+process.env.SMTP_URL ??= "smtp://127.0.0.1:1";
+process.env.APP_PUBLIC_URL ??= "http://localhost:5273";

@@ -80,6 +80,7 @@ model User {
   statusEmoji  String?
   statusExpiresAt DateTime?
   notifyMode   NotifyMode @default(ALL)
+  emailDigest  EmailDigestMode @default(MENTIONS)
   totpSecret   String? // AES-256-GCM ciphertext, never plaintext
   totpEnabled  Boolean   @default(false)
   publicKey    String? // X25519 identity key, E2EE phase 2
@@ -189,6 +190,15 @@ enum NotifyMode {
   ALL
   MENTIONS
   NONE
+}
+
+/// Zakres zbiorczych powiadomien e-mail. Domyslnie MENTIONS: mail przychodzi
+/// tylko dla wzmianek i wiadomosci bezposrednich, czyli tam gdzie milczenie
+/// realnie kosztuje. ALL obejmuje kazdy kanal, ktory nie jest wyciszony.
+enum EmailDigestMode {
+  OFF
+  MENTIONS
+  ALL
 }
 
 model PushSubscription {

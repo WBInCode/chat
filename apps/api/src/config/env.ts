@@ -31,6 +31,15 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().default("mailto:admin@chatv2.local"),
+  // Powiadomienia e-mail. Bez SMTP_URL cały mechanizm jest wyłączony
+  // (no-op, tak jak push bez kluczy VAPID) — nigdy nie wywraca wysyłki
+  // wiadomości. Format: smtp://user:pass@host:587 lub smtps://... dla TLS.
+  SMTP_URL: z.string().optional(),
+  MAIL_FROM: z.string().default("Chat WB Platform <no-reply@wb-partners.pl>"),
+  /** Baza linków w e-mailach; domyślnie pierwszy wpis CORS_ORIGIN. */
+  APP_PUBLIC_URL: z.string().optional(),
+  /** Twardy dzienny limit e-maili na osobę — ostatni bezpiecznik antyspamowy. */
+  MAIL_DAILY_LIMIT_PER_USER: z.coerce.number().int().positive().default(20),
   GROQ_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
   AI_DAILY_LIMIT: z.coerce.number().int().positive().default(300),

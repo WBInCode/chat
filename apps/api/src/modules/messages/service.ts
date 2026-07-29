@@ -5,6 +5,7 @@ import { assertModuleEnabled } from "../../lib/modules.js";
 import { createFileService } from "../files/service.js";
 import { enqueueLinkUnfurl } from "../../lib/queue.js";
 import { sendPushToUser } from "../../lib/push.js";
+import { queueForEmailDigest } from "../../lib/email-digest.js";
 import { mentionsAiBot, triggerAiBotReply } from "../../lib/ai-bot.js";
 import {
   isOrgEncryptedAtRest,
@@ -317,11 +318,19 @@ export function createMessageService(fastify: FastifyInstance) {
       include: { user: true }
     });
 
+    // Podgląd treści wychodzi poza aplikację (na ekran blokady telefonu,
+    // do skrzynki pocztowej), więc obowiązują go te same granice co maila:
+    // treści end-to-end serwer nie zna, a organizacja z włączonym
+    // szyfrowaniem bazy świadomie zdecydowała, że treść rozmów nie ma
+    // opuszczać aplikacji w czytelnej postaci.
+    const hideContent = !isE2e && (await isOrgEncryptedAtRest(fastify, channel.orgId));
     const preview = isE2e
       ? "Zaszyfrowana wiadomość"
-      : content.length > 120
-        ? `${content.slice(0, 120)}…`
-        : content;
+      : hideContent
+        ? "Nowa wiadomość"
+        : content.length > 120
+          ? `${content.slice(0, 120)}…`
+          : content;
 
     // Broadcast mentions: @channel / @wszyscy notify every member; @here
     // notifies only members currently online. Word-boundary matched so
@@ -334,16 +343,32 @@ export function createMessageService(fastify: FastifyInstance) {
         if (member.mutedAt) return;
         if (member.user.notifyMode === "NONE") return;
 
-        const dndStatus = await fastify.redis.get(`presence:${member.userId}`);
-        if (dndStatus === "dnd") return;
-
-        const isOnline = dndStatus === "online" || dndStatus === "away";
+        const presence = await fastify.redis.get(`presence:${member.userId}`);
+        const isOnline = presence === "online" || presence === "away";
         const isMentioned =
           content.includes(`@${member.user.displayName}`) ||
           hasAtChannel ||
           (hasAtHere && isOnline);
         const isDm = channel.type === "DM";
         if (member.user.notifyMode === "MENTIONS" && !isMentioned && !isDm) return;
+
+        // E-mail trafia najpierw do bufora, a nie na skrzynkę: seria
+        // wiadomości ma dać jedno podsumowanie, nie serię maili. O tym, czy
+        // podsumowanie w ogóle powstanie, decyduje worker za kilka minut —
+        // gdy odbiorca zdąży wrócić do aplikacji, mail nie powstaje wcale.
+        // Kolejkujemy też przy statusie "nie przeszkadzać", bo ten status
+        // dotyczy przerywania tu i teraz; jeśli osoba zostanie w aplikacji,
+        // worker i tak pominie wysyłkę.
+        if (member.user.emailDigest !== "OFF") {
+          await queueForEmailDigest(fastify, member.userId, {
+            messageId,
+            channelId,
+            mention: isMentioned || isDm
+          }).catch((err) => fastify.log.warn({ err }, "queueForEmailDigest failed"));
+        }
+
+        // Push jest natychmiastowy, więc respektuje "nie przeszkadzać".
+        if (presence === "dnd") return;
 
         await sendPushToUser(fastify, member.userId, {
           title: isDm ? `${author?.displayName ?? "Wiadomość"}` : `${author?.displayName ?? "Ktoś"} w #${channel.name ?? "kanale"}`,
