@@ -398,7 +398,7 @@ export function DocumentEditor({
                   {/* Floated out of the flow so an invisible toolbar does not
                       add vertical space between every pair of blocks. */}
                   {!isEditing && (
-                    <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100">
                       <button
                         onClick={() => void move(block.id, -1)}
                         disabled={index === 0}

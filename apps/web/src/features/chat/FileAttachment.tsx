@@ -183,9 +183,9 @@ export function FileAttachment({
     <>
       <button
         onClick={download}
-        className="mt-1 flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-xs hover:bg-[var(--border)]/30"
+        className="mt-1 flex max-w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-xs hover:bg-[var(--border)]/30"
       >
-        <span className="text-[var(--text-dim)]">
+        <span className="shrink-0 text-[var(--text-dim)]">
           <Icon icon={fileIcon(file.mimeType)} size={20} />
         </span>
         <span className="min-w-0">

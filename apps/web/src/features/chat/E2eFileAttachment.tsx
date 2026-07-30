@@ -102,9 +102,9 @@ export function E2eFileAttachment({ file }: { file: E2eFileRef }) {
       <button
         onClick={download}
         disabled={busy}
-        className="mt-1 flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-xs hover:bg-[var(--border)]/30 disabled:opacity-60"
+        className="mt-1 flex max-w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-xs hover:bg-[var(--border)]/30 disabled:opacity-60"
       >
-        <span className="text-[var(--text-dim)]">
+        <span className="shrink-0 text-[var(--text-dim)]">
           <Icon icon={FileText} size={20} />
         </span>
         <span className="min-w-0">

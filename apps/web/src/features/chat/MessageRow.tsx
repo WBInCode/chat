@@ -235,7 +235,7 @@ export function MessageRow({
             type="button"
             onClick={() => setShowActions((v) => !v)}
             title="Akcje"
-            className="absolute -top-2 right-0 z-10 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] p-1 shadow-lg backdrop-blur-md md:hidden"
+            className="absolute -top-2 right-0 z-10 flex items-center justify-center rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] p-1 shadow-lg backdrop-blur-md touch:min-h-10 touch:min-w-10 md:hidden"
           >
             <Icon icon={MoreHorizontal} size={14} />
           </button>
@@ -491,7 +491,7 @@ export function MessageRow({
               <button
                 key={r.emoji}
                 onClick={() => onReact(m.id, r.emoji)}
-                className={`animate-spring-in flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-all hover:scale-[1.08] active:scale-95 ${
+                className={`animate-spring-in flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-all hover:scale-[1.08] active:scale-95 touch:min-h-9 touch:px-3 ${
                   iReacted
                     ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)] shadow-[0_2px_8px_var(--accent-glow)]"
                     : "border-[var(--glass-border)] bg-[var(--glass)] hover:border-[var(--accent)]/40"
@@ -509,7 +509,7 @@ export function MessageRow({
       {!inThread && (m.replyCount ?? 0) > 0 && onOpenThread && (
         <button
           onClick={() => onOpenThread(m.id)}
-          className="mt-1 flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline"
+          className="mt-1 flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline touch:min-h-9"
         >
           <Icon icon={MessageSquare} size={14} /> {m.replyCount} {m.replyCount === 1 ? "odpowiedź" : "odpowiedzi"}
         </button>

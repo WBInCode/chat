@@ -185,7 +185,7 @@ export function DocumentsPanel({ channelId, currentUserId, members, onClose }: D
                 <button
                   onClick={() => void remove(item.id)}
                   aria-label={`Usuń dokument ${item.title}`}
-                  className="shrink-0 text-[var(--text-dim)] opacity-0 transition-opacity hover:text-[var(--danger)] group-hover:opacity-100 focus:opacity-100"
+                  className="shrink-0 text-[var(--text-dim)] opacity-0 transition-opacity hover:text-[var(--danger)] group-hover:opacity-100 focus:opacity-100 touch:opacity-100"
                 >
                   <Icon icon={Trash2} size={14} />
                 </button>

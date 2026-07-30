@@ -221,14 +221,14 @@ export function ChannelTree({
             <button
               onClick={onCreateCategory}
               title="Nowa kategoria"
-              className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
+              className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--accent)] touch:h-10 touch:w-10"
             >
               <FolderPlus size={14} />
             </button>
             <button
               onClick={() => onCreateChannel(null)}
               title="Nowy kanał"
-              className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
+              className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--accent)] touch:h-10 touch:w-10"
             >
               <Plus size={14} />
             </button>
@@ -322,7 +322,7 @@ export function ChannelTree({
                 <button
                   onClick={() => onCreateChannel(category.id)}
                   title={`Nowy kanał w kategorii ${category.name}`}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--accent)] group-hover:opacity-100"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--accent)] group-hover:opacity-100 touch:opacity-100"
                 >
                   <Plus size={13} />
                 </button>

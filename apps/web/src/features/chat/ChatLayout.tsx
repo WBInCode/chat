@@ -1513,7 +1513,7 @@ export function ChatLayout() {
             <ThemeToggle />
             <button
               onClick={handleLogout}
-              className="text-xs text-[var(--text-dim)] transition-colors hover:text-[var(--danger)]"
+              className="rounded text-xs text-[var(--text-dim)] transition-colors hover:text-[var(--danger)] touch:px-2 touch:py-3"
             >
               Wyloguj
             </button>
@@ -1569,7 +1569,7 @@ export function ChatLayout() {
               <button
                 onClick={() => setShowBrowseChannels(true)}
                 title="Przeglądaj kanały publiczne"
-                className="rounded px-1.5 py-0.5 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--accent)]"
+                className="rounded px-1.5 py-0.5 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--accent)] touch:px-3 touch:py-2.5"
               >
                 Przeglądaj
               </button>
@@ -1704,7 +1704,7 @@ export function ChatLayout() {
                   <button
                     onClick={() => setShowMobileSidebar(true)}
                     title="Menu"
-                    className="-ml-1 p-1 text-[var(--text-dim)] hover:text-[var(--text)] md:hidden"
+                    className="-ml-1 p-1 text-[var(--text-dim)] hover:text-[var(--text)] touch:-m-2 touch:-ml-3 touch:p-3 md:hidden"
                   >
                     <Icon icon={Menu} size={22} />
                   </button>
@@ -1838,7 +1838,7 @@ export function ChatLayout() {
                     <button
                       onClick={() => setShowChannelMenu((v) => !v)}
                       title="Akcje kanału"
-                      className="p-1 text-[var(--text-dim)] hover:text-[var(--text)]"
+                      className="p-1 text-[var(--text-dim)] hover:text-[var(--text)] touch:-m-2 touch:p-3"
                     >
                       <Icon icon={MoreVertical} size={20} />
                     </button>
@@ -2669,7 +2669,7 @@ export function ChatLayout() {
               <button
                 onClick={() => setShowMobileSidebar(true)}
                 title="Menu"
-                className="text-[var(--text-dim)] hover:text-[var(--text)]"
+                className="text-[var(--text-dim)] hover:text-[var(--text)] touch:flex touch:min-h-11 touch:min-w-11 touch:items-center"
               >
                 <Icon icon={Menu} size={18} />
               </button>

@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Wariant „touch": ekrany obsługiwane palcem, gdzie najechanie kursorem
+   nie istnieje. Używany tam, gdzie sterowanie pokazuje się po najechaniu —
+   na telefonie musi być widoczne od razu, inaczej jest nieosiągalne. */
+@custom-variant touch (@media (pointer: coarse));
+
 /* ── Design tokens: clean corporate (solid surfaces, one accent) ─────── */
 :root {
   /* Typography roles: loaded as variable fonts from main.tsx. */
@@ -205,6 +210,21 @@ textarea::placeholder {
   }
   .mobile-drawer.mobile-drawer--open {
     transform: translateX(0);
+  }
+}
+
+/* ── Dotyk: pola tekstowe ─────────────────────────────────────────────
+   Safari na iOS przybliża całą stronę, gdy dotknięte pole ma czcionkę
+   mniejszą niż 16 px — przy pisaniu wiadomości było to widoczne za każdym
+   razem. Powiększamy tylko na ekranach dotykowych, więc widok na biurku
+   zostaje bez zmian. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    /* Dokładnie próg, przy którym iOS przestaje przybliżać — bez tego
+       kompozytor skakałby z 15,75 px na 18 px i psuł proporcje. */
+    font-size: 16px;
   }
 }
 

@@ -124,7 +124,7 @@ export function ChannelMembersTab({ channelId, isDm, isAdmin, orgMembers }: Prop
                   <button
                     onClick={() => removeMember(m.userId, m.displayName)}
                     title="Usuń z kanału"
-                    className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 touch:opacity-100"
                   >
                     <X size={14} />
                   </button>
