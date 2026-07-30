@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { UserPlus, X } from "lucide-react";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { Avatar } from "../../components/Avatar.js";
+import { ConfirmDialog } from "../../components/Dialog.js";
 
 interface ChannelMemberDto {
   userId: string;
@@ -31,6 +32,7 @@ export function ChannelMembersTab({ channelId, isDm, isAdmin, orgMembers }: Prop
   const [members, setMembers] = useState<ChannelMemberDto[] | null>(null);
   const [addTarget, setAddTarget] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<ChannelMemberDto | null>(null);
 
   function reload() {
     void apiFetch<ChannelMemberDto[]>(`/channels/${channelId}/members`).then(setMembers);
@@ -53,13 +55,14 @@ export function ChannelMembersTab({ channelId, isDm, isAdmin, orgMembers }: Prop
     }
   }
 
-  async function removeMember(userId: string, displayName: string) {
-    if (!window.confirm(`Usunąć ${displayName} z kanału?`)) return;
+  async function removeMember(member: ChannelMemberDto) {
     setError(null);
     try {
-      await apiFetch(`/channels/${channelId}/members/${userId}`, { method: "DELETE" });
+      await apiFetch(`/channels/${channelId}/members/${member.userId}`, { method: "DELETE" });
+      setPendingRemoval(null);
       reload();
     } catch (e) {
+      setPendingRemoval(null);
       setError(e instanceof ApiError ? e.message : "Nie udało się usunąć członka.");
     }
   }
@@ -122,9 +125,9 @@ export function ChannelMembersTab({ channelId, isDm, isAdmin, orgMembers }: Prop
                 )}
                 {isAdmin && !isDm && m.role !== "ADMIN" && (
                   <button
-                    onClick={() => removeMember(m.userId, m.displayName)}
+                    onClick={() => setPendingRemoval(m)}
                     title="Usuń z kanału"
-                    className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 touch:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 touch:h-9 touch:w-9 touch:opacity-100"
                   >
                     <X size={14} />
                   </button>
@@ -134,6 +137,17 @@ export function ChannelMembersTab({ channelId, isDm, isAdmin, orgMembers }: Prop
           ))}
         </div>
       </div>
+
+      {pendingRemoval && (
+        <ConfirmDialog
+          title={`Usunąć ${pendingRemoval.displayName} z kanału?`}
+          message="Straci dostęp do kanału i jego historii. Możesz dodać tę osobę ponownie w każdej chwili."
+          confirmLabel="Usuń z kanału"
+          danger
+          onConfirm={() => removeMember(pendingRemoval)}
+          onCancel={() => setPendingRemoval(null)}
+        />
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { ChannelCategoryDto } from "@chatv2/shared";
 import { SLOWMODE_OPTIONS } from "@chatv2/shared";
 import type { ChannelItem } from "../../stores/chat.js";
 import { apiFetch, ApiError } from "../../lib/api.js";
+import { ConfirmDialog } from "../../components/Dialog.js";
 
 /**
  * Ustawienia kanału w układzie zakładek, wzorowane na Discordzie.
@@ -52,8 +53,7 @@ export function ChannelSettingsModal({
   const [categoryId, setCategoryId] = useState<string | null>(channel.categoryId ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState("");
-  const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -104,15 +104,8 @@ export function ChannelSettingsModal({
   }
 
   async function remove() {
-    setError(null);
-    setDeleting(true);
-    try {
-      await apiFetch(`/channels/${channel.id}`, { method: "DELETE" });
-      onDeleted(channel.id);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Nie udało się usunąć kanału.");
-      setDeleting(false);
-    }
+    await apiFetch(`/channels/${channel.id}`, { method: "DELETE" });
+    onDeleted(channel.id);
   }
 
   const isDm = channel.type === "DM";
@@ -265,24 +258,15 @@ export function ChannelSettingsModal({
                     </p>
                     <p className="mt-1 text-xs text-[var(--text-dim)]">
                       Kanał zniknie razem z całą historią wiadomości i załącznikami. Tej operacji nie da się
-                      cofnąć. Aby potwierdzić, wpisz nazwę kanału.
+                      cofnąć.
                     </p>
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        value={confirmDelete}
-                        onChange={(e) => setConfirmDelete(e.target.value)}
-                        placeholder={channel.name ?? ""}
-                        className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-sm text-[var(--text)] outline-none focus:border-red-500"
-                      />
-                      <button
-                        onClick={remove}
-                        disabled={confirmDelete !== channel.name || deleting}
-                        className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <Trash2 size={14} />
-                        {deleting ? "Usuwanie..." : "Usuń"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setConfirmingDelete(true)}
+                      className="mt-3 flex min-h-9 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500 touch:min-h-11"
+                    >
+                      <Trash2 size={14} />
+                      Usuń kanał
+                    </button>
                   </div>
                 )}
               </div>
@@ -314,6 +298,18 @@ export function ChannelSettingsModal({
           )}
         </div>
       </div>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`Usunąć kanał #${channel.name}?`}
+          message="Kanał zniknie razem z całą historią wiadomości i załącznikami. Tej operacji nie da się cofnąć."
+          confirmLabel="Usuń kanał"
+          danger
+          requirePhrase={channel.name ?? ""}
+          onConfirm={remove}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>,
     document.body
   );
