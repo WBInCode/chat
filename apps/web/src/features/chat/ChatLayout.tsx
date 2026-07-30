@@ -17,6 +17,7 @@ import { DocumentsPanel } from "./documents/DocumentsPanel.js";
 import { ForwardPicker } from "./ForwardPicker.js";
 import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
 import { ChannelMembersTab } from "./ChannelMembersTab.js";
+import { PromptDialog, ConfirmDialog } from "../../components/Dialog.js";
 import { GroupDmPicker } from "./GroupDmPicker.js";
 import { QuickSwitcher } from "./QuickSwitcher.js";
 import { SchedulePicker } from "./SchedulePicker.js";
@@ -91,6 +92,31 @@ interface OrgItem {
   slug: string;
   role: string;
 }
+
+/**
+ * Opis okna dialogowego do wyświetlenia. Trzymamy go w stanie zamiast wołać
+ * blokujące window.prompt/confirm, dzięki czemu okna wyglądają jak reszta
+ * aplikacji, a nie jak komunikat przeglądarki.
+ */
+type DialogRequest =
+  | {
+      kind: "prompt";
+      title: string;
+      label: string;
+      initialValue?: string;
+      placeholder?: string;
+      confirmLabel?: string;
+      onConfirm: (value: string) => Promise<void>;
+    }
+  | {
+      kind: "confirm";
+      title: string;
+      message: React.ReactNode;
+      confirmLabel?: string;
+      danger?: boolean;
+      requirePhrase?: string;
+      onConfirm: () => Promise<void>;
+    };
 
 interface MemberItem {
   userId: string;
@@ -210,6 +236,7 @@ export function ChatLayout() {
   const [showBrowseChannels, setShowBrowseChannels] = useState(false);
   const [categories, setCategories] = useState<ChannelCategoryDto[]>([]);
   const [settingsChannelId, setSettingsChannelId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<DialogRequest | null>(null);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"overview" | "members" | "permissions">(
     "overview"
   );
@@ -631,60 +658,83 @@ export function ChatLayout() {
     setCategories(freshCategories);
   }
 
-  async function createCategory() {
+  function createCategory() {
     if (!activeOrgId) return;
-    const name = window.prompt("Nazwa nowej kategorii");
-    if (!name?.trim()) return;
-    try {
-      const created = await apiFetch<ChannelCategoryDto>(`/orgs/${activeOrgId}/categories`, {
-        method: "POST",
-        body: JSON.stringify({ name: name.trim() })
-      });
-      setCategories((prev) => [...prev, created]);
-    } catch (e) {
-      showToast(e instanceof ApiError ? e.message : "Nie udało się utworzyć kategorii.");
-    }
+    setDialog({
+      kind: "prompt",
+      title: "Nowa kategoria",
+      label: "Nazwa kategorii",
+      placeholder: "np. Projekty",
+      confirmLabel: "Utwórz",
+      onConfirm: async (name) => {
+        const created = await apiFetch<ChannelCategoryDto>(`/orgs/${activeOrgId}/categories`, {
+          method: "POST",
+          body: JSON.stringify({ name })
+        });
+        setCategories((prev) => [...prev, created]);
+        setDialog(null);
+        showToast(`Kategoria „${created.name}" utworzona.`);
+      }
+    });
   }
 
-  async function renameCategory(category: ChannelCategoryDto) {
-    const name = window.prompt("Nowa nazwa kategorii", category.name);
-    if (!name?.trim() || name.trim() === category.name) return;
-    try {
-      const updated = await apiFetch<ChannelCategoryDto>(`/categories/${category.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: name.trim() })
-      });
-      setCategories((prev) => prev.map((c) => (c.id === category.id ? updated : c)));
-    } catch (e) {
-      showToast(e instanceof ApiError ? e.message : "Nie udało się zmienić nazwy kategorii.");
-    }
+  function renameCategory(category: ChannelCategoryDto) {
+    setDialog({
+      kind: "prompt",
+      title: "Zmień nazwę kategorii",
+      label: "Nazwa kategorii",
+      initialValue: category.name,
+      confirmLabel: "Zapisz",
+      onConfirm: async (name) => {
+        if (name === category.name) {
+          setDialog(null);
+          return;
+        }
+        const updated = await apiFetch<ChannelCategoryDto>(`/categories/${category.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name })
+        });
+        setCategories((prev) => prev.map((c) => (c.id === category.id ? updated : c)));
+        setDialog(null);
+      }
+    });
   }
 
-  async function deleteCategory(category: ChannelCategoryDto) {
-    const channelsInside = channels.filter((c) => c.categoryId === category.id).length;
-    const question =
-      channelsInside > 0
-        ? `Usunąć kategorię "${category.name}"? ${channelsInside} kanał(y) trafią poza kategorie — same kanały zostaną nietknięte.`
-        : `Usunąć kategorię "${category.name}"?`;
-    if (!window.confirm(question)) return;
-    try {
-      await apiFetch(`/categories/${category.id}`, { method: "DELETE" });
-      setCategories((prev) => prev.filter((c) => c.id !== category.id));
-      setChannels(channels.map((c) => (c.categoryId === category.id ? { ...c, categoryId: null } : c)));
-    } catch (e) {
-      showToast(e instanceof ApiError ? e.message : "Nie udało się usunąć kategorii.");
-    }
+  function deleteCategory(category: ChannelCategoryDto) {
+    const inside = channels.filter((c) => c.categoryId === category.id).length;
+    setDialog({
+      kind: "confirm",
+      title: `Usunąć kategorię „${category.name}"?`,
+      danger: true,
+      confirmLabel: "Usuń kategorię",
+      message:
+        inside > 0
+          ? `${inside} ${inside === 1 ? "kanał trafi" : "kanały trafią"} poza kategorie. Same kanały i ich historia zostają nietknięte.`
+          : "Kategoria jest pusta, więc nic poza nią nie zniknie.",
+      onConfirm: async () => {
+        await apiFetch(`/categories/${category.id}`, { method: "DELETE" });
+        setCategories((prev) => prev.filter((c) => c.id !== category.id));
+        setChannels(channels.map((c) => (c.categoryId === category.id ? { ...c, categoryId: null } : c)));
+        setDialog(null);
+      }
+    });
   }
 
-  async function archiveChannel(channel: ChannelItem) {
-    if (!window.confirm(`Zarchiwizować kanał "${channel.name}"? Zniknie z listy, ale historia zostaje.`)) return;
-    try {
-      await apiFetch(`/channels/${channel.id}/archive`, { method: "POST" });
-      setChannels(channels.map((c) => (c.id === channel.id ? { ...c, archivedAt: new Date().toISOString() } : c)));
-      showToast("Kanał zarchiwizowany.");
-    } catch (e) {
-      showToast(e instanceof ApiError ? e.message : "Nie udało się zarchiwizować kanału.");
-    }
+  function archiveChannel(channel: ChannelItem) {
+    setDialog({
+      kind: "confirm",
+      title: `Zarchiwizować kanał #${channel.name}?`,
+      confirmLabel: "Archiwizuj",
+      message: "Kanał zniknie z listy i stanie się tylko do odczytu. Historia zostaje i da się go przywrócić.",
+      onConfirm: async () => {
+        await apiFetch(`/channels/${channel.id}/archive`, { method: "POST" });
+        setChannels(
+          channels.map((c) => (c.id === channel.id ? { ...c, archivedAt: new Date().toISOString() } : c))
+        );
+        setDialog(null);
+        showToast("Kanał zarchiwizowany.");
+      }
+    });
   }
 
   function removeChannelFromView(channelId: string) {
@@ -693,21 +743,24 @@ export function ChatLayout() {
     if (activeChannelId === channelId) setActiveChannel(remaining[0]?.id ?? null);
   }
 
-  async function deleteChannel(channel: ChannelItem) {
-    if (
-      !window.confirm(
-        `Usunąć kanał "${channel.name}" wraz z całą historią i załącznikami? Tej operacji nie da się cofnąć.`
-      )
-    ) {
-      return;
-    }
-    try {
-      await apiFetch(`/channels/${channel.id}`, { method: "DELETE" });
-      removeChannelFromView(channel.id);
-      showToast("Kanał usunięty.");
-    } catch (e) {
-      showToast(e instanceof ApiError ? e.message : "Nie udało się usunąć kanału.");
-    }
+  function deleteChannel(channel: ChannelItem) {
+    setDialog({
+      kind: "confirm",
+      title: `Usunąć kanał #${channel.name}?`,
+      danger: true,
+      confirmLabel: "Usuń kanał",
+      // Nazwa do przepisania, bo kasujemy razem z historią i załącznikami,
+      // a tego nie da się cofnąć.
+      requirePhrase: channel.name ?? "",
+      message:
+        "Kanał zniknie razem z całą historią wiadomości i załącznikami. Tej operacji nie da się cofnąć.",
+      onConfirm: async () => {
+        await apiFetch(`/channels/${channel.id}`, { method: "DELETE" });
+        removeChannelFromView(channel.id);
+        setDialog(null);
+        showToast("Kanał usunięty.");
+      }
+    });
   }
 
   reloadChannelsRef.current = reloadChannels;
@@ -1584,15 +1637,15 @@ export function ChatLayout() {
               onToggleMute={(channelId, muted) => void toggleMute(channelId, muted)}
               onToggleFavorite={(channelId, favorite) => void toggleFavorite(channelId, favorite)}
               onOpenSettings={(channelId) => openChannelSettings(channelId, "overview")}
-              onDelete={(channel) => void deleteChannel(channel)}
-              onArchive={(channel) => void archiveChannel(channel)}
+              onDelete={deleteChannel}
+              onArchive={archiveChannel}
               onCreateChannel={(categoryId) => {
                 setCreateChannelCategoryId(categoryId);
                 setShowCreateChannel(true);
               }}
-              onCreateCategory={() => void createCategory()}
-              onRenameCategory={(category) => void renameCategory(category)}
-              onDeleteCategory={(category) => void deleteCategory(category)}
+              onCreateCategory={createCategory}
+              onRenameCategory={renameCategory}
+              onDeleteCategory={deleteCategory}
               onLayoutChange={applyLayout}
             />
           </div>
@@ -2947,6 +3000,30 @@ export function ChatLayout() {
               setActiveChannel(channelId);
             });
           }}
+        />
+      )}
+
+      {dialog?.kind === "prompt" && (
+        <PromptDialog
+          title={dialog.title}
+          label={dialog.label}
+          {...(dialog.initialValue !== undefined ? { initialValue: dialog.initialValue } : {})}
+          {...(dialog.placeholder !== undefined ? { placeholder: dialog.placeholder } : {})}
+          {...(dialog.confirmLabel !== undefined ? { confirmLabel: dialog.confirmLabel } : {})}
+          onConfirm={dialog.onConfirm}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+
+      {dialog?.kind === "confirm" && (
+        <ConfirmDialog
+          title={dialog.title}
+          message={dialog.message}
+          {...(dialog.confirmLabel !== undefined ? { confirmLabel: dialog.confirmLabel } : {})}
+          {...(dialog.danger !== undefined ? { danger: dialog.danger } : {})}
+          {...(dialog.requirePhrase !== undefined ? { requirePhrase: dialog.requirePhrase } : {})}
+          onConfirm={dialog.onConfirm}
+          onCancel={() => setDialog(null)}
         />
       )}
 
