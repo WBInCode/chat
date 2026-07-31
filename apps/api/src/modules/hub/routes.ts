@@ -5,6 +5,7 @@ import { generateRefreshToken, generateFamilyId, hashToken } from "../../lib/tok
 import { hashPassword } from "../../lib/password.js";
 import { revokeSession } from "../../plugins/auth-guard.js";
 import { invalidateModuleCache } from "../../lib/modules.js";
+import { logAudit } from "../../lib/audit.js";
 import { env } from "../../config/env.js";
 import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import { OPTIONAL_MODULE_KEYS } from "@chatv2/shared";
@@ -195,6 +196,8 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
       user = await prisma.user.create({
         data: { email, displayName, passwordHash: await hashPassword(randomBytes(24).toString("hex")) },
       });
+    } else if (displayName && user.displayName !== displayName) {
+      user = await prisma.user.update({ where: { id: user.id }, data: { displayName } });
     }
 
     let org = await prisma.organization.findUnique({ where: { slug: orgSlug } });
@@ -202,9 +205,29 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
       org = await prisma.organization.create({ data: { name: orgName, slug: orgSlug } });
     }
 
-    const existingMembership = await prisma.membership.findFirst({ where: { userId: user.id, orgId: org.id } });
+    // Hub jest źródłem prawdy o roli w organizacji, więc odświeżamy ją przy
+    // każdym logowaniu. Wcześniej członkostwo zakładano tylko raz — awans lub
+    // degradacja w Hubie nigdy nie docierały do czatu, a odebranie uprawnień
+    // administratora pozostawało wyłącznie pozorne.
+    const existingMembership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId: user.id, orgId: org.id } },
+    });
     if (!existingMembership) {
       await prisma.membership.create({ data: { userId: user.id, orgId: org.id, role } });
+    } else if (existingMembership.role !== role || existingMembership.disabledAt) {
+      await prisma.membership.update({
+        where: { id: existingMembership.id },
+        // Logowanie przez Hub oznacza aktywne członkostwo, więc zdejmujemy też
+        // lokalną dezaktywację — inaczej konto zostałoby zablokowane na zawsze.
+        data: { role, disabledAt: null },
+      });
+      await logAudit(fastify, {
+        orgId: org.id,
+        actorId: null,
+        action: "hub.roleSynced",
+        meta: { userId: user.id, from: existingMembership.role, to: role },
+        ip: request.ip,
+      });
     }
 
     // 4. Własna sesja chatu (refresh rotation jak w natywnym logowaniu).

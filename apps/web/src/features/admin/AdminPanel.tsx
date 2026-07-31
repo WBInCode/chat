@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes, Navigate } from "react-router-dom";
+import { NavLink, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import type {
   AdminMemberDto,
   AdminChannelDto,
@@ -16,6 +16,7 @@ import { ORG_PERMISSIONS } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { useModulesStore } from "../../stores/modules.js";
 import { glassButtonGhost, glassButtonPrimary, glassInput } from "../../styles/glass.js";
+import { TabHeader, TableWrap, EmptyState, ErrorNote, Badge, RowAction, adminSelect } from "./AdminUi.js";
 
 interface OrgItem {
   id: string;
@@ -35,10 +36,23 @@ interface WorkspaceAnalytics {
   topChannels: { channelId: string; name: string; messageCount: number }[];
 }
 
+/** Zakładki panelu wraz z opisem pokazywanym w nagłówku sekcji. */
+const ADMIN_TABS = [
+  { to: "members", label: "Członkowie", title: "Członkowie", description: "Role, dostęp i eksport danych osób w organizacji." },
+  { to: "roles", label: "Role", title: "Role niestandardowe", description: "Własne zestawy uprawnień nadawane obok roli systemowej." },
+  { to: "channels", label: "Kanały", title: "Kanały", description: "Przegląd wszystkich kanałów organizacji wraz z archiwizacją." },
+  { to: "modules", label: "Moduły", title: "Moduły", description: "Włącz lub wyłącz funkcje dla całej organizacji." },
+  { to: "integrations", label: "Integracje", title: "Integracje", description: "Adresy przychodzące dla systemów zewnętrznych." },
+  { to: "audit", label: "Dziennik zdarzeń", title: "Dziennik zdarzeń", description: "Zapis operacji administracyjnych z kontrolą integralności." },
+  { to: "settings", label: "Ustawienia", title: "Ustawienia organizacji", description: "Zasady bezpieczeństwa i przechowywania danych." },
+  { to: "dashboard", label: "Statystyki", title: "Statystyki", description: "Aktywność organizacji z ostatnich dni." }
+] as const;
+
 /** Top-level admin shell: org picker + tab navigation (own routes). */
 export function AdminPanel() {
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  const location = useLocation();
 
   useEffect(() => {
     void apiFetch<OrgItem[]>("/orgs").then((data) => {
@@ -53,60 +67,73 @@ export function AdminPanel() {
   }
 
   const org = orgs.find((o) => o.id === activeOrgId);
+  const current = ADMIN_TABS.find((t) => location.pathname.endsWith(`/${t.to}`)) ?? ADMIN_TABS[0];
 
   return (
-    <div className="mx-auto flex h-full w-full min-w-0 max-w-5xl flex-col gap-4 p-4 sm:p-6">
-      <div className="flex items-center justify-between gap-3">
+    <div className="mx-auto flex h-full w-full min-w-0 max-w-6xl flex-col gap-4 p-4 sm:p-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">Panel administracyjny</h1>
           <p className="truncate text-xs text-[var(--text-dim)]">
-            {org?.name} · rola: {org?.role}
+            {org?.name} · Twoja rola: {org?.role}
           </p>
         </div>
-        <NavLink to="/" className={`${glassButtonGhost} shrink-0`}>
-          Wróć do czatu
-        </NavLink>
-      </div>
-
-      <nav className="glass flex min-w-0 gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {[
-          { to: "members", label: "Członkowie" },
-          { to: "roles", label: "Role" },
-          { to: "channels", label: "Kanały" },
-          { to: "modules", label: "Moduły" },
-          { to: "integrations", label: "Integracje" },
-          { to: "audit", label: "Audit log" },
-          { to: "settings", label: "Ustawienia" },
-          { to: "dashboard", label: "Dashboard" }
-        ].map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={`/admin/${tab.to}`}
-            className={({ isActive }) =>
-              `shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-[var(--accent)]/15 text-[var(--accent)]"
-                  : "text-[var(--text-dim)] hover:bg-[var(--border)]/50"
-              }`
-            }
-          >
-            {tab.label}
+        <div className="flex shrink-0 items-center gap-2">
+          {orgs.length > 1 && (
+            <select
+              value={activeOrgId}
+              onChange={(e) => setActiveOrgId(e.target.value)}
+              className={adminSelect}
+              aria-label="Organizacja"
+            >
+              {orgs.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <NavLink to="/" className={glassButtonGhost}>
+            Wróć do czatu
           </NavLink>
-        ))}
-      </nav>
+        </div>
+      </header>
 
-      <div className="glass min-w-0 flex-1 overflow-y-auto p-4 sm:p-5">
-        <Routes>
-          <Route path="members" element={<MembersTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
-          <Route path="roles" element={<RolesTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
-          <Route path="channels" element={<ChannelsTab orgId={activeOrgId} />} />
-          <Route path="modules" element={<ModulesTab orgId={activeOrgId} />} />
-          <Route path="integrations" element={<IntegrationsTab orgId={activeOrgId} />} />
-          <Route path="audit" element={<AuditTab orgId={activeOrgId} />} />
-          <Route path="settings" element={<SettingsTab orgId={activeOrgId} />} />
-          <Route path="dashboard" element={<DashboardTab orgId={activeOrgId} />} />
-          <Route path="*" element={<Navigate to="members" replace />} />
-        </Routes>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 xl:flex-row">
+        {/* Boczna lista dopiero od 1280 px — niżej zabierałaby szerokość potrzebną
+            tabelom i wpychała je w poziome przewijanie. */}
+        <nav className="glass flex shrink-0 gap-1 overflow-x-auto p-1 xl:w-56 xl:flex-col xl:overflow-visible xl:p-2">
+          {ADMIN_TABS.map((tab) => (
+            <NavLink
+              key={tab.to}
+              to={`/admin/${tab.to}`}
+              className={({ isActive }) =>
+                `shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors xl:w-full touch:py-2.5 ${
+                  isActive
+                    ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                    : "text-[var(--text-dim)] hover:bg-[var(--border)]/50 hover:text-[var(--text)]"
+                }`
+              }
+            >
+              {tab.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <section className="glass min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <TabHeader title={current.title} description={current.description} />
+          <Routes>
+            <Route path="members" element={<MembersTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
+            <Route path="roles" element={<RolesTab orgId={activeOrgId} viewerRole={org?.role ?? "MEMBER"} />} />
+            <Route path="channels" element={<ChannelsTab orgId={activeOrgId} />} />
+            <Route path="modules" element={<ModulesTab orgId={activeOrgId} />} />
+            <Route path="integrations" element={<IntegrationsTab orgId={activeOrgId} />} />
+            <Route path="audit" element={<AuditTab orgId={activeOrgId} />} />
+            <Route path="settings" element={<SettingsTab orgId={activeOrgId} />} />
+            <Route path="dashboard" element={<DashboardTab orgId={activeOrgId} />} />
+            <Route path="*" element={<Navigate to="members" replace />} />
+          </Routes>
+        </section>
       </div>
     </div>
   );
@@ -195,92 +222,122 @@ function MembersTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole 
     }
   }
 
-  if (error) return <p className="text-sm text-[var(--danger)]">{error}</p>;
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (members.length === 0) return <EmptyState title="Brak członków do wyświetlenia." />;
+
+  const showCustomRole = viewerRole === "OWNER";
+
+  function roleCell(m: AdminMemberDto) {
+    if (m.role === "OWNER") return <Badge tone="warn">Właściciel</Badge>;
+    return (
+      <select value={m.role} onChange={(e) => changeRole(m.userId, e.target.value)} className={adminSelect}>
+        <option value="ADMIN">ADMIN</option>
+        <option value="HR">HR</option>
+        <option value="MEMBER">MEMBER</option>
+      </select>
+    );
+  }
+
+  function customRoleCell(m: AdminMemberDto) {
+    return (
+      <select
+        value={m.customRoleId ?? ""}
+        onChange={(e) => changeCustomRole(m.userId, e.target.value || null)}
+        className={adminSelect}
+      >
+        <option value="">brak</option>
+        {roles.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  function actions(m: AdminMemberDto) {
+    return (
+      <>
+        {viewerRole === "OWNER" && (
+          <RowAction
+            onClick={() => requestExport(m.userId)}
+            disabled={exportingId === m.userId}
+            title="Eksportuj dane RODO tego członka"
+          >
+            {exportingId === m.userId ? "Eksport…" : "Eksport"}
+          </RowAction>
+        )}
+        {m.role !== "OWNER" && (
+          <RowAction onClick={() => toggleDeactivate(m.userId, !m.disabled)} danger={!m.disabled}>
+            {m.disabled ? "Aktywuj" : "Deaktywuj"}
+          </RowAction>
+        )}
+      </>
+    );
+  }
 
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-[var(--glass-border)] text-left text-xs uppercase tracking-wide text-[var(--text-dim)]">
-          <th className="pb-2">Użytkownik</th>
-          <th className="pb-2">Rola</th>
-          {viewerRole === "OWNER" && <th className="pb-2">Rola niestandardowa</th>}
-          <th className="pb-2">2FA</th>
-          <th className="pb-2">Status</th>
-          <th className="pb-2 text-right">Akcje</th>
-        </tr>
-      </thead>
-      <tbody>
+    <>
+      {/* Poniżej 1024 px tabela z sześcioma kolumnami jest nieczytelna nawet
+          z przewijaniem, więc te same dane pokazujemy jako karty. */}
+      <div className="space-y-2 lg:hidden">
         {members.map((m) => (
-          <tr key={m.userId} className="border-b border-[var(--glass-border)]/50">
-            <td className="py-2">
-              <div className="font-medium">{m.displayName}</div>
-              <div className="text-xs text-[var(--text-dim)]">{m.email}</div>
-            </td>
-            <td>
-              {m.role === "OWNER" ? (
-                <span className="text-xs font-medium text-[var(--warning)]">OWNER</span>
-              ) : (
-                <select
-                  value={m.role}
-                  onChange={(e) => changeRole(m.userId, e.target.value)}
-                  className="rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2 py-1 text-xs"
-                >
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="HR">HR</option>
-                  <option value="MEMBER">MEMBER</option>
-                </select>
-              )}
-            </td>
-            {viewerRole === "OWNER" && (
-              <td>
-                <select
-                  value={m.customRoleId ?? ""}
-                  onChange={(e) => changeCustomRole(m.userId, e.target.value || null)}
-                  className="rounded-lg border border-[var(--glass-border)] bg-[var(--glass)] px-2 py-1 text-xs"
-                >
-                  <option value="">brak</option>
-                  {roles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </td>
-            )}
-            <td className="text-xs">{m.totpEnabled ? <span className="text-[var(--accent-2)]">Tak</span> : <span className="text-[var(--text-dim)]">Nie</span>}</td>
-            <td className="text-xs">
-              {m.disabled ? (
-                <span className="text-[var(--danger)]">Zdezaktywowany</span>
-              ) : (
-                <span className="text-[var(--accent-2)]">Aktywny</span>
-              )}
-            </td>
-            <td className="text-right">
-              <div className="flex justify-end gap-1">
-                {viewerRole === "OWNER" && (
-                  <button
-                    onClick={() => requestExport(m.userId)}
-                    disabled={exportingId === m.userId}
-                    className="rounded-lg px-2 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50"
-                    title="Eksportuj dane RODO tego członka"
-                  >
-                    {exportingId === m.userId ? "Eksport…" : "Eksport"}
-                  </button>
-                )}
-                {m.role !== "OWNER" && (
-                  <button
-                    onClick={() => toggleDeactivate(m.userId, !m.disabled)}
-                    className="rounded-lg px-2 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50"
-                  >
-                    {m.disabled ? "Aktywuj" : "Deaktywuj"}
-                  </button>
-                )}
+          <div key={m.userId} className="rounded-lg border border-[var(--glass-border)] p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-[var(--text)]">{m.displayName}</p>
+                <p className="truncate text-xs text-[var(--text-dim)]">{m.email}</p>
               </div>
-            </td>
-          </tr>
+              {m.disabled ? <Badge tone="bad">Nieaktywny</Badge> : <Badge tone="good">Aktywny</Badge>}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {roleCell(m)}
+              {showCustomRole && customRoleCell(m)}
+              <Badge tone={m.totpEnabled ? "good" : "neutral"}>2FA {m.totpEnabled ? "tak" : "nie"}</Badge>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">{actions(m)}</div>
+          </div>
         ))}
-      </tbody>
-    </table>
+      </div>
+
+      <div className="hidden lg:block">
+        <TableWrap minWidth={showCustomRole ? 720 : 600}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--glass-border)] text-left text-xs uppercase tracking-wide text-[var(--text-dim)]">
+                <th className="pb-2 pr-3 font-medium">Użytkownik</th>
+                <th className="pb-2 pr-3 font-medium">Rola</th>
+                {showCustomRole && <th className="pb-2 pr-3 font-medium">Rola niestandardowa</th>}
+                <th className="pb-2 pr-3 font-medium">2FA</th>
+                <th className="pb-2 pr-3 font-medium">Status</th>
+                <th className="pb-2 text-right font-medium">Akcje</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m) => (
+                <tr key={m.userId} className="border-b border-[var(--glass-border)]/50 last:border-0">
+                  <td className="py-2.5 pr-3">
+                    <div className="font-medium">{m.displayName}</div>
+                    <div className="text-xs text-[var(--text-dim)]">{m.email}</div>
+                  </td>
+                  <td className="pr-3">{roleCell(m)}</td>
+                  {showCustomRole && <td className="pr-3">{customRoleCell(m)}</td>}
+                  <td className="pr-3">
+                    <Badge tone={m.totpEnabled ? "good" : "neutral"}>{m.totpEnabled ? "Tak" : "Nie"}</Badge>
+                  </td>
+                  <td className="pr-3">
+                    {m.disabled ? <Badge tone="bad">Nieaktywny</Badge> : <Badge tone="good">Aktywny</Badge>}
+                  </td>
+                  <td className="text-right">
+                    <div className="flex justify-end gap-1">{actions(m)}</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
+      </div>
+    </>
   );
 }
 
@@ -381,7 +438,7 @@ function RolesTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole })
 
   return (
     <div className="flex flex-col gap-4">
-      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+      {error && <ErrorNote>{error}</ErrorNote>}
 
       {editingId ? (
         <div className="glass flex flex-col gap-3 p-4">
@@ -464,7 +521,12 @@ function RolesTab({ orgId, viewerRole }: { orgId: string; viewerRole: OrgRole })
             </div>
           </div>
         ))}
-        {roles.length === 0 && <p className="text-sm text-[var(--text-dim)]">Brak niestandardowych ról.</p>}
+        {roles.length === 0 && (
+          <EmptyState
+            title="Brak ról niestandardowych."
+            description="Ról niestandardowych używasz, gdy cztery role systemowe nie oddają podziału obowiązków. Uprawnienia z nich dodają się do roli systemowej."
+          />
+        )}
       </div>
     </div>
   );
@@ -484,36 +546,65 @@ function ChannelsTab({ orgId }: { orgId: string }) {
     reload();
   }
 
+  if (channels.length === 0) return <EmptyState title="Brak kanałów w tej organizacji." />;
+
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-[var(--glass-border)] text-left text-xs uppercase tracking-wide text-[var(--text-dim)]">
-          <th className="pb-2">Kanał</th>
-          <th className="pb-2">Typ</th>
-          <th className="pb-2">Członkowie</th>
-          <th className="pb-2">Status</th>
-          <th className="pb-2 text-right">Akcje</th>
-        </tr>
-      </thead>
-      <tbody>
+    <>
+      <div className="space-y-2 lg:hidden">
         {channels.map((c) => (
-          <tr key={c.id} className="border-b border-[var(--glass-border)]/50">
-            <td className="py-2 font-medium">{c.name ?? "(bez nazwy)"}</td>
-            <td className="text-xs">{c.type === "PRIVATE" ? "prywatny" : "publiczny"}</td>
-            <td className="text-xs">{c.memberCount}</td>
-            <td className="text-xs">{c.archived ? "Zarchiwizowany" : "Aktywny"}</td>
-            <td className="text-right">
-              <button
-                onClick={() => toggleArchive(c.id)}
-                className="rounded-lg px-2 py-1 text-xs text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/50"
-              >
-                {c.archived ? "Przywróć" : "Archiwizuj"}
-              </button>
-            </td>
-          </tr>
+          <div key={c.id} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--glass-border)] p-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{c.name ?? "(bez nazwy)"}</p>
+              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-dim)]">
+                <Badge tone={c.type === "PRIVATE" ? "accent" : "neutral"}>
+                  {c.type === "PRIVATE" ? "prywatny" : "publiczny"}
+                </Badge>
+                {c.memberCount} {c.memberCount === 1 ? "osoba" : "osób"}
+                {c.archived && <Badge tone="warn">Archiwum</Badge>}
+              </p>
+            </div>
+            <RowAction onClick={() => toggleArchive(c.id)}>{c.archived ? "Przywróć" : "Archiwizuj"}</RowAction>
+          </div>
         ))}
-      </tbody>
-    </table>
+      </div>
+
+      <div className="hidden lg:block">
+        <TableWrap minWidth={560}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--glass-border)] text-left text-xs uppercase tracking-wide text-[var(--text-dim)]">
+                <th className="pb-2 pr-3 font-medium">Kanał</th>
+                <th className="pb-2 pr-3 font-medium">Typ</th>
+                <th className="pb-2 pr-3 font-medium">Członkowie</th>
+                <th className="pb-2 pr-3 font-medium">Status</th>
+                <th className="pb-2 text-right font-medium">Akcje</th>
+              </tr>
+            </thead>
+            <tbody>
+              {channels.map((c) => (
+                <tr key={c.id} className="border-b border-[var(--glass-border)]/50 last:border-0">
+                  <td className="py-2.5 pr-3 font-medium">{c.name ?? "(bez nazwy)"}</td>
+                  <td className="pr-3">
+                    <Badge tone={c.type === "PRIVATE" ? "accent" : "neutral"}>
+                      {c.type === "PRIVATE" ? "prywatny" : "publiczny"}
+                    </Badge>
+                  </td>
+                  <td className="pr-3 text-xs text-[var(--text-dim)]">{c.memberCount}</td>
+                  <td className="pr-3">
+                    {c.archived ? <Badge tone="warn">Archiwum</Badge> : <Badge tone="good">Aktywny</Badge>}
+                  </td>
+                  <td className="text-right">
+                    <RowAction onClick={() => toggleArchive(c.id)}>
+                      {c.archived ? "Przywróć" : "Archiwizuj"}
+                    </RowAction>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
+      </div>
+    </>
   );
 }
 
@@ -689,7 +780,7 @@ function ModulesTab({ orgId }: { orgId: string }) {
     }
   }
 
-  if (error && !modules) return <p className="text-sm text-[var(--danger)]">{error}</p>;
+  if (error && !modules) return <ErrorNote>{error}</ErrorNote>;
   if (!modules) return <p className="text-sm text-[var(--text-dim)]">Ładowanie...</p>;
 
   const optional = modules.filter((m) => !m.core);
@@ -698,14 +789,11 @@ function ModulesTab({ orgId }: { orgId: string }) {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-sm font-semibold">Moduły organizacji</h2>
-        <p className="text-xs text-[var(--text-dim)]">
-          Włącz lub wyłącz funkcje dla całej organizacji. Aktywne opcjonalne: {activeCount}/{optional.length}.
-        </p>
-      </div>
+      <p className="text-xs text-[var(--text-dim)]">
+        Aktywne opcjonalne: {activeCount}/{optional.length}.
+      </p>
 
-      {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+      {error && <ErrorNote>{error}</ErrorNote>}
 
       <ul className="space-y-2">
         {optional.map((m) => (
@@ -852,15 +940,12 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-sm font-semibold">Integracje przychodzące</h2>
-        <p className="text-xs text-[var(--text-dim)]">
-          Wygeneruj adres URL, na który zewnętrzne systemy (CI, monitoring, formularze) mogą wysłać zwykłe
-          żądanie POST z JSON. Treść trafi jako wiadomość na wybrany kanał.
-        </p>
-      </div>
+      <p className="max-w-prose text-xs text-[var(--text-dim)]">
+        Wygeneruj adres URL, na który zewnętrzne systemy (CI, monitoring, formularze) mogą wysłać zwykłe
+        żądanie POST z JSON. Treść trafi jako wiadomość na wybrany kanał.
+      </p>
 
-      {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
+      {error && <ErrorNote>{error}</ErrorNote>}
 
       <div className="flex flex-wrap items-end gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] p-4">
         <div className="flex-1 min-w-[160px]">
