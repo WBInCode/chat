@@ -5,6 +5,7 @@ import { generateRefreshToken, generateFamilyId, hashToken } from "../../lib/tok
 import { hashPassword } from "../../lib/password.js";
 import { revokeSession } from "../../plugins/auth-guard.js";
 import { invalidateModuleCache } from "../../lib/modules.js";
+import { logAudit } from "../../lib/audit.js";
 import { env } from "../../config/env.js";
 import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import { OPTIONAL_MODULE_KEYS } from "@chatv2/shared";
@@ -142,6 +143,32 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
     fastify.log.info({ org: orgSlug, revoked: sessions.length, reason }, "Hub: unieważniono sesje organizacji");
   }
 
+  /**
+   * Unieważnia sesje wskazanych osób. Hub wysyła to przy odebraniu komuś
+   * dostępu do produktu — bez tego odebranie dostępu w panelu WB Platform
+   * nie wylogowywało z czatu i praca trwała do wygaśnięcia tokenu.
+   */
+  async function revokeUserSessions(emails: string[], reason: string) {
+    if (emails.length === 0) return;
+    const users = await fastify.prisma.user.findMany({
+      where: { email: { in: emails } },
+      select: { id: true, email: true },
+    });
+    if (users.length === 0) return;
+
+    const sessions = await fastify.prisma.session.findMany({
+      where: { userId: { in: users.map((u) => u.id) }, revokedAt: null },
+      select: { id: true },
+    });
+    for (const s of sessions) {
+      await fastify.prisma.session.update({ where: { id: s.id }, data: { revokedAt: new Date() } });
+      await revokeSession(fastify, s.id, 3600);
+    }
+    // Adresów nie logujemy — wystarczy liczba, żeby dziennik nie stał się
+    // zbiorem danych osobowych.
+    fastify.log.info({ users: users.length, revoked: sessions.length, reason }, "Hub: unieważniono sesje użytkowników");
+  }
+
   function refreshCookieOptions() {
     const isProd = env.NODE_ENV === "production";
     return {
@@ -195,6 +222,8 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
       user = await prisma.user.create({
         data: { email, displayName, passwordHash: await hashPassword(randomBytes(24).toString("hex")) },
       });
+    } else if (displayName && user.displayName !== displayName) {
+      user = await prisma.user.update({ where: { id: user.id }, data: { displayName } });
     }
 
     let org = await prisma.organization.findUnique({ where: { slug: orgSlug } });
@@ -202,9 +231,29 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
       org = await prisma.organization.create({ data: { name: orgName, slug: orgSlug } });
     }
 
-    const existingMembership = await prisma.membership.findFirst({ where: { userId: user.id, orgId: org.id } });
+    // Hub jest źródłem prawdy o roli w organizacji, więc odświeżamy ją przy
+    // każdym logowaniu. Wcześniej członkostwo zakładano tylko raz — awans lub
+    // degradacja w Hubie nigdy nie docierały do czatu, a odebranie uprawnień
+    // administratora pozostawało wyłącznie pozorne.
+    const existingMembership = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId: user.id, orgId: org.id } },
+    });
     if (!existingMembership) {
       await prisma.membership.create({ data: { userId: user.id, orgId: org.id, role } });
+    } else if (existingMembership.role !== role || existingMembership.disabledAt) {
+      await prisma.membership.update({
+        where: { id: existingMembership.id },
+        // Logowanie przez Hub oznacza aktywne członkostwo, więc zdejmujemy też
+        // lokalną dezaktywację — inaczej konto zostałoby zablokowane na zawsze.
+        data: { role, disabledAt: null },
+      });
+      await logAudit(fastify, {
+        orgId: org.id,
+        actorId: null,
+        action: "hub.roleSynced",
+        meta: { userId: user.id, from: existingMembership.role, to: role },
+        ip: request.ip,
+      });
     }
 
     // 4. Własna sesja chatu (refresh rotation jak w natywnym logowaniu).
@@ -239,16 +288,36 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
    * Jeśli skonfigurowano HUB_WEBHOOK_SECRET, weryfikujemy podpis HMAC.
    */
   fastify.post("/webhook", async (request, reply) => {
-    // Optional HMAC signature verification over the exact raw body.
-    if (cfg.webhookSecret) {
-      const raw = (request as unknown as { rawBody?: string }).rawBody ?? "";
-      const header = String(request.headers["x-wb-signature"] ?? "");
-      const expected = "sha256=" + createHmac("sha256", cfg.webhookSecret).update(raw).digest("hex");
-      const a = Buffer.from(header);
-      const b = Buffer.from(expected);
-      if (a.length !== b.length || !timingSafeEqual(a, b)) {
-        request.log.warn("Hub webhook: nieprawidłowy podpis HMAC");
-        return reply.code(401).send({ error: "INVALID_SIGNATURE" });
+    // Podpis HMAC nad dokładnymi bajtami, które podpisał Hub. Gdy sekret nie
+    // jest skonfigurowany, punkt przyjmowałby żądania od kogokolwiek, więc
+    // wtedy odmawiamy obsługi zamiast działać bez uwierzytelnienia.
+    if (!cfg.webhookSecret) {
+      request.log.error("Hub webhook: brak HUB_WEBHOOK_SECRET — żądanie odrzucone");
+      return reply.code(503).send({ error: "WEBHOOK_NOT_CONFIGURED" });
+    }
+    const raw = (request as unknown as { rawBody?: string }).rawBody ?? "";
+    const header = String(request.headers["x-wb-signature"] ?? "");
+    const expected = "sha256=" + createHmac("sha256", cfg.webhookSecret).update(raw).digest("hex");
+    const a = Buffer.from(header);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      request.log.warn("Hub webhook: nieprawidłowy podpis HMAC");
+      return reply.code(401).send({ error: "INVALID_SIGNATURE" });
+    }
+
+    const event = String(request.headers["x-wb-event"] ?? "");
+    const body = request.body as { data?: { scope?: string; emails?: string[] } } | undefined;
+
+    // Odebranie komuś dostępu w Hubie musi natychmiast zamknąć jego sesje.
+    // Treści webhooka używamy wyłącznie do wskazania kogo dotyczy; o stan
+    // instancji i tak pytamy Hub osobno.
+    if (event === "session.revoked") {
+      const data = body?.data;
+      if (data?.scope === "users" && Array.isArray(data.emails)) {
+        await revokeUserSessions(data.emails, "hub.access-revoked").catch((err) =>
+          request.log.warn({ err }, "Hub webhook: unieważnianie sesji użytkowników nieudane")
+        );
+        return reply.send({ ok: true });
       }
     }
 
@@ -260,8 +329,8 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
       request.log.warn({ err }, "Hub webhook: sync modułów nieudany")
     );
 
-    if (config.status === "suspended" || config.status === "expired") {
-      await revokeOrgSessions(config.orgSlug, config.status);
+    if (event === "session.revoked" || config.status === "suspended" || config.status === "expired") {
+      await revokeOrgSessions(config.orgSlug, event === "session.revoked" ? "hub.session-revoked" : config.status);
     }
     return reply.send({ ok: true });
   });

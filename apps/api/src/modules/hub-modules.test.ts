@@ -58,14 +58,14 @@ function sign(body: string): string {
   return "sha256=" + createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex");
 }
 
-async function postWebhook(bodyObj: object, signature?: string) {
+async function postWebhook(bodyObj: object, signature?: string, event = "entitlements.updated") {
   const body = JSON.stringify(bodyObj);
   return app.inject({
     method: "POST",
     url: "/api/v1/sso/webhook",
     headers: {
       "content-type": "application/json",
-      "x-wb-event": "entitlements.updated",
+      "x-wb-event": event,
       "x-wb-signature": signature ?? sign(body)
     },
     payload: body
@@ -129,5 +129,43 @@ describe("Hub module sync (F7-C)", () => {
 
     const after = await app.prisma.session.findUnique({ where: { id: session.id } });
     expect(after?.revokedAt).not.toBeNull();
+  });
+
+  it("zamyka sesje wskazanych osób przy odebraniu dostępu", async () => {
+    const [odebrany, zostaje] = await Promise.all([
+      app.prisma.user.create({
+        data: { email: `odebrany-${uniq}@example.com`, displayName: "Odebrany", passwordHash: "x" }
+      }),
+      app.prisma.user.create({
+        data: { email: `zostaje-${uniq}@example.com`, displayName: "Zostaje", passwordHash: "x" }
+      })
+    ]);
+    const sesje = await Promise.all(
+      [odebrany, zostaje].map((u, i) =>
+        app.prisma.session.create({
+          data: {
+            userId: u.id,
+            refreshHash: `rh-rev-${uniq}-${i}`,
+            familyId: `fam-rev-${uniq}-${i}`,
+            expiresAt: new Date(Date.now() + 3600_000)
+          }
+        })
+      )
+    );
+
+    const res = await postWebhook(
+      { event: "session.revoked", data: { scope: "users", emails: [odebrany.email] } },
+      undefined,
+      "session.revoked"
+    );
+    expect(res.statusCode).toBe(200);
+
+    const [poOdebranym, poZostajacym] = await Promise.all([
+      app.prisma.session.findUnique({ where: { id: sesje[0]!.id } }),
+      app.prisma.session.findUnique({ where: { id: sesje[1]!.id } })
+    ]);
+    expect(poOdebranym?.revokedAt).not.toBeNull();
+    // Kluczowa asercja: unieważnienie nie może objąć osób spoza listy.
+    expect(poZostajacym?.revokedAt).toBeNull();
   });
 });
