@@ -47,7 +47,7 @@ jobs:
       GROQ_API_KEY: ci-dummy-key-not-used-fetch-is-mocked
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
