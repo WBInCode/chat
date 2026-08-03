@@ -169,3 +169,30 @@ export async function enqueueEmailDigest(data: EmailDigestJobData, delayMs: numb
   await emailDigestQueue.add("digest", data, { delay: delayMs });
 }
 
+// Rozmowa głosowa bez odzewu. Zadanie planowane raz, przy zakładaniu pokoju,
+// i sprawdzające po upływie okna, czy ktokolwiek dołączył.
+export const VOICE_TIMEOUT_QUEUE = "voice-timeout";
+
+/** Ile czekamy na dołączenie kogokolwiek, zanim rozmowa zostanie zakończona. */
+export const VOICE_NO_ANSWER_MS = 3 * 60_000;
+
+export interface VoiceTimeoutJobData {
+  channelId: string;
+  starterId: string;
+}
+
+export const voiceTimeoutQueue = new Queue<VoiceTimeoutJobData>(VOICE_TIMEOUT_QUEUE, {
+  connection: queueConnection,
+  defaultJobOptions: {
+    // Ponowienie nie ma sensu: po nieudanej próbie warunek i tak zdąży się
+    // zmienić, a druga wiadomość o braku odzewu byłaby myląca.
+    attempts: 1,
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 100 }
+  }
+});
+
+export async function enqueueVoiceTimeout(data: VoiceTimeoutJobData, delayMs: number) {
+  await voiceTimeoutQueue.add("timeout", data, { delay: delayMs });
+}
+

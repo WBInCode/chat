@@ -37,6 +37,7 @@ import { registerDataExportWorker } from "./workers/data-export.worker.js";
 import { registerRetentionPurgeWorker } from "./workers/retention-purge.worker.js";
 import { registerDueSweepWorker } from "./workers/due-sweep.worker.js";
 import { registerEmailDigestWorker } from "./workers/email-digest.worker.js";
+import { registerVoiceTimeoutWorker } from "./workers/voice-timeout.worker.js";
 import { scheduleRetentionPurge } from "./lib/queue.js";
 import { scheduleDueSweep } from "./lib/queue.js";
 import { instrumentHttp } from "./lib/metrics.js";
@@ -134,6 +135,7 @@ export async function buildApp() {
     registerRetentionPurgeWorker(fastify);
     registerDueSweepWorker(fastify);
     registerEmailDigestWorker(fastify);
+    registerVoiceTimeoutWorker(fastify);
     await scheduleRetentionPurge();
     await scheduleDueSweep();
   }

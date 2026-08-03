@@ -18,6 +18,8 @@ interface VoiceRoomProps {
   myUserId: string;
   members: MemberLite[];
   onClose: () => void;
+  /** Wywoływane, gdy to serwer zamknął rozmowę, z powodem do pokazania. */
+  onEnded: (powod: string) => void;
 }
 
 interface ParticipantState {
@@ -27,12 +29,16 @@ interface ParticipantState {
 }
 
 /** Active voice call panel (F5-E) — P2P mesh, free STUN only, 2-4 participants. */
-export function VoiceRoom({ channelId, channelName, myUserId, members, onClose }: VoiceRoomProps) {
+export function VoiceRoom({ channelId, channelName, myUserId, members, onClose, onEnded }: VoiceRoomProps) {
   const [participants, setParticipants] = useState<ParticipantState[]>([]);
   const [myMuted, setMyMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const managerRef = useRef<VoiceRoomManager | null>(null);
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+  // Efekt zestawiajacy polaczenie nie moze zalezec od tozsamosci wywolania
+  // zwrotnego, bo kazde przerysowanie rodzica rozrywaloby rozmowe.
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
 
   useEffect(() => {
     const socket = getSocket();
@@ -79,9 +85,15 @@ export function VoiceRoom({ channelId, channelName, myUserId, members, onClose }
         setError(payload.message);
       }
     }
+    // Serwer zamyka rozmowe, do ktorej nikt nie dolaczyl.
+    function onVoiceEnded(payload: { channelId: string; reason: string }) {
+      if (payload.channelId !== channelId) return;
+      onEndedRef.current("Nikt nie dołączył przez 3 minuty. Rozmowa została zakończona.");
+    }
 
     socket.on("voice:participants", onParticipants);
     socket.on("voice:mute-update", onMuteUpdate);
+    socket.on("voice:ended", onVoiceEnded);
     socket.on("error", onVoiceError);
 
     manager.start().catch((err) => {
@@ -95,6 +107,7 @@ export function VoiceRoom({ channelId, channelName, myUserId, members, onClose }
     return () => {
       socket.off("voice:participants", onParticipants);
       socket.off("voice:mute-update", onMuteUpdate);
+      socket.off("voice:ended", onVoiceEnded);
       socket.off("error", onVoiceError);
       manager.stop();
       for (const el of audioRefs.current.values()) el.remove();

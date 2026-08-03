@@ -25,6 +25,7 @@ import {
   Pencil,
   Trash2,
   Sparkles,
+  Radio,
   ShieldCheck
 } from "lucide-react";
 
@@ -193,6 +194,27 @@ export function MessageRow({
     if (cel.closest("a, button, input, textarea, select, video, audio, [data-bez-wyboru]")) return;
     if ((window.getSelection()?.toString().length ?? 0) > 0) return;
     setSelectedMessage(showActions ? null : m.id);
+  }
+
+  // Notka systemowa: komunikat aplikacji, nie wypowiedź człowieka. Bez awatara,
+  // nagłówka i paska akcji, żeby nie mieszała się z rozmową.
+  if (m.contentType === "system") {
+    return (
+      <div id={`message-${m.id}`} className="my-1 flex items-center justify-center gap-2 px-2">
+        <span className="h-px flex-1 bg-[var(--border)]" />
+        <span
+          className="flex items-center gap-1.5 text-center text-xs text-[var(--text-dim)]"
+          title={new Date(m.createdAt).toLocaleString("pl-PL")}
+        >
+          <Icon icon={Radio} size={12} />
+          {m.content}
+          <span className="opacity-70">
+            {new Date(m.createdAt).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </span>
+        <span className="h-px flex-1 bg-[var(--border)]" />
+      </div>
+    );
   }
 
   return (

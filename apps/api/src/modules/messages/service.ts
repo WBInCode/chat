@@ -596,11 +596,30 @@ export function createMessageService(fastify: FastifyInstance) {
       });
   }
 
+  /**
+   * Notka systemowa w kanale, np. o rozpoczęciu rozmowy głosowej. Celowo
+   * omija reguły pisania (kanał ogłoszeniowy, tryb wolny) oraz powiadomienia,
+   * podglądy linków i wyzwalacz asystenta, bo to komunikat aplikacji,
+   * a nie wypowiedź człowieka.
+   *
+   * `authorId` wskazuje osobę, której dotyczy zdarzenie: kolumna jest wymagana,
+   * a interfejs i tak nie pokazuje przy takiej notce autora ani akcji.
+   * Typ "system" może ustawić wyłącznie serwer, bo schemat wysyłki
+   * dopuszcza od klienta tylko "text" i "e2e".
+   */
+  async function sendSystemMessage(channelId: string, authorId: string, content: string) {
+    const message = await fastify.prisma.message.create({
+      data: { channelId, authorId, content, contentType: "system" }
+    });
+    return toDto(message);
+  }
+
   return {
     listMessages,
     listAround,
     listThread,
     sendMessage,
+    sendSystemMessage,
     editMessage,
     deleteMessage,
     markRead,
