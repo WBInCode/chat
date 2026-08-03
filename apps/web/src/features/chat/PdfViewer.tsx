@@ -27,10 +27,13 @@ export function PdfViewer({ url, onClose }: PdfViewerProps) {
     void (async () => {
       try {
         const pdfjsLib = await import("pdfjs-dist");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-          "pdfjs-dist/build/pdf.worker.min.mjs",
-          import.meta.url
-        ).toString();
+        // Parametr v przelamuje pamiec przegladarek, ktore zapamietaly ten plik
+        // z blednym typem application/octet-stream. Tresc workera sie nie
+        // zmienila, wiec Vite generuje wciaz ta sama nazwe z odciskiem i bez
+        // zmiany adresu nie ma powodu pobrac go ponownie.
+        const workerUrl = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url);
+        workerUrl.searchParams.set("v", "2");
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl.toString();
 
         const loadingTask = pdfjsLib.getDocument({ url });
         loadingTaskRef.current = loadingTask;
