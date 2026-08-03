@@ -4,6 +4,7 @@ import {
   createDmSchema,
   createGroupDmSchema,
   addChannelMemberSchema,
+  setChannelMemberRoleSchema,
   setChannelTopicSchema,
   renameChannelSchema,
   setMutedSchema,
@@ -21,6 +22,7 @@ import {
   assertOrgPermission,
   hasOrgPermission,
   assertChannelMember,
+  assertChannelAdmin,
   forbidden,
   notFound
 } from "../../lib/authz.js";
@@ -642,9 +644,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     if (membership.channel.type === "DM") {
       return sendError(reply, 400, "DM_IMMUTABLE", "Nie można dodawać osób do rozmowy prywatnej");
     }
-    if (membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może dodawać członków");
-    }
+    await assertChannelAdmin(fastify, userId, channelId, "Tylko administrator kanału może dodawać członków");
 
     // Target must belong to the same org (membership chain check).
     await assertOrgMember(fastify, input.userId, membership.channel.orgId).catch(() =>
@@ -699,6 +699,62 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     }));
   });
 
+  /**
+   * Nadanie lub odebranie roli administratora kanału. Ma znaczenie zwłaszcza
+   * w kanałach ogłoszeniowych, gdzie pisać mogą wyłącznie administratorzy.
+   */
+  fastify.patch("/channels/:channelId/members/:userId", async (request, reply) => {
+    const { channelId, userId: targetUserId } = request.params as { channelId: string; userId: string };
+    const actorId = request.user!.id;
+    const input = parseOrThrow(setChannelMemberRoleSchema, request.body);
+
+    const membership = await assertChannelMember(fastify, actorId, channelId);
+    if (membership.channel.type === "DM") {
+      return sendError(reply, 400, "DM_IMMUTABLE", "Rozmowa prywatna nie ma administratorów");
+    }
+    await assertChannelAdmin(fastify, actorId, channelId, "Tylko administrator kanału może zmieniać role");
+
+    const target = await fastify.prisma.channelMember.findUnique({
+      where: { channelId_userId: { channelId, userId: targetUserId } }
+    });
+    if (!target) notFound("Ta osoba nie należy do kanału");
+    if (target.role === input.role) {
+      return reply.send({ userId: targetUserId, role: target.role });
+    }
+
+    // Kanał bez administratora nie da się już edytować, a ogłoszeniowy traci
+    // kogokolwiek, kto może w nim pisać.
+    if (input.role === "MEMBER") {
+      const admins = await fastify.prisma.channelMember.count({ where: { channelId, role: "ADMIN" } });
+      if (admins <= 1) {
+        return sendError(
+          reply,
+          409,
+          "LAST_CHANNEL_ADMIN",
+          "To jedyny administrator kanału. Najpierw wskaż kogoś innego."
+        );
+      }
+    }
+
+    const updated = await fastify.prisma.channelMember.update({
+      where: { channelId_userId: { channelId, userId: targetUserId } },
+      data: { role: input.role }
+    });
+
+    await logAudit(fastify, {
+      orgId: membership.channel.orgId,
+      actorId,
+      action: "channel.member_role_changed",
+      meta: { channelId, targetUserId, role: input.role },
+      ip: request.ip
+    });
+
+    fastify.io.to(`org:${membership.channel.orgId}`).emit("channels:layout-updated", {
+      orgId: membership.channel.orgId
+    });
+    return reply.send({ userId: updated.userId, role: updated.role });
+  });
+
   /** Remove a member from a PUBLIC/PRIVATE channel (channel admin only, not DMs). */
   fastify.delete("/channels/:channelId/members/:userId", async (request, reply) => {
     const { channelId, userId: targetUserId } = request.params as { channelId: string; userId: string };
@@ -708,9 +764,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     if (membership.channel.type === "DM") {
       return sendError(reply, 400, "DM_IMMUTABLE", "Nie można usuwać osób z rozmowy prywatnej");
     }
-    if (membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może usuwać członków");
-    }
+    await assertChannelAdmin(fastify, actorId, channelId, "Tylko administrator kanału może usuwać członków");
     if (targetUserId === actorId) {
       return sendError(reply, 400, "CANNOT_REMOVE_SELF", "Użyj opcji opuszczenia kanału");
     }
@@ -735,9 +789,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     const input = parseOrThrow(setChannelTopicSchema, request.body);
 
     const membership = await assertChannelMember(fastify, userId, channelId);
-    if (membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może zmienić temat");
-    }
+    await assertChannelAdmin(fastify, userId, channelId, "Tylko administrator kanału może zmienić temat");
 
     const updated = await fastify.prisma.channel.update({
       where: { id: channelId },
@@ -797,8 +849,13 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     const input = parseOrThrow(setChannelTtlSchema, request.body);
 
     const membership = await assertChannelMember(fastify, userId, channelId);
-    if (membership.channel.type !== "DM" && membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może zmienić znikanie wiadomości");
+    if (membership.channel.type !== "DM") {
+      await assertChannelAdmin(
+        fastify,
+        userId,
+        channelId,
+        "Tylko administrator kanału może zmienić znikanie wiadomości"
+      );
     }
 
     const updated = await fastify.prisma.channel.update({
@@ -909,9 +966,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     if (membership.channel.type === "DM") {
       return sendError(reply, 400, "DM_IMMUTABLE", "Nie można zmienić ustawień rozmowy prywatnej");
     }
-    if (membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może zmienić ustawienia");
-    }
+    await assertChannelAdmin(fastify, userId, channelId, "Tylko administrator kanału może zmienić ustawienia");
     const orgId = membership.channel.orgId;
 
     if (input.name !== undefined) {
@@ -1022,9 +1077,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     if (membership.channel.type === "DM") {
       return sendError(reply, 400, "DM_IMMUTABLE", "Nie można zarchiwizować rozmowy prywatnej");
     }
-    if (membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może archiwizować");
-    }
+    await assertChannelAdmin(fastify, userId, channelId, "Tylko administrator kanału może archiwizować");
 
     await fastify.prisma.channel.update({ where: { id: channelId }, data: { archivedAt: new Date() } });
     await logAudit(fastify, {
@@ -1043,9 +1096,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     const userId = request.user!.id;
 
     const membership = await assertChannelMember(fastify, userId, channelId);
-    if (membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może przywrócić kanał");
-    }
+    await assertChannelAdmin(fastify, userId, channelId, "Tylko administrator kanału może przywrócić kanał");
 
     await fastify.prisma.channel.update({ where: { id: channelId }, data: { archivedAt: null } });
     await logAudit(fastify, {
