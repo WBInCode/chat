@@ -132,6 +132,60 @@ describe("documents", () => {
     expect(list.statusCode).toBe(404);
   });
 
+  it("lista dla organizacji pokazuje tylko dokumenty z kanałów, do których należysz", async () => {
+    // Kanał prywatny, do którego zwykły członek NIE należy.
+    const prywatny = await app.inject({
+      method: "POST",
+      url: `/api/v1/orgs/${orgId}/channels`,
+      headers: auth(owner.token),
+      payload: { type: "PRIVATE", name: `poufny-${uniq}` }
+    });
+    const prywatnyId = prywatny.json().id;
+
+    const tajny = await app.inject({
+      method: "POST",
+      url: `/api/v1/channels/${prywatnyId}/documents`,
+      headers: auth(owner.token),
+      payload: { title: "Wynagrodzenia zarządu" }
+    });
+    expect(tajny.statusCode).toBe(201);
+    const tajnyId = tajny.json().id;
+
+    const jawny = (await createDocument(`Notatki zespołu ${uniq}`)).json();
+
+    const dlaWlasciciela = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/documents`,
+      headers: auth(owner.token)
+    });
+    expect(dlaWlasciciela.statusCode).toBe(200);
+    const idWlasciciela = (dlaWlasciciela.json() as { id: string }[]).map((d) => d.id);
+    expect(idWlasciciela).toContain(tajnyId);
+    expect(idWlasciciela).toContain(jawny.id);
+
+    const dlaCzlonka = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/documents`,
+      headers: auth(member.token)
+    });
+    expect(dlaCzlonka.statusCode).toBe(200);
+    const dane = dlaCzlonka.json() as { id: string; channelName: string | null }[];
+    // Kluczowa asercja: dokument z kanału prywatnego nie może wyciec na listę.
+    expect(dane.map((d) => d.id)).not.toContain(tajnyId);
+    expect(dane.map((d) => d.id)).toContain(jawny.id);
+    // Nazwa kanału jest potrzebna, żeby na liście dało się rozpoznać źródło.
+    expect(dane.find((d) => d.id === jawny.id)?.channelName).toBe(`docs-${uniq}`);
+  });
+
+  it("osoba spoza organizacji nie dostaje listy dokumentów", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/documents`,
+      headers: auth(outsider.token)
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
   it("rejects a table whose rows do not match the header width", async () => {
     const doc = (await createDocument("Tabela niepoprawna")).json();
     const res = await addBlock(doc.id, {

@@ -13,7 +13,7 @@ import {
   type DocumentSummaryDto
 } from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
-import { assertChannelMember, notFound, forbidden, HttpError } from "../../lib/authz.js";
+import { assertChannelMember, assertOrgMember, notFound, forbidden, HttpError } from "../../lib/authz.js";
 import { assertModuleEnabled } from "../../lib/modules.js";
 import {
   assertNotLockedByOther,
@@ -83,6 +83,51 @@ export default async function documentRoutes(fastify: FastifyInstance) {
   }
 
   // ── documents ───────────────────────────────────────────────────────────
+
+  /**
+   * Dokumenty ze wszystkich kanałów organizacji, do których użytkownik należy.
+   * Zasila wejście "Dokumenty" w bocznym pasku — bez tego moduł był dostępny
+   * wyłącznie z nagłówka pojedynczego kanału i praktycznie nie do znalezienia.
+   */
+  fastify.get("/orgs/:orgId/documents", async (request) => {
+    const { orgId } = request.params as { orgId: string };
+    const userId = request.user!.id;
+    await assertOrgMember(fastify, userId, orgId);
+    await assertModuleEnabled(fastify, orgId, "documents");
+
+    // Filtr po członkostwie, a nie po samej organizacji: inaczej lista
+    // ujawniałaby istnienie dokumentów z kanałów prywatnych, do których
+    // użytkownik nie ma dostępu.
+    const memberships = await fastify.prisma.channelMember.findMany({
+      where: { userId, channel: { orgId } },
+      select: { channelId: true }
+    });
+    const channelIds = memberships.map((m) => m.channelId);
+    if (channelIds.length === 0) return [];
+
+    const rows = await fastify.prisma.document.findMany({
+      where: { channelId: { in: channelIds }, archivedAt: null },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+      include: {
+        _count: { select: { blocks: true } },
+        channel: { select: { id: true, name: true, type: true } }
+      }
+    });
+
+    const openComments = await fastify.prisma.documentComment.groupBy({
+      by: ["documentId"],
+      where: { documentId: { in: rows.map((r) => r.id) }, resolvedAt: null },
+      _count: { _all: true }
+    });
+    const commentsByDoc = new Map(openComments.map((c) => [c.documentId, c._count._all]));
+
+    return rows.map((row) => ({
+      ...toSummaryDto({ ...row, openCommentCount: commentsByDoc.get(row.id) ?? 0 }),
+      channelId: row.channel.id,
+      channelName: row.channel.name
+    }));
+  });
 
   fastify.get("/channels/:channelId/documents", async (request) => {
     const { channelId } = request.params as { channelId: string };
