@@ -17,6 +17,7 @@ import { DocumentsPanel } from "./documents/DocumentsPanel.js";
 import { ForwardPicker } from "./ForwardPicker.js";
 import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
 import { ChannelMembersTab } from "./ChannelMembersTab.js";
+import { OrgDocumentsModal } from "./OrgDocumentsModal.js";
 import { PromptDialog, ConfirmDialog } from "../../components/Dialog.js";
 import { GroupDmPicker } from "./GroupDmPicker.js";
 import { QuickSwitcher } from "./QuickSwitcher.js";
@@ -229,6 +230,7 @@ export function ChatLayout() {
   const [editingTopic, setEditingTopic] = useState(false);
   const [topicDraft, setTopicDraft] = useState("");
   const [showDocuments, setShowDocuments] = useState(false);
+  const [showOrgDocuments, setShowOrgDocuments] = useState(false);
   const [showGroupDmPicker, setShowGroupDmPicker] = useState(false);
   const [groupDmSelection, setGroupDmSelection] = useState<Set<string>>(new Set());
   const [showCreateChannel, setShowCreateChannel] = useState(false);
@@ -1585,6 +1587,15 @@ export function ChatLayout() {
             <Icon icon={Bookmark} size={15} /> Zapisane {savedIds.size > 0 && `(${savedIds.size})`}
           </button>
 
+          {moduleEnabled("documents") && (
+            <button
+              onClick={() => setShowOrgDocuments(true)}
+              className="mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] transition-colors duration-150 hover:bg-[var(--border)]/50"
+            >
+              <Icon icon={FileText} size={15} /> Dokumenty
+            </button>
+          )}
+
           {channels.some((c) => c.favorite) && (
             <SidebarSection id="favorites" title="Ulubione">
               {channels
@@ -1799,9 +1810,15 @@ export function ChatLayout() {
                       <button
                         onClick={() => setShowDocuments((v) => !v)}
                         title="Dokumenty kanału"
-                        className={showDocuments ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--text)]"}
+                        aria-label="Dokumenty kanału"
+                        className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-medium transition-colors ${
+                          showDocuments
+                            ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                            : "text-[var(--text-dim)] hover:bg-[var(--border)]/40 hover:text-[var(--text)]"
+                        }`}
                       >
                         <Icon icon={FileText} size={15} />
+                        <span className="hidden lg:inline">Dokumenty</span>
                       </button>
                     )}
                     {/* E2E toggle: 1:1 DMs only, gated by the hub-synced e2ee module */}
@@ -2159,6 +2176,14 @@ export function ChatLayout() {
                       ? "To kanał ogłoszeniowy. Pojawią się tu wpisy administratorów kanału."
                       : "Napisz pierwszą wiadomość poniżej. Możesz też przeciągnąć plik, wkleić obrazek, utworzyć ankietę (+) albo wspomnieć kogoś przez @."}
                   </p>
+                  {moduleEnabled("documents") && !activeChannel.e2ee && !readOnlyAnnouncement && (
+                    <button
+                      onClick={() => setShowDocuments(true)}
+                      className="mt-1 flex items-center gap-1.5 rounded-lg border border-[var(--glass-border)] px-2.5 py-1.5 text-xs text-[var(--text-dim)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
+                    >
+                      <Icon icon={FileText} size={13} /> Załóż wspólny dokument z tabelą lub listą zadań
+                    </button>
+                  )}
                 </div>
               )}
               {loadingOlder && (
@@ -2817,6 +2842,20 @@ export function ChatLayout() {
           currentUserId={user.id}
           members={members}
           onClose={() => setShowDocuments(false)}
+        />
+      )}
+
+      {showOrgDocuments && activeOrgId && (
+        <OrgDocumentsModal
+          orgId={activeOrgId}
+          onClose={() => setShowOrgDocuments(false)}
+          onOpen={(channelId) => {
+            // Panel dokumentów działa w kontekście kanału, więc najpierw
+            // przełączamy kanał, a potem otwieramy panel.
+            setActiveChannel(channelId);
+            setShowOrgDocuments(false);
+            setShowDocuments(true);
+          }}
         />
       )}
 
