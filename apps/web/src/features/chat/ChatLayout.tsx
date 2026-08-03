@@ -865,10 +865,11 @@ export function ChatLayout() {
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
 
-  // W kanale ogłoszeniowym pisać mogą tylko administratorzy kanału. Blokujemy
-  // pole od razu, zamiast pozwolić napisać wiadomość i odrzucić ją przy wysyłce.
+  // W kanale ogłoszeniowym pisać mogą administratorzy kanału oraz osoby
+  // zarządzające kanałami w organizacji. Blokujemy pole od razu, zamiast
+  // pozwolić napisać wiadomość i odrzucić ją przy wysyłce.
   const readOnlyAnnouncement =
-    activeChannel?.kind === "ANNOUNCEMENT" && activeChannel.myRole !== "ADMIN";
+    activeChannel?.kind === "ANNOUNCEMENT" && !mozeZarzadzac(activeChannel);
 
   // Tryb wolny obowiązuje wszystkich poza administratorami kanału. Sam limit
   // egzekwuje serwer; tutaj tylko uprzedzamy, żeby odmowa nie była zaskoczeniem.
