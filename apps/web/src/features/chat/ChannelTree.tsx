@@ -575,7 +575,7 @@ function ContextMenu({
             <Star size={14} className={channel.favorite ? "fill-current" : ""} />,
             () => onToggleFavorite(channel.id, !channel.favorite)
           )}
-          {channel.myRole === "ADMIN" && (
+          {(channel.myRole === "ADMIN" || canManage) && (
             <>
               <div className="my-1 h-px bg-[var(--border)]" />
               {item("Ustawienia kanału", <Settings size={14} />, () => onOpenSettings(channel.id))}

@@ -155,3 +155,25 @@ export async function assertChannelMember(
   if (!member) notFound("Kanał nie istnieje");
   return member;
 }
+
+/**
+ * Prawo do zarządzania kanałem. Ma je administrator kanału oraz każda osoba
+ * z organizacyjnym `channel.manage`. Wcześniej liczyła się wyłącznie rola
+ * w kanale, a że nadawana była tylko twórcy, właściciel organizacji dostawał
+ * 403 na cudzym kanale i nie miał jak tego odblokować.
+ *
+ * Członkostwo w kanale jest nadal wymagane — administrator organizacji nie
+ * zagląda w ten sposób do prywatnych kanałów, do których go nie zaproszono.
+ */
+export async function assertChannelAdmin(
+  fastify: FastifyInstance,
+  userId: string,
+  channelId: string,
+  komunikat = "Tylko administrator kanału może wykonać tę operację"
+) {
+  const member = await assertChannelMember(fastify, userId, channelId);
+  if (member.role === "ADMIN") return member;
+  if (await hasOrgPermission(fastify, userId, member.channel.orgId, "channel.manage")) return member;
+  forbidden(komunikat);
+  return member;
+}

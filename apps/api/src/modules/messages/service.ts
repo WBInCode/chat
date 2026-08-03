@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { MessageDto, FileDto, LinkEmbedDto, ReactionGroupDto } from "@chatv2/shared";
-import { assertChannelMember, HttpError, forbidden, notFound } from "../../lib/authz.js";
+import { assertChannelMember, assertChannelAdmin, HttpError, forbidden, notFound } from "../../lib/authz.js";
 import { assertModuleEnabled } from "../../lib/modules.js";
 import { createFileService } from "../files/service.js";
 import { enqueueLinkUnfurl } from "../../lib/queue.js";
@@ -519,10 +519,12 @@ export function createMessageService(fastify: FastifyInstance) {
   async function setPinned(userId: string, messageId: string, pinned: boolean) {
     const message = await fastify.prisma.message.findUnique({ where: { id: messageId } });
     if (!message || message.deletedAt) notFound("Wiadomość nie istnieje");
-    const membership = await assertChannelMember(fastify, userId, message.channelId);
-    if (membership.role !== "ADMIN") {
-      forbidden("Tylko administrator kanału może przypinać wiadomości");
-    }
+    await assertChannelAdmin(
+      fastify,
+      userId,
+      message.channelId,
+      "Tylko administrator kanału może przypinać wiadomości"
+    );
 
     const updated = await fastify.prisma.message.update({
       where: { id: messageId },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UserPlus, X } from "lucide-react";
+import { UserPlus, X, Shield, ShieldOff } from "lucide-react";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { Avatar } from "../../components/Avatar.js";
 import { ConfirmDialog } from "../../components/Dialog.js";
@@ -33,6 +33,7 @@ export function ChannelMembersTab({ channelId, isDm, isAdmin, orgMembers }: Prop
   const [addTarget, setAddTarget] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<ChannelMemberDto | null>(null);
+  const [zmieniana, setZmieniana] = useState<string | null>(null);
 
   function reload() {
     void apiFetch<ChannelMemberDto[]>(`/channels/${channelId}/members`).then(setMembers);
@@ -64,6 +65,22 @@ export function ChannelMembersTab({ channelId, isDm, isAdmin, orgMembers }: Prop
     } catch (e) {
       setPendingRemoval(null);
       setError(e instanceof ApiError ? e.message : "Nie udało się usunąć członka.");
+    }
+  }
+
+  async function zmienRole(member: ChannelMemberDto, role: "ADMIN" | "MEMBER") {
+    setError(null);
+    setZmieniana(member.userId);
+    try {
+      await apiFetch(`/channels/${channelId}/members/${member.userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role })
+      });
+      reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Nie udało się zmienić roli.");
+    } finally {
+      setZmieniana(null);
     }
   }
 
@@ -122,6 +139,20 @@ export function ChannelMembersTab({ channelId, isDm, isAdmin, orgMembers }: Prop
                   <span className="rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)]">
                     Administrator
                   </span>
+                )}
+                {isAdmin && !isDm && (
+                  <button
+                    onClick={() => zmienRole(m, m.role === "ADMIN" ? "MEMBER" : "ADMIN")}
+                    disabled={zmieniana === m.userId}
+                    title={
+                      m.role === "ADMIN"
+                        ? "Odbierz uprawnienia administratora"
+                        : "Nadaj uprawnienia administratora"
+                    }
+                    className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/60 hover:text-[var(--accent)] disabled:opacity-40 group-hover:opacity-100 touch:h-9 touch:w-9 touch:opacity-100"
+                  >
+                    {m.role === "ADMIN" ? <ShieldOff size={14} /> : <Shield size={14} />}
+                  </button>
                 )}
                 {isAdmin && !isDm && m.role !== "ADMIN" && (
                   <button

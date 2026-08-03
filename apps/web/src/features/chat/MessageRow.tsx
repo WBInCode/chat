@@ -6,6 +6,7 @@ import { EmbedCard } from "./EmbedCard.js";
 import { Lightbox, type LightboxImage } from "./Lightbox.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
+import { useChatStore } from "../../stores/chat.js";
 import { renderMarkdown } from "./markdown.js";
 import { PollCard } from "./PollCard.js";
 import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
@@ -24,7 +25,6 @@ import {
   Pencil,
   Trash2,
   Sparkles,
-  MoreHorizontal,
   ShieldCheck
 } from "lucide-react";
 
@@ -139,10 +139,12 @@ export function MessageRow({
   const [fullPickerAnchor, setFullPickerAnchor] = useState<PickerAnchor | null>(null);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(m.content);
-  // Touch devices have no hover, so the action bar is revealed via an
-  // always-visible "⋯" button on mobile (see below); on desktop it appears
-  // on group-hover as before.
-  const [showActions, setShowActions] = useState(false);
+  // Godzina i pasek akcji pojawiają się wyłącznie po kliknięciu wiadomości.
+  // Wcześniej wyskakiwały na najechanie, przez co lista migotała przy każdym
+  // ruchu myszy. Wybór trzymamy w magazynie, żeby otwarta była tylko jedna.
+  const selectedMessageId = useChatStore((s) => s.selectedMessageId);
+  const setSelectedMessage = useChatStore((s) => s.setSelectedMessage);
+  const showActions = selectedMessageId === m.id;
   const isTemp = m.id.startsWith("temp-");
   const isDeleted = !m.content && !m.files?.length && m.contentType === "text";
   const isE2e = m.contentType === "e2e";
@@ -174,12 +176,32 @@ export function MessageRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoEditNonce]);
 
+  // Zwiniecie wiadomosci zabiera ze soba wybierak reakcji, inaczej zostawalby
+  // wiszacy nad trescia bez zadnego punktu zaczepienia.
+  useEffect(() => {
+    if (!showActions) setShowPicker(false);
+  }, [showActions]);
+
+  /**
+   * Klikanie w treść przełącza wybór, ale nie może przeszkadzać w korzystaniu
+   * z wiadomości: odnośniki, przyciski, pola i zaznaczanie tekstu działają jak
+   * dotąd.
+   */
+  function przelaczWybor(e: React.MouseEvent) {
+    if (editing || isTemp) return;
+    const cel = e.target as HTMLElement;
+    if (cel.closest("a, button, input, textarea, select, video, audio, [data-bez-wyboru]")) return;
+    if ((window.getSelection()?.toString().length ?? 0) > 0) return;
+    setSelectedMessage(showActions ? null : m.id);
+  }
+
   return (
     <div
       id={`message-${m.id}`}
-      className={`group relative rounded-lg transition-colors duration-500 hover:bg-[var(--border)]/30 ${
-        highlighted ? "bg-[var(--accent)]/15 ring-1 ring-[var(--accent)]/40" : ""
-      }`}
+      onClick={przelaczWybor}
+      className={`group relative rounded-lg transition-colors duration-500 ${
+        showActions ? "bg-[var(--border)]/30" : ""
+      } ${highlighted ? "bg-[var(--accent)]/15 ring-1 ring-[var(--accent)]/40" : ""}`}
     >
       {isFirstUnread && !inThread && (
         <div className="my-2 flex items-center gap-2">
@@ -227,23 +249,12 @@ export function MessageRow({
         </div>
       )}
 
-      {/* Hover actions */}
-      {!isTemp && !editing && (
+      {/* Pasek akcji: wyłącznie po kliknięciu wiadomości. */}
+      {!isTemp && !editing && showActions && (
         <>
-          {/* Mobile: no hover — reveal the action bar with a tap. */}
-          <button
-            type="button"
-            onClick={() => setShowActions((v) => !v)}
-            title="Akcje"
-            className="absolute -top-2 right-0 z-10 flex items-center justify-center rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] p-1 shadow-lg backdrop-blur-md touch:min-h-10 touch:min-w-10 md:hidden"
-          >
-            <Icon icon={MoreHorizontal} size={14} />
-          </button>
           <div
-            className={`animate-tool-pop origin-top-right absolute -top-3 right-0 z-10 items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 shadow-lg backdrop-blur-md group-hover:flex ${
-              showActions ? "flex" : "hidden"
-            }`}
-            onClick={() => setShowActions(false)}
+            className="animate-tool-pop origin-top-right absolute -top-3 right-0 z-10 flex items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 shadow-lg backdrop-blur-md"
+            data-bez-wyboru
           >
           {reactionsEnabled && (
             <button
@@ -346,7 +357,10 @@ export function MessageRow({
 
       {/* Reaction picker */}
       {showPicker && (
-        <div className="animate-spring-in origin-bottom-right absolute -top-11 right-0 z-20 flex items-center gap-0.5 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1.5 py-1 shadow-xl backdrop-blur-lg">
+        <div
+          data-bez-wyboru
+          className="animate-spring-in origin-bottom-right absolute -top-11 right-0 z-20 flex items-center gap-0.5 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1.5 py-1 shadow-xl backdrop-blur-lg"
+        >
           {ALLOWED_REACTIONS.map((emoji) => (
             <button
               key={emoji}
@@ -449,11 +463,11 @@ export function MessageRow({
             {m.editedAt && (
               <span className="ml-1 text-xs text-[var(--text-dim)]">(edytowano)</span>
             )}
-            {/* Grouped rows hide the header (author+time) — surface the
-                timestamp on hover so the send time is still discoverable. */}
-            {grouped && (
+            {/* Zgrupowane wiadomości nie mają nagłówka z autorem i godziną,
+                więc godzina pojawia się tu po kliknięciu. */}
+            {grouped && showActions && (
               <span
-                className="ml-1.5 hidden text-[11px] text-[var(--text-dim)] group-hover:inline"
+                className="ml-1.5 text-[11px] text-[var(--text-dim)]"
                 title={new Date(m.createdAt).toLocaleString("pl-PL")}
               >
                 {new Date(m.createdAt).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}

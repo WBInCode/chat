@@ -346,6 +346,15 @@ export function ChatLayout() {
     return role === "OWNER" || role === "ADMIN";
   })();
 
+  /**
+   * Prawo do zarządzania konkretnym kanałem. Rola administratora kanału trafia
+   * wyłącznie do twórcy, więc bez uwzględnienia uprawnień organizacji nikt inny
+   * nie mógłby ruszyć cudzego kanału. Odpowiada regule z assertChannelAdmin.
+   */
+  function mozeZarzadzac(channel: { myRole?: "ADMIN" | "MEMBER" } | null | undefined) {
+    return channel?.myRole === "ADMIN" || canManageChannels;
+  }
+
   useEffect(() => {
     void apiFetch<OrgItem[]>("/orgs").then((data) => {
       setOrgs(data);
@@ -1808,7 +1817,7 @@ export function ChatLayout() {
                       </button>
                     )}
                     {/* Disappearing messages (channel admin; any member in DMs) */}
-                    {(activeChannel.type === "DM" || activeChannel.myRole === "ADMIN") && (
+                    {(activeChannel.type === "DM" || mozeZarzadzac(activeChannel)) && (
                       <div className="relative flex items-center">
                         <button
                           onClick={() => setShowTtlMenu((v) => !v)}
@@ -1917,7 +1926,7 @@ export function ChatLayout() {
                             <Icon icon={Users} size={16} /> Członkowie kanału
                           </button>
                         )}
-                        {activeChannel.type !== "DM" && activeChannel.myRole === "ADMIN" && (
+                        {activeChannel.type !== "DM" && mozeZarzadzac(activeChannel) && (
                           <button
                             onClick={() => {
                               setShowChannelMenu(false);
@@ -1988,13 +1997,13 @@ export function ChatLayout() {
                 ) : (
                   <button
                     onClick={() => {
-                      if (activeChannel.myRole !== "ADMIN") return;
+                      if (!mozeZarzadzac(activeChannel)) return;
                       setTopicDraft(activeChannel.topic ?? "");
                       setEditingTopic(true);
                     }}
-                    className={`min-h-6 truncate py-1 text-left text-xs text-[var(--text-dim)] ${activeChannel.myRole === "ADMIN" ? "hover:text-[var(--text)]" : ""}`}
+                    className={`min-h-6 truncate py-1 text-left text-xs text-[var(--text-dim)] ${mozeZarzadzac(activeChannel) ? "hover:text-[var(--text)]" : ""}`}
                   >
-                    {activeChannel.topic || (activeChannel.myRole === "ADMIN" ? "+ Dodaj temat kanału" : "")}
+                    {activeChannel.topic || (mozeZarzadzac(activeChannel) ? "+ Dodaj temat kanału" : "")}
                   </button>
                 )}
               </div>
@@ -2245,7 +2254,7 @@ export function ChatLayout() {
                         onCopyLink={handleCopyLink}
                         onRemind={setReminderMessageId}
                         highlighted={m.id === highlightedMessageId}
-                        canPin={activeChannel?.myRole === "ADMIN"}
+                        canPin={mozeZarzadzac(activeChannel)}
                         isSaved={savedIds.has(m.id)}
                         isFirstUnread={m.id === firstUnreadId}
                         autoEditNonce={editRequest?.id === m.id ? editRequest.nonce : 0}
@@ -3007,7 +3016,7 @@ export function ChatLayout() {
                 <ChannelMembersTab
                   channelId={channel.id}
                   isDm={channel.type === "DM"}
-                  isAdmin={channel.myRole === "ADMIN"}
+                  isAdmin={mozeZarzadzac(channel)}
                   orgMembers={members}
                 />
               }

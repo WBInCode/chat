@@ -61,6 +61,9 @@ interface ChatState {
   /** Message id whose thread panel is open, or null. */
   openThreadId: string | null;
   setOpenThread: (messageId: string | null) => void;
+  /** Wiadomość rozwinięta kliknięciem: pokazuje godzinę i pasek akcji. */
+  selectedMessageId: string | null;
+  setSelectedMessage: (messageId: string | null) => void;
   setTyping: (channelId: string, userId: string, isTyping: boolean) => void;
   setPresence: (userId: string, status: "online" | "away" | "dnd" | "offline") => void;
   /** Replace the full read state for a channel (on load). */
@@ -78,9 +81,11 @@ export const useChatStore = create<ChatState>((set) => ({
   presenceStatus: {},
   readState: {},
   hasMoreOlder: {},
+  selectedMessageId: null,
+  setSelectedMessage: (messageId) => set({ selectedMessageId: messageId }),
 
   setActiveOrg: (orgId) => set({ activeOrgId: orgId, activeChannelId: null, channels: [] }),
-  setActiveChannel: (channelId) => set({ activeChannelId: channelId }),
+  setActiveChannel: (channelId) => set({ activeChannelId: channelId, selectedMessageId: null }),
   setChannels: (channels) => set({ channels }),
 
   applyChannelSettings: (channelId, settings) =>

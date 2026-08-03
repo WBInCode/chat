@@ -59,6 +59,11 @@ export const addChannelMemberSchema = z.object({
 });
 export type AddChannelMemberInput = z.infer<typeof addChannelMemberSchema>;
 
+export const setChannelMemberRoleSchema = z.object({
+  role: channelRoleSchema
+});
+export type SetChannelMemberRoleInput = z.infer<typeof setChannelMemberRoleSchema>;
+
 export const setChannelTopicSchema = z.object({
   topic: z.string().trim().max(250).nullable()
 });
