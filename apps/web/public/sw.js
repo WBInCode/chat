@@ -6,7 +6,12 @@
 // Vite, so we cache them at runtime (stale-while-revalidate) rather than
 // precaching a build manifest.
 
-const CACHE = "chatv2-shell-v1";
+// Bumping the version in this name drops the previous cache on activation.
+// v2 clears entries stored while nginx served .mjs files as
+// application/octet-stream. That bad Content-Type stayed pinned in Cache
+// Storage under an unchanged hashed filename, so the PDF preview kept failing
+// long after the server was fixed.
+const CACHE = "chatv2-shell-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/favicon-32.png"];
 
 self.addEventListener("install", (event) => {
@@ -33,6 +38,19 @@ function isStaticAsset(url) {
     url.pathname.startsWith("/assets/") ||
     /\.(?:js|css|woff2?|png|jpe?g|svg|webp|ico|webmanifest)$/.test(url.pathname)
   );
+}
+
+/**
+ * A response is only worth storing when its Content-Type matches the file
+ * extension. Without this guard a single bad header from the server sticks in
+ * Cache Storage forever and keeps breaking the app after the server is fixed.
+ */
+function responseLooksValid(url, res) {
+  if (!res || res.status !== 200) return false;
+  const typ = (res.headers.get("content-type") || "").toLowerCase();
+  if (/\.(?:js|mjs)$/.test(url.pathname)) return typ.includes("javascript") || typ.includes("ecmascript");
+  if (url.pathname.endsWith(".css")) return typ.includes("css");
+  return true;
 }
 
 self.addEventListener("fetch", (event) => {
@@ -66,10 +84,17 @@ self.addEventListener("fetch", (event) => {
         cache.match(req).then((cached) => {
           const network = fetch(req)
             .then((res) => {
-              if (res && res.status === 200) cache.put(req, res.clone());
+              if (responseLooksValid(url, res)) cache.put(req, res.clone());
               return res;
             })
             .catch(() => cached);
+          // Ignore a cached entry whose type does not match and wait for the
+          // network instead, so a poisoned cache cannot serve the bad response
+          // indefinitely.
+          if (cached && !responseLooksValid(url, cached)) {
+            cache.delete(req);
+            return network;
+          }
           return cached || network;
         })
       )
