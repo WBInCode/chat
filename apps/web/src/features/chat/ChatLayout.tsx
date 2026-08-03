@@ -50,6 +50,7 @@ import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
 import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, ShieldAlert, Timer, FileText } from "lucide-react";
 import { CreateChannelModal } from "./CreateChannelModal.js";
+import { CategorySettingsModal } from "./CategorySettingsModal.js";
 import { renderMarkdown } from "./markdown.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
 
@@ -237,6 +238,10 @@ export function ChatLayout() {
   const [createChannelCategoryId, setCreateChannelCategoryId] = useState<string | null>(null);
   const [showBrowseChannels, setShowBrowseChannels] = useState(false);
   const [categories, setCategories] = useState<ChannelCategoryDto[]>([]);
+  const [categoryModal, setCategoryModal] = useState<{
+    open: boolean;
+    category: ChannelCategoryDto | null;
+  }>({ open: false, category: null });
   const [settingsChannelId, setSettingsChannelId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogRequest | null>(null);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"overview" | "members" | "permissions">(
@@ -662,44 +667,11 @@ export function ChatLayout() {
 
   function createCategory() {
     if (!activeOrgId) return;
-    setDialog({
-      kind: "prompt",
-      title: "Nowa kategoria",
-      label: "Nazwa kategorii",
-      placeholder: "np. Projekty",
-      confirmLabel: "Utwórz",
-      onConfirm: async (name) => {
-        const created = await apiFetch<ChannelCategoryDto>(`/orgs/${activeOrgId}/categories`, {
-          method: "POST",
-          body: JSON.stringify({ name })
-        });
-        setCategories((prev) => [...prev, created]);
-        setDialog(null);
-        showToast(`Kategoria „${created.name}" utworzona.`);
-      }
-    });
+    setCategoryModal({ open: true, category: null });
   }
 
   function renameCategory(category: ChannelCategoryDto) {
-    setDialog({
-      kind: "prompt",
-      title: "Zmień nazwę kategorii",
-      label: "Nazwa kategorii",
-      initialValue: category.name,
-      confirmLabel: "Zapisz",
-      onConfirm: async (name) => {
-        if (name === category.name) {
-          setDialog(null);
-          return;
-        }
-        const updated = await apiFetch<ChannelCategoryDto>(`/categories/${category.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ name })
-        });
-        setCategories((prev) => prev.map((c) => (c.id === category.id ? updated : c)));
-        setDialog(null);
-      }
-    });
+    setCategoryModal({ open: true, category });
   }
 
   function deleteCategory(category: ChannelCategoryDto) {
@@ -2985,6 +2957,8 @@ export function ChatLayout() {
           orgId={activeOrgId}
           categories={categories}
           initialCategoryId={createChannelCategoryId}
+          orgMembers={members}
+          currentUserId={user?.id ?? ""}
           onClose={() => setShowCreateChannel(false)}
           onCreated={(channelId) => {
             setShowCreateChannel(false);
@@ -2992,6 +2966,29 @@ export function ChatLayout() {
               setChannels(data);
               setActiveChannel(channelId);
             });
+          }}
+        />
+      )}
+
+      {categoryModal.open && activeOrgId && (
+        <CategorySettingsModal
+          orgId={activeOrgId}
+          category={categoryModal.category}
+          orgMembers={members}
+          currentUserId={user?.id ?? ""}
+          onClose={() => setCategoryModal({ open: false, category: null })}
+          onSaved={(saved) => {
+            setCategories((prev) =>
+              prev.some((c) => c.id === saved.id)
+                ? prev.map((c) => (c.id === saved.id ? saved : c))
+                : [...prev, saved]
+            );
+            setCategoryModal({ open: false, category: null });
+            showToast(
+              categoryModal.category
+                ? `Kategoria „${saved.name}" zapisana.`
+                : `Kategoria „${saved.name}" utworzona.`
+            );
           }}
         />
       )}
