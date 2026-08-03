@@ -44,6 +44,7 @@ export const WS_SERVER_EVENTS = {
   VoiceIce: "voice:ice",
   VoicePeerLeft: "voice:peer-left",
   VoiceMuteUpdate: "voice:mute-update",
+  VoiceEnded: "voice:ended",
   Error: "error"
 } as const;
 
@@ -167,5 +168,7 @@ export interface ServerToClientEvents {
   [WS_SERVER_EVENTS.VoiceIce]: (payload: { channelId: string; fromUserId: string; candidate: string }) => void;
   [WS_SERVER_EVENTS.VoicePeerLeft]: (payload: { channelId: string; userId: string }) => void;
   [WS_SERVER_EVENTS.VoiceMuteUpdate]: (payload: { channelId: string; userId: string; muted: boolean }) => void;
+  /** Serwer zamknął rozmowę, np. gdy nikt nie dołączył w wyznaczonym czasie. */
+  [WS_SERVER_EVENTS.VoiceEnded]: (payload: { channelId: string; reason: "no-answer" }) => void;
   [WS_SERVER_EVENTS.Error]: (payload: { code: string; message: string }) => void;
 }

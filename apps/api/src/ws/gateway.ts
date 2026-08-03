@@ -24,6 +24,7 @@ import { createMessageService } from "../modules/messages/service.js";
 import { HttpError, assertChannelMember, assertOrgPermission } from "../lib/authz.js";
 import { assertModuleEnabled } from "../lib/modules.js";
 import { setWsConnectionCount } from "../lib/metrics.js";
+import { enqueueVoiceTimeout, VOICE_NO_ANSWER_MS } from "../lib/queue.js";
 
 interface SocketData {
   userId: string;
@@ -182,8 +183,18 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
     await setPresence(userId, "online");
 
     // Heartbeat refresh of presence TTL.
+    // Odswieza tez klucze pokoi glosowych, w ktorych siedzi to gniazdo.
+    // Bez tego stan rozmowy wygasal po 60 sekundach mimo trwajacego polaczenia:
+    // lista uczestnikow pustoszala, wyciszenia znikaly, a limit czterech osob
+    // przestawal obowiazywac.
     const heartbeat = setInterval(() => {
       void fastify.redis.expire(`presence:${userId}`, PRESENCE_TTL_SECONDS);
+      for (const room of socket.rooms) {
+        if (!room.startsWith("voice:")) continue;
+        const channelId = room.slice("voice:".length);
+        void fastify.redis.expire(voiceUsersKey(channelId), VOICE_TTL_SECONDS);
+        void fastify.redis.expire(voiceMutedKey(channelId), VOICE_TTL_SECONDS);
+      }
     }, 25_000);
 
     socket.on(WS_CLIENT_EVENTS.MessageSend, async (payload) => {
@@ -334,6 +345,22 @@ export default fp(async function wsGateway(fastify: FastifyInstance) {
         await fastify.redis.expire(voiceUsersKey(channelId), VOICE_TTL_SECONDS);
         await fastify.redis.expire(voiceMutedKey(channelId), VOICE_TTL_SECONDS);
         await broadcastVoiceParticipants(channelId);
+
+        // Pusty pokoj oznacza poczatek rozmowy. Dotad nikt poza samym
+        // zakladajacym nie mial skad wiedziec, ze rozmowa trwa.
+        if (existing.length === 0) {
+          const autor = await fastify.prisma.user.findUnique({
+            where: { id: userId },
+            select: { displayName: true }
+          });
+          const wiadomosc = await messages.sendSystemMessage(
+            channelId,
+            userId,
+            `Rozmowa głosowa rozpoczęta przez ${autor?.displayName ?? "użytkownika"}`
+          );
+          io.to(`channel:${channelId}`).emit(WS_SERVER_EVENTS.MessageNew, wiadomosc);
+          await enqueueVoiceTimeout({ channelId, starterId: userId }, VOICE_NO_ANSWER_MS);
+        }
       } catch (err) {
         socket.emit(WS_SERVER_EVENTS.Error, {
           code: err instanceof HttpError ? err.code : "VOICE_JOIN_FAILED",

@@ -2202,6 +2202,11 @@ export function ChatLayout() {
                     !newDay &&
                     prev &&
                     prev.authorId === m.authorId &&
+                    // Notka systemowa przerywa serię: bez tego wiadomość spod
+                    // niej traciłaby nagłówek i wyglądała na ciąg dalszy tej
+                    // sprzed notki.
+                    prev.contentType !== "system" &&
+                    m.contentType !== "system" &&
                     new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() <
                       5 * 60 * 1000;
                   const author = memberById.get(m.authorId);
@@ -3080,6 +3085,10 @@ export function ChatLayout() {
           myUserId={user.id}
           members={members}
           onClose={() => setInVoiceChannelId(null)}
+          onEnded={(powod) => {
+            setInVoiceChannelId(null);
+            showToast(powod);
+          }}
         />
       )}
     </div>
