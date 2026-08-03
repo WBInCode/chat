@@ -124,6 +124,25 @@ export async function assertOrgPermission(
   return membership;
 }
 
+/** Wariant nierzucający — do rozgałęzień widoczności, nie do bramek dostępu. */
+export async function hasOrgPermission(
+  fastify: FastifyInstance,
+  userId: string,
+  orgId: string,
+  action: OrgAction
+): Promise<boolean> {
+  const membership = await fastify.prisma.membership.findUnique({
+    where: { userId_orgId: { userId, orgId } }
+  });
+  if (!membership || membership.disabledAt) return false;
+  let customRolePermissions: string[] | null = null;
+  if (membership.customRoleId) {
+    const customRole = await fastify.prisma.role.findUnique({ where: { id: membership.customRoleId } });
+    customRolePermissions = customRole?.permissions ?? null;
+  }
+  return can(membership.role as OrgRole, action, customRolePermissions);
+}
+
 export async function assertChannelMember(
   fastify: FastifyInstance,
   userId: string,

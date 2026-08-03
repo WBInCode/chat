@@ -9,18 +9,38 @@ export type ChannelRole = z.infer<typeof channelRoleSchema>;
 export const channelKindSchema = z.enum(["TEXT", "ANNOUNCEMENT"]);
 export type ChannelKind = z.infer<typeof channelKindSchema>;
 
+// Polskie litery sa czescia alfabetu, wiec musza byc dozwolone. Wczesniejszy
+// zakres [a-z0-9-] wycinal je po cichu przy normalizacji na froncie.
+const CHANNEL_NAME_ALLOWED = "a-z0-9ąćęłńóśźż-";
+const CHANNEL_NAME_PATTERN = new RegExp(`^[${CHANNEL_NAME_ALLOWED}]+$`);
+
+/**
+ * Jedno zrodlo prawdy dla nazwy kanalu. Front normalizuje tym samym kodem,
+ * ktorym backend waliduje, wiec oba nie moga sie rozjechac.
+ */
+export function normalizeChannelName(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(new RegExp(`[^${CHANNEL_NAME_ALLOWED}]`, "g"), "");
+}
+
 export const channelNameSchema = z
   .string()
   .trim()
   .min(2)
   .max(80)
-  .regex(/^[a-z0-9-]+$/, "Tylko małe litery, cyfry i myślniki");
+  .regex(CHANNEL_NAME_PATTERN, "Tylko małe litery, cyfry i myślniki");
 
 export const createChannelSchema = z.object({
   name: channelNameSchema,
   type: z.enum(["PUBLIC", "PRIVATE"]),
   kind: channelKindSchema.default("TEXT"),
-  categoryId: z.string().uuid().nullish()
+  categoryId: z.string().uuid().nullish(),
+  // Osoby dodawane od razu przy tworzeniu kanału prywatnego. Dla kanału
+  // publicznego pole jest bez znaczenia, bo dołącza cała organizacja.
+  memberIds: z.array(z.string().uuid()).max(500).optional()
 });
 export type CreateChannelInput = z.infer<typeof createChannelSchema>;
 
@@ -67,11 +87,25 @@ export type UpdateChannelInput = z.infer<typeof updateChannelSchema>;
 export const SLOWMODE_OPTIONS = [0, 5, 10, 15, 30, 60, 120, 300, 600, 900, 3600, 7200, 21600] as const;
 
 export const createCategorySchema = z.object({
-  name: z.string().trim().min(1).max(60)
+  name: z.string().trim().min(1).max(60),
+  private: z.boolean().default(false),
+  // Osoby z dostępem do kategorii prywatnej. Twórca dopisywany jest zawsze.
+  memberIds: z.array(z.string().uuid()).max(500).optional()
 });
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 
-export const renameCategorySchema = createCategorySchema;
+export const updateCategorySchema = z
+  .object({
+    name: z.string().trim().min(1).max(60),
+    private: z.boolean(),
+    memberIds: z.array(z.string().uuid()).max(500)
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: "Brak pól do zmiany" });
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+
+/** @deprecated Zastąpione przez updateCategorySchema. */
+export const renameCategorySchema = z.object({ name: z.string().trim().min(1).max(60) });
 
 // Układ listy kanałów wspólny dla całej organizacji — ustawiają go administratorzy,
 // odpowiednik przeciągania kanałów i kategorii w Discordzie.
@@ -94,6 +128,9 @@ export interface ChannelCategoryDto {
   orgId: string;
   name: string;
   position: number;
+  private: boolean;
+  /** Wypełniane tylko dla kategorii prywatnych, dla publicznych pusta lista. */
+  memberIds: string[];
 }
 
 export interface BrowseChannelDto {

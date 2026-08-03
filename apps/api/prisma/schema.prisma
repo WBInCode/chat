@@ -99,6 +99,7 @@ model User {
 
   memberships    Membership[]
   channelMembers ChannelMember[]
+  categoryMembers ChannelCategoryMember[]
   messages       Message[]
   sessions       Session[]
   recoveryCodes  RecoveryCode[]
@@ -281,13 +282,33 @@ model ChannelCategory {
   orgId     String
   name      String
   position  Int      @default(0)
+  // Kategoria prywatna jest widoczna wyłącznie dla osób z listy members
+  // oraz dla uprawnienia channel.manage. Kanały w środku muszą być prywatne,
+  // inaczej publiczny kanał przeciekałby spod ukrytego nagłówka.
+  private   Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org      Organization            @relation(fields: [orgId], references: [id], onDelete: Cascade)
   channels Channel[]
+  members  ChannelCategoryMember[]
 
   @@index([orgId, position])
   @@map("channel_categories")
+}
+
+// Dostęp do kategorii prywatnej. Dla kategorii publicznych tabela jest pusta.
+model ChannelCategoryMember {
+  id         String   @id @default(uuid())
+  categoryId String
+  userId     String
+  createdAt  DateTime @default(now())
+
+  category ChannelCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, userId])
+  @@index([userId])
+  @@map("channel_category_members")
 }
 
 model Channel {

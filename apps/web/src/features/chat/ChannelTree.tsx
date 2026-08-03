@@ -12,7 +12,7 @@ import {
   Bell,
   Trash2,
   FolderPlus,
-  Pencil,
+  MoreVertical,
   Archive
 } from "lucide-react";
 import type { ChannelCategoryDto } from "@chatv2/shared";
@@ -316,16 +316,29 @@ export function ChannelTree({
                   strokeWidth={2.5}
                   className={`shrink-0 transition-transform duration-150 ${isCollapsed ? "-rotate-90" : ""}`}
                 />
+                {category.private && <Lock size={10} className="shrink-0" />}
                 <span className="truncate">{category.name}</span>
               </button>
               {canManage && (
-                <button
-                  onClick={() => onCreateChannel(category.id)}
-                  title={`Nowy kanał w kategorii ${category.name}`}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--accent)] group-hover:opacity-100 touch:opacity-100"
-                >
-                  <Plus size={13} />
-                </button>
+                <div className="flex shrink-0 items-center">
+                  <button
+                    onClick={() => onCreateChannel(category.id)}
+                    title={`Nowy kanał w kategorii ${category.name}`}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--accent)] group-hover:opacity-100 touch:opacity-100"
+                  >
+                    <Plus size={13} />
+                  </button>
+                  {/* Widoczny odpowiednik menu spod prawego przycisku myszy.
+                      Bez niego zarządzanie kategorią było nie do odnalezienia. */}
+                  <button
+                    onClick={(e) => openMenu(e, { kind: "category", category })}
+                    title={`Zarządzaj kategorią ${category.name}`}
+                    aria-label={`Zarządzaj kategorią ${category.name}`}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--text)] group-hover:opacity-100 touch:opacity-100"
+                  >
+                    <MoreVertical size={13} />
+                  </button>
+                </div>
               )}
             </div>
 
@@ -372,6 +385,7 @@ export function ChannelTree({
           onOpenSettings={onOpenSettings}
           onDelete={onDelete}
           onArchive={onArchive}
+          onCreateChannel={onCreateChannel}
           onRenameCategory={onRenameCategory}
           onDeleteCategory={onDeleteCategory}
         />
@@ -469,6 +483,7 @@ interface ContextMenuProps {
   onOpenSettings: (channelId: string) => void;
   onDelete: (channel: ChannelItem) => void;
   onArchive: (channel: ChannelItem) => void;
+  onCreateChannel: (categoryId: string | null) => void;
   onRenameCategory: (category: ChannelCategoryDto) => void;
   onDeleteCategory: (category: ChannelCategoryDto) => void;
 }
@@ -482,6 +497,7 @@ function ContextMenu({
   onOpenSettings,
   onDelete,
   onArchive,
+  onCreateChannel,
   onRenameCategory,
   onDeleteCategory
 }: ContextMenuProps) {
@@ -577,7 +593,8 @@ function ContextMenu({
 
       {category && canManage && (
         <>
-          {item("Zmień nazwę kategorii", <Pencil size={14} />, () => onRenameCategory(category))}
+          {item("Ustawienia kategorii", <Settings size={14} />, () => onRenameCategory(category))}
+          {item("Nowy kanał w kategorii", <Plus size={14} />, () => onCreateChannel(category.id))}
           <div className="my-1 h-px bg-[var(--border)]" />
           {item("Usuń kategorię", <Trash2 size={14} />, () => onDeleteCategory(category), "danger")}
         </>

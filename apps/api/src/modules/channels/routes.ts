@@ -13,12 +13,13 @@ import {
   updateChannelSchema,
   updateChannelLayoutSchema,
   createCategorySchema,
-  renameCategorySchema
+  updateCategorySchema
 } from "@chatv2/shared";
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import {
   assertOrgMember,
   assertOrgPermission,
+  hasOrgPermission,
   assertChannelMember,
   forbidden,
   notFound
@@ -33,8 +34,7 @@ import { env } from "../../config/env.js";
  * Kasuje obiekty w magazynie należące do kanału. Wywoływane PRZED usunięciem
  * wiersza kanału — kaskada w bazie zabrałaby klucze i bloby zostałyby
  * osierocone w S3 na zawsze.
- */
-async function purgeChannelFiles(fastify: FastifyInstance, channelId: string) {
+ */async function purgeChannelFiles(fastify: FastifyInstance, channelId: string) {
   const files = await fastify.prisma.file.findMany({
     where: { channelId },
     select: { key: true, thumbKey: true, previewKey: true }
@@ -50,6 +50,36 @@ async function purgeChannelFiles(fastify: FastifyInstance, channelId: string) {
     fastify.log.warn({ channelId, failed, total: keys.length }, "Część plików kanału została w magazynie");
   }
   return keys.length - failed;
+}
+
+/** Usuwa duplikaty zachowując kolejność. */
+function unique(ids: string[]): string[] {
+  return [...new Set(ids)];
+}
+
+/** Ile ze wskazanych osób faktycznie należy do organizacji. */
+async function countOrgMembers(fastify: FastifyInstance, orgId: string, userIds: string[]) {
+  return fastify.prisma.membership.count({
+    where: { orgId, userId: { in: userIds }, disabledAt: null }
+  });
+}
+
+function toCategoryDto(category: {
+  id: string;
+  orgId: string;
+  name: string;
+  position: number;
+  private: boolean;
+  members?: Array<{ userId: string }>;
+}) {
+  return {
+    id: category.id,
+    orgId: category.orgId,
+    name: category.name,
+    position: category.position,
+    private: category.private,
+    memberIds: (category.members ?? []).map((m) => m.userId)
+  };
 }
 
 export default async function channelRoutes(fastify: FastifyInstance) {
@@ -167,11 +197,31 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     if (targetCategoryIds.length > 0) {
       const valid = await fastify.prisma.channelCategory.findMany({
         where: { orgId, id: { in: targetCategoryIds } },
-        select: { id: true }
+        select: { id: true, private: true }
       });
       const validIds = new Set(valid.map((c) => c.id));
       if (targetCategoryIds.some((id) => !validIds.has(id))) {
         return sendError(reply, 400, "CATEGORY_NOT_FOUND", "Wskazana kategoria nie istnieje");
+      }
+
+      // Publiczny kanał pod prywatnym nagłówkiem byłby dostępny dla całej
+      // organizacji, więc przeciągnięcie go tam musi zostać odrzucone.
+      const privateIds = new Set(valid.filter((c) => c.private).map((c) => c.id));
+      if (privateIds.size > 0) {
+        const movedToPrivate = input.channels
+          .filter((c) => c.categoryId !== null && privateIds.has(c.categoryId))
+          .map((c) => c.id);
+        const publicMoved = await fastify.prisma.channel.count({
+          where: { id: { in: movedToPrivate }, type: "PUBLIC" }
+        });
+        if (publicMoved > 0) {
+          return sendError(
+            reply,
+            400,
+            "CATEGORY_IS_PRIVATE",
+            "Kanał publiczny nie może trafić do kategorii prywatnej"
+          );
+        }
       }
     }
 
@@ -203,16 +253,24 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
-  /** Lista kategorii kanałów organizacji. */
+  /**
+   * Lista kategorii kanałów organizacji. Kategorie prywatne widzą wyłącznie
+   * ich członkowie oraz osoby z uprawnieniem channel.manage.
+   */
   fastify.get("/orgs/:orgId/categories", async (request) => {
     const { orgId } = request.params as { orgId: string };
-    await assertOrgMember(fastify, request.user!.id, orgId);
+    const userId = request.user!.id;
+    await assertOrgMember(fastify, userId, orgId);
+    const canManage = await hasOrgPermission(fastify, userId, orgId, "channel.manage");
 
     const categories = await fastify.prisma.channelCategory.findMany({
-      where: { orgId },
-      orderBy: [{ position: "asc" }, { createdAt: "asc" }]
+      where: canManage
+        ? { orgId }
+        : { orgId, OR: [{ private: false }, { members: { some: { userId } } }] },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+      include: { members: { select: { userId: true } } }
     });
-    return categories.map((c) => ({ id: c.id, orgId: c.orgId, name: c.name, position: c.position }));
+    return categories.map(toCategoryDto);
   });
 
   /** Utwórz kategorię (wymaga channel.manage). Nowa kategoria ląduje na końcu listy. */
@@ -227,28 +285,44 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       return sendError(reply, 409, "CATEGORY_EXISTS", "Kategoria o tej nazwie już istnieje");
     }
 
+    // Twórca zawsze ma dostęp, inaczej mógłby ukryć kategorię sam przed sobą.
+    const memberIds = input.private ? unique([userId, ...(input.memberIds ?? [])]) : [];
+    if (memberIds.length > 0) {
+      const valid = await countOrgMembers(fastify, orgId, memberIds);
+      if (valid !== memberIds.length) {
+        return sendError(reply, 400, "MEMBER_NOT_IN_ORG", "Wskazana osoba nie należy do tej organizacji");
+      }
+    }
+
     const last = await fastify.prisma.channelCategory.findFirst({
       where: { orgId },
       orderBy: { position: "desc" },
       select: { position: true }
     });
     const created = await fastify.prisma.channelCategory.create({
-      data: { orgId, name: input.name, position: (last?.position ?? -1) + 1 }
+      data: {
+        orgId,
+        name: input.name,
+        private: input.private,
+        position: (last?.position ?? -1) + 1,
+        members: { create: memberIds.map((id) => ({ userId: id })) }
+      },
+      include: { members: { select: { userId: true } } }
     });
 
     await logAudit(fastify, {
       orgId,
       actorId: userId,
       action: "category.created",
-      meta: { categoryId: created.id, name: created.name },
+      meta: { categoryId: created.id, name: created.name, private: created.private },
       ip: request.ip
     });
 
     fastify.io.to(`org:${orgId}`).emit("channels:layout-updated", { orgId });
-    return reply.code(201).send({ id: created.id, orgId, name: created.name, position: created.position });
+    return reply.code(201).send(toCategoryDto(created));
   });
 
-  /** Zmień nazwę kategorii (wymaga channel.manage). */
+  /** Zmień nazwę, prywatność lub listę osób kategorii (wymaga channel.manage). */
   fastify.patch("/categories/:categoryId", async (request, reply) => {
     const { categoryId } = request.params as { categoryId: string };
     const userId = request.user!.id;
@@ -256,30 +330,84 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     const category = await fastify.prisma.channelCategory.findUnique({ where: { id: categoryId } });
     if (!category) notFound("Kategoria nie istnieje");
     await assertOrgPermission(fastify, userId, category.orgId, "channel.manage");
-    const input = parseOrThrow(renameCategorySchema, request.body);
+    const input = parseOrThrow(updateCategorySchema, request.body);
 
-    const duplicate = await fastify.prisma.channelCategory.findFirst({
-      where: { orgId: category.orgId, name: input.name, id: { not: categoryId } }
-    });
-    if (duplicate) {
-      return sendError(reply, 409, "CATEGORY_EXISTS", "Kategoria o tej nazwie już istnieje");
+    if (input.name !== undefined) {
+      const duplicate = await fastify.prisma.channelCategory.findFirst({
+        where: { orgId: category.orgId, name: input.name, id: { not: categoryId } }
+      });
+      if (duplicate) {
+        return sendError(reply, 409, "CATEGORY_EXISTS", "Kategoria o tej nazwie już istnieje");
+      }
     }
 
-    const updated = await fastify.prisma.channelCategory.update({
-      where: { id: categoryId },
-      data: { name: input.name }
+    const willBePrivate = input.private ?? category.private;
+
+    // Publiczny kanał pod ukrytym nagłówkiem byłby widoczny dla całej
+    // organizacji, więc kategoria prywatna nie może ich zawierać.
+    if (willBePrivate) {
+      const publicInside = await fastify.prisma.channel.count({
+        where: { categoryId, type: "PUBLIC" }
+      });
+      if (publicInside > 0) {
+        return sendError(
+          reply,
+          409,
+          "CATEGORY_HAS_PUBLIC_CHANNELS",
+          "Kategoria zawiera kanały publiczne. Zmień je na prywatne albo przenieś poza tę kategorię."
+        );
+      }
+    }
+
+    let memberIds: string[] | null = null;
+    if (willBePrivate && input.memberIds !== undefined) {
+      memberIds = unique([userId, ...input.memberIds]);
+      const valid = await countOrgMembers(fastify, category.orgId, memberIds);
+      if (valid !== memberIds.length) {
+        return sendError(reply, 400, "MEMBER_NOT_IN_ORG", "Wskazana osoba nie należy do tej organizacji");
+      }
+    }
+
+    const updated = await fastify.prisma.$transaction(async (tx) => {
+      // Zdjęcie prywatności czyści listę — kategoria publiczna nie ma członków.
+      if (input.private === false) {
+        await tx.channelCategoryMember.deleteMany({ where: { categoryId } });
+      } else if (memberIds) {
+        await tx.channelCategoryMember.deleteMany({
+          where: { categoryId, userId: { notIn: memberIds } }
+        });
+        await tx.channelCategoryMember.createMany({
+          data: memberIds.map((id) => ({ categoryId, userId: id })),
+          skipDuplicates: true
+        });
+      } else if (input.private === true) {
+        // Włączenie prywatności bez podanej listy: dostęp dostaje autor zmiany.
+        await tx.channelCategoryMember.createMany({
+          data: [{ categoryId, userId }],
+          skipDuplicates: true
+        });
+      }
+
+      return tx.channelCategory.update({
+        where: { id: categoryId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.private !== undefined ? { private: input.private } : {})
+        },
+        include: { members: { select: { userId: true } } }
+      });
     });
 
     await logAudit(fastify, {
       orgId: category.orgId,
       actorId: userId,
-      action: "category.renamed",
-      meta: { categoryId, name: input.name },
+      action: "category.updated",
+      meta: { categoryId, name: updated.name, private: updated.private },
       ip: request.ip
     });
 
     fastify.io.to(`org:${category.orgId}`).emit("channels:layout-updated", { orgId: category.orgId });
-    return reply.send({ id: updated.id, orgId: updated.orgId, name: updated.name, position: updated.position });
+    return reply.send(toCategoryDto(updated));
   });
 
   /**
@@ -325,13 +453,40 @@ export default async function channelRoutes(fastify: FastifyInstance) {
 
     // Kategoria musi należeć do tej samej organizacji, inaczej kanał powstałby
     // od razu niewidoczny dla własnego zespołu.
+    let categoryMemberIds: string[] = [];
     if (input.categoryId) {
       const category = await fastify.prisma.channelCategory.findUnique({
         where: { id: input.categoryId },
-        select: { orgId: true }
+        select: { orgId: true, private: true, members: { select: { userId: true } } }
       });
       if (!category || category.orgId !== orgId) {
         return sendError(reply, 400, "CATEGORY_NOT_FOUND", "Wskazana kategoria nie istnieje");
+      }
+      if (category.private) {
+        if (input.type !== "PRIVATE") {
+          return sendError(
+            reply,
+            400,
+            "CATEGORY_IS_PRIVATE",
+            "W kategorii prywatnej można tworzyć wyłącznie kanały prywatne"
+          );
+        }
+        // Kanał dziedziczy dostęp kategorii, inaczej jej członkowie widzieliby
+        // nagłówek bez zawartości.
+        categoryMemberIds = category.members.map((m) => m.userId);
+      }
+    }
+
+    // Osoby wskazane przy tworzeniu kanału prywatnego. Kanał publiczny i tak
+    // przyjmuje całą organizację, więc lista nie ma tam zastosowania.
+    const invited =
+      input.type === "PRIVATE"
+        ? unique([...categoryMemberIds, ...(input.memberIds ?? [])]).filter((id) => id !== userId)
+        : [];
+    if (invited.length > 0) {
+      const valid = await countOrgMembers(fastify, orgId, invited);
+      if (valid !== invited.length) {
+        return sendError(reply, 400, "MEMBER_NOT_IN_ORG", "Wskazana osoba nie należy do tej organizacji");
       }
     }
 
@@ -365,6 +520,11 @@ export default async function channelRoutes(fastify: FastifyInstance) {
             .map((m) => ({ channelId: created.id, userId: m.userId, role: "MEMBER" as const })),
           skipDuplicates: true
         });
+      } else if (invited.length > 0) {
+        await tx.channelMember.createMany({
+          data: invited.map((id) => ({ channelId: created.id, userId: id, role: "MEMBER" as const })),
+          skipDuplicates: true
+        });
       }
       return created;
     });
@@ -373,7 +533,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       orgId,
       actorId: userId,
       action: "channel.create",
-      meta: { name: input.name, type: input.type },
+      meta: { name: input.name, type: input.type, invited: invited.length },
       ip: request.ip
     });
 
@@ -768,10 +928,18 @@ export default async function channelRoutes(fastify: FastifyInstance) {
     if (input.categoryId) {
       const category = await fastify.prisma.channelCategory.findUnique({
         where: { id: input.categoryId },
-        select: { orgId: true }
+        select: { orgId: true, private: true }
       });
       if (!category || category.orgId !== orgId) {
         return sendError(reply, 400, "CATEGORY_NOT_FOUND", "Wskazana kategoria nie istnieje");
+      }
+      if (category.private && membership.channel.type === "PUBLIC") {
+        return sendError(
+          reply,
+          400,
+          "CATEGORY_IS_PRIVATE",
+          "Kanał publiczny nie może trafić do kategorii prywatnej"
+        );
       }
     }
 

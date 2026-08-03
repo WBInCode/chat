@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, Hash, Megaphone, Timer, FolderTree, Trash2, AlertTriangle } from "lucide-react";
 import type { ChannelCategoryDto } from "@chatv2/shared";
-import { SLOWMODE_OPTIONS } from "@chatv2/shared";
+import { SLOWMODE_OPTIONS, normalizeChannelName } from "@chatv2/shared";
 import type { ChannelItem } from "../../stores/chat.js";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { ConfirmDialog } from "../../components/Dialog.js";
@@ -63,7 +63,7 @@ export function ChannelSettingsModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const normalizedName = name.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  const normalizedName = normalizeChannelName(name);
   const dirty =
     normalizedName !== (channel.name ?? "") ||
     topic !== (channel.topic ?? "") ||
