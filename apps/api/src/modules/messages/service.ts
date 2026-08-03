@@ -1,6 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import type { MessageDto, FileDto, LinkEmbedDto, ReactionGroupDto } from "@chatv2/shared";
-import { assertChannelMember, assertChannelAdmin, HttpError, forbidden, notFound } from "../../lib/authz.js";
+import {
+  assertChannelMember,
+  assertChannelAdmin,
+  hasOrgPermission,
+  HttpError,
+  forbidden,
+  notFound
+} from "../../lib/authz.js";
 import { assertModuleEnabled } from "../../lib/modules.js";
 import { createFileService } from "../files/service.js";
 import { enqueueLinkUnfurl } from "../../lib/queue.js";
@@ -255,10 +262,14 @@ export function createMessageService(fastify: FastifyInstance) {
     }
     const isE2e = contentTypeInput === "e2e";
 
-    // Kanał ogłoszeniowy: czytają wszyscy członkowie, pisać mogą tylko
-    // administratorzy kanału. Odpowiednik discordowego kanału ogłoszeń.
+    // Kanał ogłoszeniowy: czytają wszyscy członkowie, pisać mogą administratorzy
+    // kanału oraz osoby z organizacyjnym channel.manage. Bez tej drugiej ścieżki
+    // właściciel organizacji musiałby najpierw nadawać sobie rolę w kanale.
     if (member.channel.kind === "ANNOUNCEMENT" && member.role !== "ADMIN") {
-      forbidden("To kanał ogłoszeniowy. Pisać mogą tylko administratorzy kanału.");
+      const zarzadza = await hasOrgPermission(fastify, userId, member.channel.orgId, "channel.manage");
+      if (!zarzadza) {
+        forbidden("To kanał ogłoszeniowy. Pisać mogą tylko administratorzy kanału.");
+      }
     }
 
     // Slowmode: minimalny odstęp między kolejnymi wiadomościami tego samego

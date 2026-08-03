@@ -112,6 +112,31 @@ describe("uprawnienie organizacji zamiast roli w kanale", () => {
     });
     expect(przywroc.statusCode).toBe(200);
   });
+
+  it("wlasciciel organizacji pisze w cudzym kanale ogloszeniowym bez nadawania sobie roli", async () => {
+    const rola = await app.prisma.channelMember.findUnique({
+      where: { channelId_userId: { channelId, userId: ownerOrg.userId } }
+    });
+    expect(rola?.role).toBe("MEMBER");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/channels/${channelId}/messages`,
+      headers: auth(ownerOrg.token),
+      payload: { content: "Ogloszenie od wlasciciela organizacji" }
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("szeregowy czlonek nadal nie pisze w kanale ogloszeniowym", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/channels/${channelId}/messages`,
+      headers: auth(szeregowy.token),
+      payload: { content: "Podszywka" }
+    });
+    expect(res.statusCode).toBe(403);
+  });
 });
 
 describe("zmiana roli administratora kanalu", () => {
