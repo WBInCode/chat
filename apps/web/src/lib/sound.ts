@@ -11,6 +11,14 @@
 // is still wrapped defensively in case it hasn't.
 
 let ctx: AudioContext | null = null;
+let master: GainNode | null = null;
+
+/**
+ * Wspólne wzmocnienie wszystkich powiadomień. Dotychczasowe szczyty rzędu 0,15
+ * ginęły w hałasie biura. Trzymamy zapas do 1,0, bo tony częściowo na siebie
+ * nachodzą i suma nie może przesterować.
+ */
+const GLOSNOSC = 2.4;
 
 function getContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -19,6 +27,22 @@ function getContext(): AudioContext | null {
   if (!ctx) ctx = new Ctor();
   if (ctx.state === "suspended") void ctx.resume().catch(() => {});
   return ctx;
+}
+
+/** Wyjście z ogranicznikiem, żeby podbita głośność nie trzeszczała przy nakładaniu tonów. */
+function getMaster(c: AudioContext): GainNode {
+  if (master && master.context === c) return master;
+  const gain = c.createGain();
+  gain.gain.value = GLOSNOSC;
+  const limiter = c.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.1;
+  gain.connect(limiter).connect(c.destination);
+  master = gain;
+  return gain;
 }
 
 /** One short sine tone with a soft attack/decay so it never clicks or pops. */
@@ -30,7 +54,7 @@ function tone(c: AudioContext, freq: number, startAt: number, duration: number, 
   gain.gain.setValueAtTime(0, startAt);
   gain.gain.linearRampToValueAtTime(peakGain, startAt + 0.015);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
-  osc.connect(gain).connect(c.destination);
+  osc.connect(gain).connect(getMaster(c));
   osc.start(startAt);
   osc.stop(startAt + duration + 0.02);
 }
@@ -65,8 +89,10 @@ export function startRing() {
     const ctxNow = getContext();
     if (!ctxNow) return;
     const t = ctxNow.currentTime;
-    tone(ctxNow, 987.77, t, 0.35, 0.18);
-    tone(ctxNow, 1174.66, t + 0.4, 0.35, 0.18);
+    // Dzwonek ma przebić się przez rozmowę w pokoju, więc jest wyraźnie
+    // mocniejszy od zwykłego powiadomienia. Tony się nie nakładają.
+    tone(ctxNow, 987.77, t, 0.35, 0.34);
+    tone(ctxNow, 1174.66, t + 0.4, 0.35, 0.34);
   };
   ringOnce();
   ringInterval = setInterval(ringOnce, 1800);

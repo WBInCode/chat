@@ -207,4 +207,51 @@ describe("group DM", () => {
     expect(group.name).toContain("Member");
     expect(group.name).toContain("Outsider");
   });
+
+  /**
+   * Zgłoszony przypadek: ktoś założył grupę z dwiema osobami, a potem kliknął
+   * jedną z nich, żeby napisać prywatnie. Dopasowanie "oboje są członkami"
+   * trafiało w tę grupę i rozmowa prywatna nigdy nie powstawała.
+   */
+  it("nie myli grupy z rozmowa prywatna przy pierwszym kontakcie", async () => {
+    const grupa = await app.inject({
+      method: "POST",
+      url: `/api/v1/orgs/${orgId}/group-dm`,
+      headers: auth(owner.token),
+      payload: { memberUserIds: [member.userId, outsider.userId] }
+    });
+    expect(grupa.statusCode).toBe(201);
+
+    const prywatna = await app.inject({
+      method: "POST",
+      url: `/api/v1/orgs/${orgId}/dm`,
+      headers: auth(owner.token),
+      payload: { targetUserId: outsider.userId }
+    });
+    expect(prywatna.statusCode).toBe(201);
+    expect(prywatna.json().id).not.toBe(grupa.json().id);
+
+    const czlonkowie = await app.prisma.channelMember.findMany({
+      where: { channelId: prywatna.json().id }
+    });
+    expect(czlonkowie).toHaveLength(2);
+    expect(czlonkowie.map((c) => c.userId).sort()).toEqual([owner.userId, outsider.userId].sort());
+  });
+
+  it("kolejne klikniecie tej samej osoby wraca do istniejacej rozmowy", async () => {
+    const pierwsze = await app.inject({
+      method: "POST",
+      url: `/api/v1/orgs/${orgId}/dm`,
+      headers: auth(owner.token),
+      payload: { targetUserId: outsider.userId }
+    });
+    const drugie = await app.inject({
+      method: "POST",
+      url: `/api/v1/orgs/${orgId}/dm`,
+      headers: auth(owner.token),
+      payload: { targetUserId: outsider.userId }
+    });
+    expect(drugie.statusCode).toBe(200);
+    expect(drugie.json().id).toBe(pierwsze.json().id);
+  });
 });
