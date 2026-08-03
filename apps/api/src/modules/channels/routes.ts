@@ -568,14 +568,17 @@ export default async function channelRoutes(fastify: FastifyInstance) {
       return sendError(reply, 400, "SELF_DM", "Nie można utworzyć rozmowy z samym sobą");
     }
 
-    // Find existing DM containing exactly these two users.
+    // Rozmowa dokładnie tych dwóch osób. Sam warunek "oboje są członkami"
+    // trafiał też w grupy, więc klikniecie osoby, z którą łączyła nas tylko
+    // wspólna grupa, otwierało tę grupę zamiast założyć rozmowę prywatną.
     const existing = await fastify.prisma.channel.findFirst({
       where: {
         orgId,
         type: "DM",
         AND: [
           { members: { some: { userId } } },
-          { members: { some: { userId: input.targetUserId } } }
+          { members: { some: { userId: input.targetUserId } } },
+          { members: { none: { userId: { notIn: [userId, input.targetUserId] } } } }
         ]
       }
     });
