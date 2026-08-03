@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
+import { env } from "../config/env.js";
 import { resolveFileMimeType, canonicalMimeType } from "@chatv2/shared";
 
 // Przesyłanie archiwów: warianty nazw typu zgłaszane przez przeglądarki oraz
@@ -45,6 +46,15 @@ function bajtyZip(): Buffer {
 let owner: Session;
 let orgId: string;
 let channelId: string;
+
+/**
+ * Pełny obieg wysyłki wymaga magazynu obiektów, którego CI nie uruchamia.
+ * Sonda musi wykonać się przy ładowaniu modułu, bo `skipIf` jest oceniane
+ * jeszcze przed `beforeAll`.
+ */
+const magazynDostepny = await fetch(env.S3_ENDPOINT)
+  .then(() => true)
+  .catch(() => false);
 
 beforeAll(async () => {
   process.env.NODE_ENV = "test";
@@ -144,7 +154,7 @@ describe("przyjmowanie archiwow", () => {
    * a rozpoznanie po sygnaturze zwraca application/zip. Porównanie dosłowne
    * odrzucało taki plik jako podszywający się pod inny typ.
    */
-  it("nie odrzuca zipa przez rozna nazwe tego samego typu", async () => {
+  it.skipIf(!magazynDostepny)("nie odrzuca zipa przez rozna nazwe tego samego typu", async () => {
     const presign = await app.inject({
       method: "POST",
       url: "/api/v1/files/presign",
