@@ -249,11 +249,13 @@ export function MessageRow({
         </div>
       )}
 
-      {/* Pasek akcji: wyłącznie po kliknięciu wiadomości. */}
+      {/* Pasek akcji: wyłącznie po kliknięciu wiadomości. Na wąskim ekranie
+          zostaje w normalnym układzie pod treścią, bo pływający pasek zasłaniał
+          połowę wiadomości. Od md wraca nad prawy górny róg. */}
       {!isTemp && !editing && showActions && (
         <>
           <div
-            className="animate-tool-pop origin-top-right absolute -top-3 right-0 z-10 flex items-center gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 shadow-lg backdrop-blur-md"
+            className="animate-tool-pop origin-top-right z-10 mt-1 flex flex-wrap items-center justify-end gap-0.5 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-strong)] px-1 py-0.5 shadow-lg backdrop-blur-md touch:[&_button]:px-2.5 touch:[&_button]:py-2 md:absolute md:-top-3 md:right-0 md:mt-0 md:flex-nowrap"
             data-bez-wyboru
           >
           {reactionsEnabled && (

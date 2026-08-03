@@ -4,7 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate } from "react-router-dom";
 import type { MessageDto, ModuleKey, ChannelCategoryDto } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
-import { uploadFile, uploadEncryptedFile, isAllowedFileType, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
+import { uploadFile, uploadEncryptedFile, isAllowedFile, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
 import { connectSocket, disconnectSocket, getSocket } from "../../lib/socket.js";
 import { useAuthStore } from "../../stores/auth.js";
 import { useChatStore, type ChannelItem } from "../../stores/chat.js";
@@ -1037,7 +1037,7 @@ export function ChatLayout() {
       error:
         file.size > MAX_FILE_SIZE_BYTES
           ? "Plik jest za duży (limit 25 MB)"
-          : !isAllowedFileType(file.type)
+          : !isAllowedFile(file)
             ? "Nieobsługiwany typ pliku"
             : null,
       fileId: null

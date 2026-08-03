@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FileDto } from "@chatv2/shared";
+import { isArchiveMimeType } from "@chatv2/shared";
 import type { LucideIcon } from "lucide-react";
 import { FileText, FileSpreadsheet, Presentation, FolderArchive, File, Paperclip } from "lucide-react";
 import { Icon } from "../../components/Icon.js";
@@ -27,7 +28,7 @@ function fileIcon(mimeType: string): LucideIcon {
   if (mimeType.includes("wordprocessingml")) return FileText;
   if (mimeType.includes("spreadsheetml")) return FileSpreadsheet;
   if (mimeType.includes("presentationml")) return Presentation;
-  if (mimeType === "application/zip") return FolderArchive;
+  if (isArchiveMimeType(mimeType)) return FolderArchive;
   if (mimeType.startsWith("text/")) return File;
   return Paperclip;
 }
