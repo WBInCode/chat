@@ -4,7 +4,7 @@ import { PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectComm
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import sharp from "sharp";
 import { fileTypeFromBuffer } from "file-type";
-import { IMAGE_MIME_TYPES, type FileDto } from "@chatv2/shared";
+import { IMAGE_MIME_TYPES, canonicalMimeType, type FileDto } from "@chatv2/shared";
 import { s3, buildFileKey, buildThumbKey } from "../../lib/s3.js";
 import { enqueueFileScan } from "../../lib/queue.js";
 import { env } from "../../config/env.js";
@@ -135,10 +135,11 @@ export function createFileService(fastify: FastifyInstance) {
     const head8k = Buffer.concat(chunks);
     const detected = await fileTypeFromBuffer(head8k);
 
-    // Plain text/csv/zip may not be reliably magic-byte detectable; only
+    // Plain text/csv may not be reliably magic-byte detectable; only
     // hard-enforce the check for types file-type CAN detect (images, pdf,
-    // office formats, zip).
-    if (detected && detected.mime !== file.mimeType) {
+    // office formats, archives). Porównujemy postaci kanoniczne, bo ten sam
+    // format archiwum ma inną nazwę u przeglądarki i w bibliotece.
+    if (detected && canonicalMimeType(detected.mime) !== canonicalMimeType(file.mimeType)) {
       await s3.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key: file.key }));
       await fastify.prisma.file.update({ where: { id: fileId }, data: { status: "FAILED" } });
       throw new HttpError(400, "MIME_MISMATCH", "Zawartość pliku nie odpowiada deklarowanemu typowi");

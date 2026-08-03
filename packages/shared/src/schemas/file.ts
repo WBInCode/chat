@@ -13,8 +13,67 @@ export const ALLOWED_FILE_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.presentationml.presentation", // pptx
   "text/plain",
   "text/csv",
-  "application/zip"
+  // Archiwa. Ten sam format bywa zgłaszany przez przeglądarki pod kilkoma
+  // nazwami (Chrome na Windowsie podaje .zip jako application/x-zip-compressed),
+  // więc warianty muszą być na liście, inaczej wysyłka odpada już na walidacji.
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/x-rar-compressed",
+  "application/vnd.rar",
+  "application/x-7z-compressed",
+  "application/gzip",
+  "application/x-gzip",
+  "application/x-tar"
 ] as const;
+
+/**
+ * Sprowadzenie nazw tego samego formatu do jednej postaci. Biblioteka
+ * rozpoznająca po sygnaturze pliku i przeglądarka nazywają archiwa inaczej,
+ * a porównanie dosłowne odrzucałoby poprawne pliki jako podszywające się.
+ */
+const MIME_ALIASY: Record<string, string> = {
+  "application/x-zip-compressed": "application/zip",
+  "application/x-zip": "application/zip",
+  "application/vnd.rar": "application/x-rar-compressed",
+  "application/x-rar": "application/x-rar-compressed",
+  "application/x-gzip": "application/gzip"
+};
+
+export function canonicalMimeType(mime: string): string {
+  return MIME_ALIASY[mime] ?? mime;
+}
+
+export const ARCHIVE_MIME_TYPES = [
+  "application/zip",
+  "application/x-rar-compressed",
+  "application/x-7z-compressed",
+  "application/gzip",
+  "application/x-tar"
+] as const;
+
+export function isArchiveMimeType(mime: string): boolean {
+  return (ARCHIVE_MIME_TYPES as readonly string[]).includes(canonicalMimeType(mime));
+}
+
+const MIME_PO_ROZSZERZENIU: Record<string, string> = {
+  zip: "application/zip",
+  rar: "application/x-rar-compressed",
+  "7z": "application/x-7z-compressed",
+  gz: "application/gzip",
+  tgz: "application/gzip",
+  tar: "application/x-tar"
+};
+
+/**
+ * Typ pliku wywnioskowany z rozszerzenia. Systemy bez skojarzonego programu
+ * do archiwów podają pusty `File.type`, przez co wysyłka odpadała na
+ * walidacji jako nieobsługiwany typ.
+ */
+export function resolveFileMimeType(name: string, declared: string): string {
+  if (declared) return declared;
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  return MIME_PO_ROZSZERZENIU[ext] ?? "";
+}
 
 export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 

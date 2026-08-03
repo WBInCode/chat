@@ -2,7 +2,8 @@ import {
   presignFileSchema,
   MAX_FILE_SIZE_BYTES,
   ALLOWED_FILE_MIME_TYPES,
-  ENCRYPTED_FILE_MIME_TYPE
+  ENCRYPTED_FILE_MIME_TYPE,
+  resolveFileMimeType
 } from "@chatv2/shared";
 import { apiFetch } from "./api.js";
 import { encryptFileBytes, type E2eFileRef } from "./e2e.js";
@@ -29,11 +30,12 @@ export async function uploadFile(
   channelId: string,
   onProgress?: (pct: number) => void
 ): Promise<UploadResult> {
+  const mimeType = resolveFileMimeType(file.name, file.type);
   const parsed = presignFileSchema.safeParse({
     channelId,
     name: file.name,
     size: file.size,
-    mimeType: file.type
+    mimeType
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -45,18 +47,24 @@ export async function uploadFile(
     body: JSON.stringify(parsed.data)
   });
 
-  await putWithProgress(presign.uploadUrl, file, onProgress);
+  // Naglowek musi zgadzac sie z typem, ktorym podpisano adres.
+  await putWithProgress(presign.uploadUrl, file, mimeType, onProgress);
 
   await apiFetch(`/files/${presign.fileId}/complete`, { method: "POST", body: "{}" });
 
-  return { fileId: presign.fileId, name: file.name, mimeType: file.type };
+  return { fileId: presign.fileId, name: file.name, mimeType };
 }
 
-function putWithProgress(url: string, file: File, onProgress?: (pct: number) => void) {
+function putWithProgress(
+  url: string,
+  file: File,
+  contentType: string,
+  onProgress?: (pct: number) => void
+) {
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", file.type);
+    xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
     };
@@ -68,6 +76,11 @@ function putWithProgress(url: string, file: File, onProgress?: (pct: number) => 
 
 export function isAllowedFileType(mimeType: string): boolean {
   return (ALLOWED_FILE_MIME_TYPES as readonly string[]).includes(mimeType);
+}
+
+/** Sprawdza plik po typie zgłoszonym przez przeglądarkę lub po rozszerzeniu. */
+export function isAllowedFile(file: File): boolean {
+  return isAllowedFileType(resolveFileMimeType(file.name, file.type));
 }
 
 /**
@@ -84,7 +97,7 @@ export async function uploadEncryptedFile(
   if (file.size > MAX_FILE_SIZE_BYTES) {
     throw new Error("Plik jest za duży (limit 25 MB)");
   }
-  if (!isAllowedFileType(file.type)) {
+  if (!isAllowedFile(file)) {
     throw new Error("Nieobsługiwany typ pliku");
   }
 
