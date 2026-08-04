@@ -1,9 +1,3 @@
-databases:
-  - name: chatv2-db
-    plan: free
-    databaseName: chatv2
-    user: chatv2
-
 services:
   # --- Backend API (Fastify + Socket.IO) ---
   - type: web
@@ -27,9 +21,7 @@ services:
       - key: HOST
         value: "0.0.0.0"
       - key: DATABASE_URL
-        fromDatabase:
-          name: chatv2-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           type: redis
