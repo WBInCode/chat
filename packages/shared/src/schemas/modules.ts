@@ -26,7 +26,8 @@ export const MODULE_KEYS = [
   "e2ee",
   "documents",
   "analytics",
-  "system-notices"
+  "system-notices",
+  "task-refs"
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -61,6 +62,13 @@ export const MODULE_CATALOG: Record<ModuleKey, ModuleMeta> = {
     label: "Powiadomienia systemowe",
     description:
       "Osobna rozmowa od nadawcy System z powiadomieniami z pozostałych aplikacji ekosystemu. Działa z dowolnym ich podzbiorem.",
+    core: false
+  },
+  "task-refs": {
+    key: "task-refs",
+    label: "Wzmianki o zadaniach",
+    description:
+      "Wpisanie ! w polu wiadomości podpowiada zadania z pozostałych aplikacji ekosystemu i wstawia je jako klikalną plakietkę.",
     core: false
   }
 };

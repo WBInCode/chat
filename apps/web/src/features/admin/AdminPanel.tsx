@@ -11,7 +11,8 @@ import type {
   RoleDto,
   OrgPermission,
   IntegrationWebhookDto,
-  SystemNoticeSourceDto
+  SystemNoticeSourceDto,
+  TaskSourceDto
 } from "@chatv2/shared";
 import { ORG_PERMISSIONS, systemNoticeEndpoint } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
@@ -45,6 +46,7 @@ const ADMIN_TABS = [
   { to: "modules", label: "Moduły", title: "Moduły", description: "Włącz lub wyłącz funkcje dla całej organizacji." },
   { to: "integrations", label: "Integracje", title: "Integracje", description: "Adresy przychodzące dla systemów zewnętrznych." },
   { to: "powiadomienia", label: "Powiadomienia", title: "Powiadomienia systemowe", description: "Źródła powiadomień z pozostałych aplikacji ekosystemu." },
+  { to: "zadania", label: "Zadania", title: "Wzmianki o zadaniach", description: "Aplikacje, których zadania można oznaczać w wiadomościach znakiem !." },
   { to: "audit", label: "Dziennik zdarzeń", title: "Dziennik zdarzeń", description: "Zapis operacji administracyjnych z kontrolą integralności." },
   { to: "settings", label: "Ustawienia", title: "Ustawienia organizacji", description: "Zasady bezpieczeństwa i przechowywania danych." },
   { to: "dashboard", label: "Statystyki", title: "Statystyki", description: "Aktywność organizacji z ostatnich dni." }
@@ -131,6 +133,7 @@ export function AdminPanel() {
             <Route path="modules" element={<ModulesTab orgId={activeOrgId} />} />
             <Route path="integrations" element={<IntegrationsTab orgId={activeOrgId} />} />
             <Route path="powiadomienia" element={<SystemNoticesTab orgId={activeOrgId} />} />
+            <Route path="zadania" element={<TaskSourcesTab orgId={activeOrgId} />} />
             <Route path="audit" element={<AuditTab orgId={activeOrgId} />} />
             <Route path="settings" element={<SettingsTab orgId={activeOrgId} />} />
             <Route path="dashboard" element={<DashboardTab orgId={activeOrgId} />} />
@@ -1163,6 +1166,134 @@ function SystemNoticesTab({ orgId }: { orgId: string }) {
               <p className="text-xs text-[var(--text-dim)]">
                 {s.noticeCount} wysłanych
                 {s.lastUsedAt ? ` · ostatnio ${new Date(s.lastUsedAt).toLocaleString("pl-PL")}` : " · jeszcze nieużywane"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button onClick={() => void toggle(s.id, !s.enabled)} className={glassButtonGhost}>
+                {s.enabled ? "Wyłącz" : "Włącz"}
+              </button>
+              <button onClick={() => void remove(s.id)} className={glassButtonGhost}>
+                Usuń
+              </button>
+            </div>
+          </li>
+        ))}
+        {sources && sources.length === 0 && (
+          <p className="text-xs text-[var(--text-dim)]">Brak skonfigurowanych źródeł.</p>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+// ── Źródła zadań ───────────────────────────────────────────────────────
+function TaskSourcesTab({ orgId }: { orgId: string }) {
+  const [sources, setSources] = useState<TaskSourceDto[] | null>(null);
+  const [form, setForm] = useState({ key: "", label: "", searchUrl: "", secret: "", taskUrlTemplate: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const enabled = useModulesStore((s) => s.modules)["task-refs"] !== false;
+
+  function reload() {
+    void apiFetch<TaskSourceDto[]>(`/orgs/${orgId}/task-sources`)
+      .then(setSources)
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Błąd"));
+  }
+
+  useEffect(reload, [orgId]);
+
+  const kompletny = Object.values(form).every((v) => v.trim().length > 0);
+
+  async function create() {
+    if (!kompletny) return;
+    setCreating(true);
+    setError(null);
+    try {
+      await apiFetch<TaskSourceDto>(`/orgs/${orgId}/task-sources`, {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      setForm({ key: "", label: "", searchUrl: "", secret: "", taskUrlTemplate: "" });
+      reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Nie udało się dodać źródła");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function toggle(id: string, next: boolean) {
+    await apiFetch(`/task-sources/${id}`, { method: "PATCH", body: JSON.stringify({ enabled: next }) });
+    reload();
+  }
+
+  async function remove(id: string) {
+    await apiFetch(`/task-sources/${id}`, { method: "DELETE" });
+    reload();
+  }
+
+  if (!enabled) {
+    return (
+      <p className="text-sm text-[var(--text-dim)]">
+        Moduł wzmianek o zadaniach jest wyłączony dla tej organizacji. Włącz go w zakładce „Moduły”.
+      </p>
+    );
+  }
+
+  const pola = [
+    { klucz: "key" as const, etykieta: "Klucz", placeholder: "np. rytm" },
+    { klucz: "label" as const, etykieta: "Nazwa", placeholder: "np. Rytm" },
+    { klucz: "searchUrl" as const, etykieta: "Adres wyszukiwarki", placeholder: "https://rytm.wb-partners.pl/api/v1/ecosystem/tasks" },
+    { klucz: "secret" as const, etykieta: "Sekret", placeholder: "sekret uzgodniony z aplikacją" },
+    { klucz: "taskUrlTemplate" as const, etykieta: "Wzór adresu zadania", placeholder: "https://rytm.wb-partners.pl/zadania/{id}" }
+  ];
+
+  return (
+    <div className="space-y-5">
+      <p className="max-w-prose text-xs text-[var(--text-dim)]">
+        Po wpisaniu <code>!</code> w polu wiadomości czat pyta te aplikacje o zadania piszącej osoby i wstawia
+        wybrane jako klikalną plakietkę. Każda aplikacja pokazuje wyłącznie zadania widoczne dla tej osoby.
+        Adres plakietki powstaje ze wzoru poniżej — treść wiadomości nie decyduje, dokąd prowadzi odnośnik.
+      </p>
+
+      {error && <ErrorNote>{error}</ErrorNote>}
+
+      <div className="space-y-3 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] p-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {pola.map((pole) => (
+            <div key={pole.klucz}>
+              <label className="mb-1 block text-xs font-medium text-[var(--text-dim)]">{pole.etykieta}</label>
+              <input
+                value={form[pole.klucz]}
+                onChange={(e) => setForm((f) => ({ ...f, [pole.klucz]: e.target.value }))}
+                placeholder={pole.placeholder}
+                type={pole.klucz === "secret" ? "password" : "text"}
+                className={glassInput}
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-[var(--text-dim)]">
+          Wzór adresu musi zawierać <code>{"{id}"}</code> — w to miejsce trafia identyfikator zadania.
+        </p>
+        <button onClick={create} disabled={creating || !kompletny} className={glassButtonPrimary}>
+          {creating ? "Dodawanie..." : "+ Nowe źródło"}
+        </button>
+      </div>
+
+      <ul className="space-y-2">
+        {sources?.map((s) => (
+          <li
+            key={s.id}
+            className="flex items-center justify-between gap-3 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-4 py-3"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">
+                {s.label} <span className="text-[var(--text-dim)]">({s.key})</span>
+              </p>
+              <p className="truncate text-xs text-[var(--text-dim)]">
+                {s.taskUrlTemplate}
+                {s.lastUsedAt ? ` · ostatnio pytane ${new Date(s.lastUsedAt).toLocaleString("pl-PL")}` : " · jeszcze nieużywane"}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">

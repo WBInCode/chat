@@ -2,13 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, 
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate } from "react-router-dom";
-import type { MessageDto, ModuleKey, ChannelCategoryDto } from "@chatv2/shared";
+import type { MessageDto, ModuleKey, ChannelCategoryDto, TaskSearchResult } from "@chatv2/shared";
+import { formatTaskRef } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { uploadFile, uploadEncryptedFile, isAllowedFile, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
 import { connectSocket, disconnectSocket, getSocket } from "../../lib/socket.js";
 import { useAuthStore } from "../../stores/auth.js";
 import { useChatStore, type ChannelItem } from "../../stores/chat.js";
 import { useModulesStore } from "../../stores/modules.js";
+import { useTaskSourcesStore } from "../../stores/taskSources.js";
 import { MessageRow } from "./MessageRow.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 import { ProfileCard } from "./ProfileCard.js";
@@ -53,6 +55,12 @@ import { CreateChannelModal } from "./CreateChannelModal.js";
 import { CategorySettingsModal } from "./CategorySettingsModal.js";
 import { renderMarkdown } from "./markdown.js";
 import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
+
+/**
+ * Wzmianka o zadaniu: "!" musi zaczynać wyraz, żeby zwykły wykrzyknik na końcu
+ * zdania nie otwierał podpowiedzi. Grupa 1 to znak poprzedzający, grupa 2 fraza.
+ */
+const WYZWALACZ_ZADANIA = /(^|\s)!([\p{L}\d -]{0,40})$/u;
 
 /** True when two dates fall on the same calendar day (local time). */
 function isSameDay(a: Date, b: Date): boolean {
@@ -291,6 +299,8 @@ export function ChatLayout() {
   const moduleState = useModulesStore((s) => s.modules);
   const loadModules = useModulesStore((s) => s.loadModules);
   const moduleEnabled = (key: ModuleKey) => moduleState[key] !== false;
+  const taskSources = useTaskSourcesStore((s) => s.sources);
+  const loadTaskSources = useTaskSourcesStore((s) => s.loadSources);
 
   useEffect(() => {
     void apiFetch<{ enabled: boolean }>("/ai/status")
@@ -302,6 +312,12 @@ export function ChatLayout() {
   useEffect(() => {
     if (activeOrgId) void loadModules(activeOrgId);
   }, [activeOrgId, loadModules]);
+
+  // Wzory adresów zadań — potrzebne do zbudowania odnośnika pod plakietką
+  // także wtedy, gdy czytający sam niczego nie wyszukiwał.
+  useEffect(() => {
+    if (activeOrgId) void loadTaskSources(activeOrgId);
+  }, [activeOrgId, loadTaskSources]);
   const [draft, setDraft] = useState("");
   const [draftChannels, setDraftChannels] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -309,6 +325,10 @@ export function ChatLayout() {
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  // Podpowiadanie zadań z innych aplikacji po wpisaniu "!".
+  const [taskQuery, setTaskQuery] = useState<string | null>(null);
+  const [taskResults, setTaskResults] = useState<TaskSearchResult[]>([]);
+  const [taskLoading, setTaskLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1316,6 +1336,10 @@ export function ChatLayout() {
     // @mention autocomplete: detect a trailing "@query" fragment.
     const match = value.match(/@([\p{L}\d ]{0,30})$/u);
     setMentionQuery(match ? (match[1] ?? "") : null);
+    // Wzmianka o zadaniu. "!" musi zaczynać wyraz, żeby zwykły wykrzyknik
+    // na końcu zdania ("super!") nie otwierał podpowiedzi.
+    const zadanie = value.match(WYZWALACZ_ZADANIA);
+    setTaskQuery(zadanie ? (zadanie[2] ?? "") : null);
     if (!activeChannelId) return;
     getSocket().emit("typing:start", { channelId: activeChannelId });
     if (typingTimeout.current) clearTimeout(typingTimeout.current);
@@ -1369,6 +1393,37 @@ export function ChatLayout() {
     setDraft((d) => d.replace(/@([\p{L}\d ]{0,30})$/u, `@${token} `));
     setMentionQuery(null);
   }
+
+  function insertTaskRef(wynik: TaskSearchResult) {
+    setDraft((d) =>
+      d.replace(WYZWALACZ_ZADANIA, (_calosc, przed: string) =>
+        `${przed}${formatTaskRef(wynik.sourceKey, wynik.id, wynik.title)} `
+      )
+    );
+    setTaskQuery(null);
+    setTaskResults([]);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }
+
+  // Zapytanie idzie do aplikacji źródłowych, więc czekamy na przerwę w pisaniu.
+  useEffect(() => {
+    if (taskQuery === null || !activeOrgId || !moduleEnabled("task-refs")) {
+      setTaskResults([]);
+      setTaskLoading(false);
+      return;
+    }
+    let porzucone = false;
+    setTaskLoading(true);
+    const timer = setTimeout(() => {
+      void apiFetch<TaskSearchResult[]>(
+        `/orgs/${activeOrgId}/task-search?q=${encodeURIComponent(taskQuery)}`
+      )
+        .then((r) => { if (!porzucone) setTaskResults(r); })
+        .catch(() => { if (!porzucone) setTaskResults([]); })
+        .finally(() => { if (!porzucone) setTaskLoading(false); });
+    }, 250);
+    return () => { porzucone = true; clearTimeout(timer); };
+  }, [taskQuery, activeOrgId, moduleState]);
 
   const mentionCandidates =
     mentionQuery !== null
@@ -2358,11 +2413,36 @@ export function ChatLayout() {
                     <Icon icon={Eye} size={12} /> Podgląd
                   </div>
                   <div className="text-sm leading-snug [word-break:break-word]">
-                    {renderMarkdown(draft, members, user?.id ?? "")}
+                    {renderMarkdown(draft, members, user?.id ?? "", taskSources)}
                   </div>
                 </div>
               )}
               <div className="relative flex gap-2">
+                {taskQuery !== null && moduleEnabled("task-refs") && (
+                  <div className="animate-slide-up absolute bottom-full left-12 z-20 mb-1 w-80 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-xl backdrop-blur-lg">
+                    {taskResults.map((t) => (
+                      <button
+                        key={`${t.sourceKey}-${t.id}`}
+                        type="button"
+                        onClick={() => insertTaskRef(t)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-[var(--accent)]/15"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                        {t.status && (
+                          <span className="shrink-0 text-[11px] text-[var(--text-dim)]">{t.status}</span>
+                        )}
+                        <span className="shrink-0 rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[var(--accent)]">
+                          {t.sourceLabel}
+                        </span>
+                      </button>
+                    ))}
+                    {taskResults.length === 0 && (
+                      <div className="px-3 py-2 text-[12.5px] text-[var(--text-dim)]">
+                        {taskLoading ? "Szukam zadań…" : "Brak pasujących zadań."}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {(mentionCandidates.length > 0 || mentionBroadcasts.length > 0) && (
                   <div className="animate-slide-up absolute bottom-full left-12 z-20 mb-1 w-64 overflow-hidden rounded-xl border border-[var(--glass-border)] bg-[var(--glass-strong)] shadow-xl backdrop-blur-lg">
                     {mentionBroadcasts.map((b) => (

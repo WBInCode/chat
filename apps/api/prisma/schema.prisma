@@ -50,6 +50,7 @@ model Organization {
   modules        OrganizationModule[]
   documents      Document[]
   systemNoticeSources SystemNoticeSource[]
+  taskSources         TaskSource[]
 
   @@map("organizations")
 }
@@ -364,6 +365,30 @@ model SystemNoticeSource {
   @@unique([orgId, key])
   @@index([orgId])
   @@map("system_notice_sources")
+}
+
+// Źródło zadań do wzmianek: aplikacja ekosystemu, której czat może zadać
+// pytanie „jakie zadania ma ta osoba". Kierunek odwrotny niż w powiadomieniach
+// systemowych, więc sekret musi być odwracalny — wysyłamy go przy każdym
+// zapytaniu, a nie porównujemy z przychodzącym.
+model TaskSource {
+  id              String    @id @default(uuid())
+  orgId           String
+  key             String // "workbase" | "rytm" | ...
+  label           String
+  searchUrl       String
+  secretEnc       String // zaszyfrowany AES-256-GCM, nigdy w postaci jawnej
+  taskUrlTemplate String // wzór adresu z {id}; źródłem prawdy dla odnośnika plakietki
+  enabled         Boolean   @default(true)
+  lastUsedAt      DateTime?
+  createdById     String
+  createdAt       DateTime  @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, key])
+  @@index([orgId])
+  @@map("task_sources")
 }
 
 model ChannelMember {
