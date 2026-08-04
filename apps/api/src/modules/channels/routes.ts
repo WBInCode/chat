@@ -161,6 +161,7 @@ export default async function channelRoutes(fastify: FastifyInstance) {
         favorite: m.favorite,
         archivedAt: ch.archivedAt?.toISOString() ?? null,
         e2ee: ch.e2ee,
+        readOnly: ch.readOnly,
         messageTtlSeconds: ch.messageTtlSeconds
       };
     });

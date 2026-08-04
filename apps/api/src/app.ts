@@ -23,6 +23,7 @@ import documentRoutes from "./modules/documents/routes.js";
 import rolesRoutes from "./modules/roles/routes.js";
 import modulesRoutes from "./modules/modules/routes.js";
 import integrationsRoutes, { incomingWebhookRoute } from "./modules/integrations/routes.js";
+import systemNoticeRoutes, { systemNoticeIngestRoute } from "./modules/system-notices/routes.js";
 import aiRoutes from "./modules/ai/routes.js";
 import platformAdminRoutes from "./modules/platform-admin/routes.js";
 import hubSsoRoutes from "./modules/hub/routes.js";
@@ -120,6 +121,8 @@ export async function buildApp() {
   await fastify.register(modulesRoutes, { prefix: "/api/v1" });
   await fastify.register(integrationsRoutes, { prefix: "/api/v1" });
   await fastify.register(incomingWebhookRoute, { prefix: "/api/v1" });
+  await fastify.register(systemNoticeRoutes, { prefix: "/api/v1" });
+  await fastify.register(systemNoticeIngestRoute, { prefix: "/api/v1" });
   await fastify.register(aiRoutes, { prefix: "/api/v1" });
   await fastify.register(platformAdminRoutes, { prefix: "/api/v1" });
   await fastify.register(hubSsoRoutes, { prefix: "/api/v1/sso" });

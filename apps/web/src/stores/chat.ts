@@ -14,6 +14,8 @@ export interface ChannelItem {
   createdAt: string;
   unreadCount?: number;
   myRole?: "ADMIN" | "MEMBER";
+  /** Kanał jednostronny (powiadomienia od nadawcy System): pisać się nie da. */
+  readOnly?: boolean;
   muted?: boolean;
   favorite?: boolean;
   lastReadAt?: string | null;
