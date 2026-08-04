@@ -16,3 +16,4 @@ export * from "./schemas/modules.js";
 export * from "./schemas/integrations.js";
 export * from "./schemas/documents.js";
 export * from "./schemas/system-notices.js";
+export * from "./schemas/task-refs.js";

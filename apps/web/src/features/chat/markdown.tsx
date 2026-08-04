@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { buildTaskUrl, taskRefRegexGlobal, type TaskSourceLinkDto } from "@chatv2/shared";
 
 interface MemberLite {
   userId: string;
@@ -119,6 +120,74 @@ export function renderMentions(
 }
 
 /**
+ * Wzmianki o zadaniach z innych aplikacji: `!{klucz|id|tytuł}`.
+ *
+ * Adres bierzemy ze wzoru skonfigurowanego przez administratora, a nie z treści
+ * wiadomości — inaczej autor mógłby podstawić dowolny adres pod plakietkę
+ * wyglądającą na firmową. Nieznane źródło zostaje nieklikalną plakietką,
+ * żeby treść wiadomości pozostała czytelna.
+ */
+function renderTaskRefs(
+  text: string,
+  members: MemberLite[],
+  currentUserId: string,
+  taskSources: TaskSourceLinkDto[],
+  keyPrefix: string
+): ReactNode[] {
+  if (!text.includes("!{")) return renderMentions(text, members, currentUserId, keyPrefix);
+
+  const nodes: ReactNode[] = [];
+  const regex = taskRefRegexGlobal();
+  let lastIndex = 0;
+  let key = 0;
+  let match: RegExpExecArray | null;
+
+  const chipClass =
+    "mx-0.5 inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 py-0.5 align-baseline text-[12.5px] font-medium";
+
+  while ((match = regex.exec(text))) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        ...renderMentions(text.slice(lastIndex, match.index), members, currentUserId, `${keyPrefix}z${key++}-`)
+      );
+    }
+    const [caly, sourceKey = "", taskId = "", title = ""] = match;
+    const source = taskSources.find((s) => s.key === sourceKey);
+
+    nodes.push(
+      source ? (
+        <a
+          key={`${keyPrefix}zad-${key++}`}
+          href={buildTaskUrl(source.taskUrlTemplate, taskId)}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`${title} — ${source.label}`}
+          className={`${chipClass} bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25`}
+        >
+          <span aria-hidden="true">▫</span>
+          {title}
+        </a>
+      ) : (
+        <span
+          key={`${keyPrefix}zad-${key++}`}
+          title="Źródło tego zadania nie jest już podłączone"
+          className={`${chipClass} bg-[var(--border)]/60 text-[var(--text-dim)]`}
+        >
+          <span aria-hidden="true">▫</span>
+          {title}
+        </span>
+      )
+    );
+    lastIndex = match.index + caly.length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(...renderMentions(text.slice(lastIndex), members, currentUserId, `${keyPrefix}z${key++}-`));
+  }
+  return nodes;
+}
+
+/**
  * Inline markdown: **bold**, *italic* / _italic_, ~~strike~~, `code`.
  * Works on plain-text segments; mention highlighting is applied to the
  * text BETWEEN formatting tokens. Everything is emitted as React elements
@@ -128,6 +197,7 @@ function renderInline(
   text: string,
   members: MemberLite[],
   currentUserId: string,
+  taskSources: TaskSourceLinkDto[],
   keyPrefix: string
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -140,12 +210,12 @@ function renderInline(
   while (rest.length > 0) {
     const match = token.exec(rest);
     if (!match || match.index === undefined) {
-      nodes.push(...renderMentions(rest, members, currentUserId, `${keyPrefix}t${i}-`));
+      nodes.push(...renderTaskRefs(rest, members, currentUserId, taskSources, `${keyPrefix}t${i}-`));
       break;
     }
     if (match.index > 0) {
       nodes.push(
-        ...renderMentions(rest.slice(0, match.index), members, currentUserId, `${keyPrefix}t${i}-`)
+        ...renderTaskRefs(rest.slice(0, match.index), members, currentUserId, taskSources, `${keyPrefix}t${i}-`)
       );
     }
     const tok = match[0];
@@ -157,11 +227,11 @@ function renderInline(
         </code>
       );
     } else if (tok.startsWith("**")) {
-      nodes.push(<strong key={key}>{renderInline(tok.slice(2, -2), members, currentUserId, `${key}-`)}</strong>);
+      nodes.push(<strong key={key}>{renderInline(tok.slice(2, -2), members, currentUserId, taskSources, `${key}-`)}</strong>);
     } else if (tok.startsWith("~~")) {
-      nodes.push(<del key={key}>{renderInline(tok.slice(2, -2), members, currentUserId, `${key}-`)}</del>);
+      nodes.push(<del key={key}>{renderInline(tok.slice(2, -2), members, currentUserId, taskSources, `${key}-`)}</del>);
     } else {
-      nodes.push(<em key={key}>{renderInline(tok.slice(1, -1), members, currentUserId, `${key}-`)}</em>);
+      nodes.push(<em key={key}>{renderInline(tok.slice(1, -1), members, currentUserId, taskSources, `${key}-`)}</em>);
     }
     rest = rest.slice(match.index + tok.length);
   }
@@ -177,7 +247,8 @@ function renderInline(
 export function renderMarkdown(
   content: string,
   members: MemberLite[],
-  currentUserId: string
+  currentUserId: string,
+  taskSources: TaskSourceLinkDto[] = []
 ): ReactNode[] {
   const blocks: ReactNode[] = [];
   const lines = content.split("\n");
@@ -220,7 +291,7 @@ export function renderMarkdown(
           className="my-1 border-l-2 border-[var(--accent)]/60 pl-2 text-[var(--text-dim)]"
         >
           {quote.map((q, qi) => (
-            <div key={qi}>{renderInline(q, members, currentUserId, `b${blockKey}q${qi}-`)}</div>
+            <div key={qi}>{renderInline(q, members, currentUserId, taskSources, `b${blockKey}q${qi}-`)}</div>
           ))}
         </blockquote>
       );
@@ -237,7 +308,7 @@ export function renderMarkdown(
       blocks.push(
         <ul key={`b${blockKey++}`} className="my-0.5 list-disc space-y-0.5 pl-5">
           {items.map((item, ii) => (
-            <li key={ii}>{renderInline(item, members, currentUserId, `b${blockKey}l${ii}-`)}</li>
+            <li key={ii}>{renderInline(item, members, currentUserId, taskSources, `b${blockKey}l${ii}-`)}</li>
           ))}
         </ul>
       );
@@ -254,7 +325,7 @@ export function renderMarkdown(
       blocks.push(
         <ol key={`b${blockKey++}`} className="my-0.5 list-decimal space-y-0.5 pl-5">
           {items.map((item, ii) => (
-            <li key={ii}>{renderInline(item, members, currentUserId, `b${blockKey}o${ii}-`)}</li>
+            <li key={ii}>{renderInline(item, members, currentUserId, taskSources, `b${blockKey}o${ii}-`)}</li>
           ))}
         </ol>
       );
@@ -266,7 +337,7 @@ export function renderMarkdown(
       blocks.push(<div key={`b${blockKey++}`} className="h-1.5" />);
     } else {
       blocks.push(
-        <div key={`b${blockKey++}`}>{renderInline(line, members, currentUserId, `b${blockKey}p-`)}</div>
+        <div key={`b${blockKey++}`}>{renderInline(line, members, currentUserId, taskSources, `b${blockKey}p-`)}</div>
       );
     }
     i++;

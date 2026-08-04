@@ -7,6 +7,7 @@ import { Lightbox, type LightboxImage } from "./Lightbox.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { useChatStore } from "../../stores/chat.js";
+import { useTaskSourcesStore } from "../../stores/taskSources.js";
 import { renderMarkdown } from "./markdown.js";
 import { PollCard } from "./PollCard.js";
 import { EmojiPicker, type PickerAnchor } from "./EmojiPicker.js";
@@ -145,6 +146,7 @@ export function MessageRow({
   // ruchu myszy. Wybór trzymamy w magazynie, żeby otwarta była tylko jedna.
   const selectedMessageId = useChatStore((s) => s.selectedMessageId);
   const setSelectedMessage = useChatStore((s) => s.setSelectedMessage);
+  const taskSources = useTaskSourcesStore((s) => s.sources);
   const showActions = selectedMessageId === m.id;
   const isTemp = m.id.startsWith("temp-");
   const isDeleted = !m.content && !m.files?.length && m.contentType === "text";
@@ -463,7 +465,7 @@ export function MessageRow({
             </p>
           ) : (
             <>
-              {displayContent && renderMarkdown(displayContent, members, currentUserId)}
+              {displayContent && renderMarkdown(displayContent, members, currentUserId, taskSources)}
               {displayContent && (
                 <span
                   className="ml-1 inline-flex translate-y-[2px] text-[var(--accent-2)]"
@@ -483,7 +485,7 @@ export function MessageRow({
         m.content &&
         m.contentType !== "poll" && (
           <div className={`relative text-[14px] leading-relaxed ${isTemp ? "opacity-50" : ""}`}>
-            {renderMarkdown(m.content, members, currentUserId)}
+            {renderMarkdown(m.content, members, currentUserId, taskSources)}
             {m.editedAt && (
               <span className="ml-1 text-xs text-[var(--text-dim)]">(edytowano)</span>
             )}
