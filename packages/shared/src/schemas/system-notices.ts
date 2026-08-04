@@ -34,8 +34,18 @@ export const systemNoticePayloadSchema = z.object({
   recipients: z.array(z.string().trim().email()).min(1).max(200),
   title: z.string().trim().min(1).max(120),
   body: z.string().trim().max(2000).default(""),
-  /** Odnośnik do miejsca zdarzenia w aplikacji źródłowej. */
-  url: z.string().trim().url().max(500).optional()
+  /**
+   * Odnośnik do miejsca zdarzenia w aplikacji źródłowej. Wyłącznie http(s):
+   * `z.string().url()` przepuszcza też `javascript:`, a adres trafia później
+   * do treści wiadomości.
+   */
+  url: z
+    .string()
+    .trim()
+    .url()
+    .max(500)
+    .refine((v) => /^https?:\/\//i.test(v), { message: "Dozwolone tylko adresy http i https" })
+    .optional()
 });
 export type SystemNoticePayload = z.infer<typeof systemNoticePayloadSchema>;
 
@@ -53,5 +63,9 @@ export interface SystemNoticeSourceDto {
 
 /** Adres, pod który aplikacja źródłowa wysyła powiadomienia. */
 export function systemNoticeEndpoint(baseUrl: string, token: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/api/v1/system-notices/${token}`;
+  // Bez wyrażenia regularnego: `/\/+$/` cofa się wielomianowo na adresie
+  // z długim ciągiem ukośników na końcu.
+  let koniec = baseUrl.length;
+  while (koniec > 0 && baseUrl[koniec - 1] === "/") koniec--;
+  return `${baseUrl.slice(0, koniec)}/api/v1/system-notices/${token}`;
 }

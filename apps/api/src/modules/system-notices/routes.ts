@@ -71,11 +71,14 @@ async function ensureSystemChannel(fastify: FastifyInstance, orgId: string, user
   });
 }
 
-/** Składa powiadomienie w treść wiadomości. Odnośnik zostaje odnośnikiem markdown. */
+/**
+ * Składa powiadomienie w treść wiadomości. Adres wstawiamy goły, bo renderer
+ * zamienia w odnośnik same adresy http(s), a składni `[tekst](adres)` nie zna.
+ */
 function zlozTresc(label: string, input: SystemNoticePayload): string {
   const czesci = [`**${input.title}**`, `_${label}_`];
   if (input.body) czesci.push(input.body);
-  if (input.url) czesci.push(`[Otwórz](${input.url})`);
+  if (input.url) czesci.push(input.url);
   return czesci.join("\n\n").slice(0, 4000);
 }
 

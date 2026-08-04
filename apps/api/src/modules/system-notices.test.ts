@@ -184,8 +184,20 @@ describe("dostarczanie powiadomien", () => {
     expect(res.json().skipped).toBe(2);
   });
 
-  it("wylaczone zrodlo nie dostarcza", async () => {
-    await app.inject({
+  it("odrzuca adres z niedozwolonym schematem", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/system-notices/${token}`,
+      payload: {
+        recipients: [czlonek.email],
+        title: "Podszywka",
+        url: "javascript:alert(1)"
+      }
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("wylaczone zrodlo nie dostarcza", async () => {    await app.inject({
       method: "PATCH",
       url: `/api/v1/system-notice-sources/${sourceId}`,
       headers: auth(owner.token),
