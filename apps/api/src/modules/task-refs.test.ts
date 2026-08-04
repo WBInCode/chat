@@ -44,7 +44,7 @@ let sourceId: string;
 /** Podstawiona aplikacja zrodlowa — zapamietuje, o co i z czym ja zapytano. */
 let atrapa: Server;
 let atrapaPort: number;
-const ostatnieZapytanie: { email?: string; q?: string; sekret?: string } = {};
+const ostatnieZapytanie = { email: "", q: "", sekret: "" };
 
 const SEKRET = "sekret-zrodla-zadan";
 
@@ -55,8 +55,8 @@ beforeAll(async () => {
 
   atrapa = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    ostatnieZapytanie.email = url.searchParams.get("email") ?? undefined;
-    ostatnieZapytanie.q = url.searchParams.get("q") ?? undefined;
+    ostatnieZapytanie.email = url.searchParams.get("email") ?? "";
+    ostatnieZapytanie.q = url.searchParams.get("q") ?? "";
     ostatnieZapytanie.sekret = String(req.headers["x-wb-task-secret"] ?? "");
 
     res.setHeader("content-type", "application/json");
