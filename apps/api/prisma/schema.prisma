@@ -49,6 +49,7 @@ model Organization {
   roles          Role[]
   modules        OrganizationModule[]
   documents      Document[]
+  systemNoticeSources SystemNoticeSource[]
 
   @@map("organizations")
 }
@@ -324,6 +325,9 @@ model Channel {
   slowmodeSeconds Int    @default(0) // 0 = wyłączony; minimalny odstęp między wiadomościami jednego autora
   e2ee       Boolean     @default(false) // end-to-end encryption enabled (DM only); content is client-side ciphertext
   messageTtlSeconds Int? // disappearing messages: purge messages older than this (null = off)
+  // Kanał wyłącznie do czytania, niezależnie od roli. Używany przez rozmowę
+  // z nadawcą System: to jednostronny kanał powiadomień, nie rozmowa.
+  readOnly   Boolean     @default(false)
   archivedAt DateTime?
   createdAt  DateTime    @default(now())
 
@@ -337,6 +341,29 @@ model Channel {
   @@index([orgId])
   @@index([orgId, categoryId, position])
   @@map("channels")
+}
+
+// Źródło powiadomień systemowych: jedna aplikacja ekosystemu (workbase, rytm,
+// crm...) uprawniona do pisania do rozmów z nadawcą System. Każde źródło ma
+// własny token, więc organizacja włącza dokładnie te produkty, które posiada,
+// i może odebrać dostęp pojedynczemu z nich.
+model SystemNoticeSource {
+  id           String    @id @default(uuid())
+  orgId        String
+  key          String // "workbase" | "rytm" | "crm" | ...
+  label        String
+  tokenHash    String    @unique // SHA-256 tokena, nigdy w postaci jawnej
+  enabled      Boolean   @default(true)
+  noticeCount  Int       @default(0)
+  lastUsedAt   DateTime?
+  createdById  String
+  createdAt    DateTime  @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, key])
+  @@index([orgId])
+  @@map("system_notice_sources")
 }
 
 model ChannelMember {

@@ -871,6 +871,10 @@ export function ChatLayout() {
   const readOnlyAnnouncement =
     activeChannel?.kind === "ANNOUNCEMENT" && !mozeZarzadzac(activeChannel);
 
+  // Rozmowa z nadawcą System jest jednostronna: nie ma komu odpowiedzieć.
+  const tylkoDoOdczytu = activeChannel?.readOnly === true;
+  const bezPisania = readOnlyAnnouncement || tylkoDoOdczytu;
+
   // Tryb wolny obowiązuje wszystkich poza administratorami kanału. Sam limit
   // egzekwuje serwer; tutaj tylko uprzedzamy, żeby odmowa nie była zaskoczeniem.
   const slowmodeNotice = (() => {
@@ -2154,11 +2158,13 @@ export function ChatLayout() {
                       : `To początek kanału #${activeChannel.name}`}
                   </p>
                   <p className="max-w-xs text-xs text-[var(--text-dim)]">
-                    {readOnlyAnnouncement
-                      ? "To kanał ogłoszeniowy. Pojawią się tu wpisy administratorów kanału."
-                      : "Napisz pierwszą wiadomość poniżej. Możesz też przeciągnąć plik, wkleić obrazek, utworzyć ankietę (+) albo wspomnieć kogoś przez @."}
+                    {tylkoDoOdczytu
+                      ? "Tu trafiają powiadomienia z pozostałych aplikacji. Odpowiadać się nie da."
+                      : readOnlyAnnouncement
+                        ? "To kanał ogłoszeniowy. Pojawią się tu wpisy administratorów kanału."
+                        : "Napisz pierwszą wiadomość poniżej. Możesz też przeciągnąć plik, wkleić obrazek, utworzyć ankietę (+) albo wspomnieć kogoś przez @."}
                   </p>
-                  {moduleEnabled("documents") && !activeChannel.e2ee && !readOnlyAnnouncement && (
+                  {moduleEnabled("documents") && !activeChannel.e2ee && !bezPisania && (
                     <button
                       onClick={() => setShowDocuments(true)}
                       className="mt-1 flex items-center gap-1.5 rounded-lg border border-[var(--glass-border)] px-2.5 py-1.5 text-xs text-[var(--text-dim)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
@@ -2700,13 +2706,15 @@ export function ChatLayout() {
                     }
                   }}
                   onPaste={handlePaste}
-                  disabled={readOnlyAnnouncement}
+                  disabled={bezPisania}
                   placeholder={
-                    readOnlyAnnouncement
-                      ? "Tylko administratorzy kanału mogą tu pisać"
-                      : slowmodeNotice
-                        ? `Napisz na #${activeChannel.name} — ${slowmodeNotice}`
-                        : `Napisz na ${activeChannel.type === "DM" ? "@" : "#"}${activeChannel.name}`
+                    tylkoDoOdczytu
+                      ? "Jednostronny kanał powiadomień"
+                      : readOnlyAnnouncement
+                        ? "Tylko administratorzy kanału mogą tu pisać"
+                        : slowmodeNotice
+                          ? `Napisz na #${activeChannel.name} — ${slowmodeNotice}`
+                          : `Napisz na ${activeChannel.type === "DM" ? "@" : "#"}${activeChannel.name}`
                   }
                   maxLength={8000}
                   className="composer-glow min-w-0 flex-1 resize-none rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-2 text-sm leading-snug outline-none backdrop-blur-sm focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2718,8 +2726,14 @@ export function ChatLayout() {
                 )}
                 <button
                   type="submit"
-                  disabled={readOnlyAnnouncement || (!draft.trim() && pending.length === 0)}
-                  title={readOnlyAnnouncement ? "Kanał ogłoszeniowy — brak uprawnień do pisania" : "Wyślij"}
+                  disabled={bezPisania || (!draft.trim() && pending.length === 0)}
+                  title={
+                    tylkoDoOdczytu
+                      ? "Jednostronny kanał powiadomień"
+                      : readOnlyAnnouncement
+                        ? "Kanał ogłoszeniowy — brak uprawnień do pisania"
+                        : "Wyślij"
+                  }
                   className="btn-gradient flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_var(--accent-glow)] transition-all duration-150 hover:brightness-[1.06] active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 sm:px-4"
                 >
                   <Icon icon={Send} className="sm:hidden" />

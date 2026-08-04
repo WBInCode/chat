@@ -25,7 +25,8 @@ export const MODULE_KEYS = [
   "integrations",
   "e2ee",
   "documents",
-  "analytics"
+  "analytics",
+  "system-notices"
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -54,7 +55,14 @@ export const MODULE_CATALOG: Record<ModuleKey, ModuleMeta> = {
   integrations: { key: "integrations", label: "Integracje", description: "Webhooki przychodzące (CI, monitoring) do kanałów.", core: false },
   e2ee: { key: "e2ee", label: "Szyfrowanie E2EE", description: "Szyfrowanie end-to-end wiadomości bezpośrednich.", core: false },
   documents: { key: "documents", label: "Dokumenty", description: "Wspólne dokumenty w kanale: tabele, listy zadań, historia wersji i komentarze.", core: false },
-  analytics: { key: "analytics", label: "Analityka", description: "Analityka workspace dla administratorów.", core: false }
+  analytics: { key: "analytics", label: "Analityka", description: "Analityka workspace dla administratorów.", core: false },
+  "system-notices": {
+    key: "system-notices",
+    label: "Powiadomienia systemowe",
+    description:
+      "Osobna rozmowa od nadawcy System z powiadomieniami z pozostałych aplikacji ekosystemu. Działa z dowolnym ich podzbiorem.",
+    core: false
+  }
 };
 
 export const CORE_MODULE_KEYS = MODULE_KEYS.filter((k) => MODULE_CATALOG[k].core);

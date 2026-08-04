@@ -10,9 +10,10 @@ import type {
   OrgRole,
   RoleDto,
   OrgPermission,
-  IntegrationWebhookDto
+  IntegrationWebhookDto,
+  SystemNoticeSourceDto
 } from "@chatv2/shared";
-import { ORG_PERMISSIONS } from "@chatv2/shared";
+import { ORG_PERMISSIONS, systemNoticeEndpoint } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { useModulesStore } from "../../stores/modules.js";
 import { glassButtonGhost, glassButtonPrimary, glassInput } from "../../styles/glass.js";
@@ -43,6 +44,7 @@ const ADMIN_TABS = [
   { to: "channels", label: "Kanały", title: "Kanały", description: "Przegląd wszystkich kanałów organizacji wraz z archiwizacją." },
   { to: "modules", label: "Moduły", title: "Moduły", description: "Włącz lub wyłącz funkcje dla całej organizacji." },
   { to: "integrations", label: "Integracje", title: "Integracje", description: "Adresy przychodzące dla systemów zewnętrznych." },
+  { to: "powiadomienia", label: "Powiadomienia", title: "Powiadomienia systemowe", description: "Źródła powiadomień z pozostałych aplikacji ekosystemu." },
   { to: "audit", label: "Dziennik zdarzeń", title: "Dziennik zdarzeń", description: "Zapis operacji administracyjnych z kontrolą integralności." },
   { to: "settings", label: "Ustawienia", title: "Ustawienia organizacji", description: "Zasady bezpieczeństwa i przechowywania danych." },
   { to: "dashboard", label: "Statystyki", title: "Statystyki", description: "Aktywność organizacji z ostatnich dni." }
@@ -128,6 +130,7 @@ export function AdminPanel() {
             <Route path="channels" element={<ChannelsTab orgId={activeOrgId} />} />
             <Route path="modules" element={<ModulesTab orgId={activeOrgId} />} />
             <Route path="integrations" element={<IntegrationsTab orgId={activeOrgId} />} />
+            <Route path="powiadomienia" element={<SystemNoticesTab orgId={activeOrgId} />} />
             <Route path="audit" element={<AuditTab orgId={activeOrgId} />} />
             <Route path="settings" element={<SettingsTab orgId={activeOrgId} />} />
             <Route path="dashboard" element={<DashboardTab orgId={activeOrgId} />} />
@@ -1028,6 +1031,152 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
         ))}
         {hooks && hooks.length === 0 && (
           <p className="text-xs text-[var(--text-dim)]">Brak skonfigurowanych integracji.</p>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+// ── Powiadomienia systemowe ────────────────────────────────────────────
+function SystemNoticesTab({ orgId }: { orgId: string }) {
+  const [sources, setSources] = useState<SystemNoticeSourceDto[] | null>(null);
+  const [key, setKey] = useState("");
+  const [label, setLabel] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newToken, setNewToken] = useState<{ id: string; url: string } | null>(null);
+  const enabled = useModulesStore((s) => s.modules)["system-notices"] !== false;
+
+  function reload() {
+    void apiFetch<SystemNoticeSourceDto[]>(`/orgs/${orgId}/system-notice-sources`)
+      .then(setSources)
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Błąd"));
+  }
+
+  useEffect(reload, [orgId]);
+
+  async function create() {
+    if (!key.trim() || !label.trim()) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const created = await apiFetch<SystemNoticeSourceDto>(`/orgs/${orgId}/system-notice-sources`, {
+        method: "POST",
+        body: JSON.stringify({ key: key.trim(), label: label.trim() })
+      });
+      const base = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+      setNewToken({ id: created.id, url: systemNoticeEndpoint(base, created.token!) });
+      setKey("");
+      setLabel("");
+      reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Nie udało się dodać źródła");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function toggle(id: string, next: boolean) {
+    await apiFetch(`/system-notice-sources/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: next })
+    });
+    reload();
+  }
+
+  async function remove(id: string) {
+    await apiFetch(`/system-notice-sources/${id}`, { method: "DELETE" });
+    if (newToken?.id === id) setNewToken(null);
+    reload();
+  }
+
+  if (!enabled) {
+    return (
+      <p className="text-sm text-[var(--text-dim)]">
+        Moduł powiadomień systemowych jest wyłączony dla tej organizacji. Włącz go w zakładce „Moduły”.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <p className="max-w-prose text-xs text-[var(--text-dim)]">
+        Każda aplikacja dostaje własny adres i wysyła powiadomienia do wskazanych osób po adresie e-mail.
+        Trafiają one do osobnej rozmowy od nadawcy System, której nie da się odpisać. Dodaj tylko te
+        produkty, które faktycznie posiadasz.
+      </p>
+
+      {error && <ErrorNote>{error}</ErrorNote>}
+
+      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] p-4">
+        <div className="min-w-[160px] flex-1">
+          <label className="mb-1 block text-xs font-medium text-[var(--text-dim)]">Klucz</label>
+          <input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="np. workbase"
+            className={glassInput}
+          />
+        </div>
+        <div className="min-w-[160px] flex-1">
+          <label className="mb-1 block text-xs font-medium text-[var(--text-dim)]">Nazwa</label>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="np. WorkBase"
+            className={glassInput}
+          />
+        </div>
+        <button onClick={create} disabled={creating || !key.trim() || !label.trim()} className={glassButtonPrimary}>
+          {creating ? "Dodawanie..." : "+ Nowe źródło"}
+        </button>
+      </div>
+
+      {newToken && (
+        <div className="space-y-2 rounded-xl border border-[var(--accent)]/40 bg-[var(--accent)]/10 p-4">
+          <p className="text-xs font-semibold text-[var(--accent)]">
+            Zapisz ten adres. Nie zostanie ponownie pokazany.
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-lg bg-[var(--glass)] px-2 py-1.5 text-xs">{newToken.url}</code>
+            <button onClick={() => void navigator.clipboard.writeText(newToken.url)} className={glassButtonGhost}>
+              Kopiuj
+            </button>
+          </div>
+          <p className="text-xs text-[var(--text-dim)]">
+            Treść żądania:{" "}
+            <code>{'{"recipients":["jan@firma.pl"],"title":"Zmiana w grafiku","body":"Wtorek 8:00-16:00","url":"https://..."}'}</code>
+          </p>
+        </div>
+      )}
+
+      <ul className="space-y-2">
+        {sources?.map((s) => (
+          <li
+            key={s.id}
+            className="flex items-center justify-between gap-3 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] px-4 py-3"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">
+                {s.label} <span className="text-[var(--text-dim)]">({s.key})</span>
+              </p>
+              <p className="text-xs text-[var(--text-dim)]">
+                {s.noticeCount} wysłanych
+                {s.lastUsedAt ? ` · ostatnio ${new Date(s.lastUsedAt).toLocaleString("pl-PL")}` : " · jeszcze nieużywane"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button onClick={() => void toggle(s.id, !s.enabled)} className={glassButtonGhost}>
+                {s.enabled ? "Wyłącz" : "Włącz"}
+              </button>
+              <button onClick={() => void remove(s.id)} className={glassButtonGhost}>
+                Usuń
+              </button>
+            </div>
+          </li>
+        ))}
+        {sources && sources.length === 0 && (
+          <p className="text-xs text-[var(--text-dim)]">Brak skonfigurowanych źródeł.</p>
         )}
       </ul>
     </div>

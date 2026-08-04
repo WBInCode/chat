@@ -252,6 +252,12 @@ export function createMessageService(fastify: FastifyInstance) {
   ) {
     const member = await assertChannelMember(fastify, userId, channelId);
 
+    // Kanał tylko do odczytu (rozmowa z nadawcą System) nie przyjmuje niczego
+    // od ludzi, niezależnie od roli. Powiadomienia wchodzą tam osobnym torem.
+    if (member.channel.readOnly) {
+      forbidden("To jednostronny kanał powiadomień. Nie można w nim pisać.");
+    }
+
     // E2E ciphertext is only accepted on channels with E2E enabled, and an
     // E2E-enabled channel refuses plaintext (no silent downgrade).
     if (contentTypeInput === "e2e" && !member.channel.e2ee) {
