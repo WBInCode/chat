@@ -206,6 +206,10 @@ export function ChatLayout() {
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
   const [members, setMembers] = useState<MemberItem[]>([]);
+  // Konta techniczne (System, Asystent AI, Integracje) pisza w kanale, ale nie
+  // naleza do organizacji, wiec nie ma ich na liscie czlonkow. Bez tego ich
+  // wiadomosci podpisywalyby sie jako „Nieznany”.
+  const [channelMembers, setChannelMembers] = useState<MemberItem[]>([]);
   // E2E: peer public keys per DM channel (null = peer has no key yet).
   // E2E: per-DM key verification state. Holds not just the peer key but
   // whether it still matches the one pinned on first contact, so a silent
@@ -573,6 +577,14 @@ export function ChatLayout() {
       .catch(() => {
         /* read receipts are best-effort */
       });
+
+    // Uczestnicy kanalu obejmuja konta techniczne, ktorych nie ma w organizacji.
+    void apiFetch<MemberItem[]>(`/channels/${activeChannelId}/members`)
+      .then((data) => {
+        setChannelMembers(data);
+        useAvatarStore.getState().ensure(data.map((m) => m.userId));
+      })
+      .catch(() => setChannelMembers([]));
   }, [activeChannelId, setMessages, clearUnread, setReadState, setHasMoreOlder]);
 
   // ── pinned messages banner for the active channel ──────────────────────
@@ -880,8 +892,11 @@ export function ChatLayout() {
   const memberById = useMemo(() => {
     const map = new Map<string, MemberItem>();
     for (const m of members) map.set(m.userId, m);
+    // Uzupelniamy o uczestnikow samego kanalu — tylko do podpisywania wiadomosci.
+    // Do listy `members` ich nie dokladamy, bo ta zasila podpowiedzi wzmianek.
+    for (const m of channelMembers) if (!map.has(m.userId)) map.set(m.userId, m);
     return map;
-  }, [members]);
+  }, [members, channelMembers]);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
 
