@@ -25,7 +25,12 @@ interface HubCfg {
   url: string;
   issuer: string;
   productKey: string;
-  instanceId: string;
+  /**
+   * Instancje Huba obsługiwane przez to wdrożenie. `HUB_INSTANCE_ID` przyjmuje listę
+   * po przecinku — dane i tak są rozdzielane po organizacji (`org_slug` z biletu),
+   * więc jedno wdrożenie może obsłużyć kilka firm (np. produkcyjną i demonstracyjną).
+   */
+  instanceIds: string[];
   clientId: string;
   clientSecret: string;
   webUrl: string;
@@ -35,13 +40,16 @@ interface HubCfg {
 
 function getHubCfg(): HubCfg | null {
   const url = process.env.HUB_URL;
-  const instanceId = process.env.HUB_INSTANCE_ID;
+  const instanceIds = (process.env.HUB_INSTANCE_ID ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const clientId = process.env.HUB_SSO_CLIENT_ID;
   const clientSecret = process.env.HUB_SSO_SECRET;
-  if (!url || !instanceId || !clientId || !clientSecret) return null;
+  if (!url || instanceIds.length === 0 || !clientId || !clientSecret) return null;
   return {
     url,
-    instanceId,
+    instanceIds,
     clientId,
     clientSecret,
     issuer: process.env.HUB_ISSUER || "https://hub.wb.local",
@@ -92,14 +100,14 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
   }
 
   /** Fetch the authoritative instance config (status + enabled modules). */
-  async function fetchHubConfig(): Promise<HubConfig | null> {
+  async function fetchHubConfig(instanceId: string): Promise<HubConfig | null> {
     try {
-      const res = await fetch(`${cfg!.url}/api/v1/instances/${cfg!.instanceId}/config`, {
+      const res = await fetch(`${cfg!.url}/api/v1/instances/${instanceId}/config`, {
         headers: { "x-sso-client-id": cfg!.clientId, "x-sso-secret": cfg!.clientSecret },
       });
       if (res.ok) return (await res.json()) as HubConfig;
     } catch (err) {
-      fastify.log.warn({ err }, "Hub: nie udało się pobrać konfiguracji instancji");
+      fastify.log.warn({ err, instanceId }, "Hub: nie udało się pobrać konfiguracji instancji");
     }
     return null;
   }
@@ -189,7 +197,7 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
     try {
       const { payload } = await jwtVerify(token, jwks, { issuer: cfg.issuer, audience: cfg.productKey });
       if ((payload as { typ?: string }).typ !== "handoff") throw new Error("not handoff");
-      if (String(payload.instance_id) !== cfg.instanceId) throw new Error("wrong instance");
+      if (!cfg.instanceIds.includes(String(payload.instance_id))) throw new Error("wrong instance");
       claims = payload;
     } catch (err) {
       request.log.warn({ err }, "Hub SSO: odrzucony bilet");
@@ -273,7 +281,7 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
     await signAccessToken({ sub: user.id, sid: session.id }); // rozgrzewa klucz; token wyda /refresh
 
     // 5. Zsynchronizuj włączone moduły z Huba (source="hub") — best-effort.
-    const config = await fetchHubConfig();
+    const config = await fetchHubConfig(String(claims.instance_id));
     if (config) await syncHubModules(orgSlug, config.modules).catch((err) => request.log.warn({ err }, "Hub: sync modułów nieudany"));
 
     reply.setCookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
@@ -321,16 +329,19 @@ export default async function hubSsoRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const config = await fetchHubConfig();
-    if (!config) return reply.send({ ok: true });
+    // Webhook nie wskazuje instancji, więc uzgadniamy stan wszystkich obsługiwanych.
+    for (const instanceId of cfg.instanceIds) {
+      const config = await fetchHubConfig(instanceId);
+      if (!config) continue;
 
-    // Keep local module state in sync with the Hub (source of truth).
-    await syncHubModules(config.orgSlug, config.modules).catch((err) =>
-      request.log.warn({ err }, "Hub webhook: sync modułów nieudany")
-    );
+      // Keep local module state in sync with the Hub (source of truth).
+      await syncHubModules(config.orgSlug, config.modules).catch((err) =>
+        request.log.warn({ err, instanceId }, "Hub webhook: sync modułów nieudany")
+      );
 
-    if (event === "session.revoked" || config.status === "suspended" || config.status === "expired") {
-      await revokeOrgSessions(config.orgSlug, event === "session.revoked" ? "hub.session-revoked" : config.status);
+      if (event === "session.revoked" || config.status === "suspended" || config.status === "expired") {
+        await revokeOrgSessions(config.orgSlug, event === "session.revoked" ? "hub.session-revoked" : config.status);
+      }
     }
     return reply.send({ ok: true });
   });
