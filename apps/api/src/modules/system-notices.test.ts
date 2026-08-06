@@ -249,4 +249,39 @@ describe("rozmowa z Systemem jest jednostronna", () => {
     const wynik = await messages.sendMessage(owner.userId, dm.json().id, "zwykla wiadomosc");
     expect(wynik.content).toBe("zwykla wiadomosc");
   });
+
+  it("nadawca rozmowy jest rozpoznawalny po nazwie", async () => {
+    // Konto System nie nalezy do organizacji, wiec nie ma go na liscie jej czlonkow.
+    // Klient podpisuje wiadomosci wlasnie uczestnikami kanalu — bez tego autor
+    // powiadomien wyswietlalby sie jako "Nieznany".
+    const bot = await app.prisma.user.findUnique({ where: { email: "system@chatv2.system" } });
+    const rozmowa = await app.prisma.channel.findFirst({
+      where: {
+        orgId,
+        readOnly: true,
+        AND: [
+          { members: { some: { userId: czlonek.userId } } },
+          { members: { some: { userId: bot!.id } } }
+        ]
+      }
+    });
+
+    const czlonkowieOrg = await app.inject({
+      method: "GET",
+      url: `/api/v1/orgs/${orgId}/members`,
+      headers: auth(czlonek.token)
+    });
+    expect((czlonkowieOrg.json() as Array<{ userId: string }>).some((m) => m.userId === bot!.id)).toBe(false);
+
+    const uczestnicy = await app.inject({
+      method: "GET",
+      url: `/api/v1/channels/${rozmowa!.id}/members`,
+      headers: auth(czlonek.token)
+    });
+    expect(uczestnicy.statusCode).toBe(200);
+    const nadawca = (uczestnicy.json() as Array<{ userId: string; displayName: string }>).find(
+      (m) => m.userId === bot!.id
+    );
+    expect(nadawca?.displayName).toBe("System");
+  });
 });
