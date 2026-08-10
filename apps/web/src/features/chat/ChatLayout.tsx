@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, 
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate } from "react-router-dom";
-import type { MessageDto, ModuleKey, ChannelCategoryDto, TaskSearchResult } from "@chatv2/shared";
+import type { MessageDto, ModuleKey, ChannelCategoryDto, TaskSearchResult, DocumentSearchResultDto } from "@chatv2/shared";
 import { formatTaskRef } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { uploadFile, uploadEncryptedFile, isAllowedFile, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
@@ -326,6 +326,7 @@ export function ChatLayout() {
   const [draftChannels, setDraftChannels] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [documentResults, setDocumentResults] = useState<DocumentSearchResultDto[]>([]);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -1529,6 +1530,19 @@ export function ChatLayout() {
 
     const data = await apiFetch<{ results: SearchResult[] }>(`/search?${params.toString()}`);
     setSearchResults(data.results);
+
+    // Dokumenty mają osobną trasę, bo wynik wskazuje dokument, nie wiadomość.
+    // Szukamy ich tylko po tekście — filtry typu `from:` czy `has:file` dotyczą
+    // wiadomości i dla dokumentów nic nie znaczą.
+    if (parsed.text.length < 2 || !moduleEnabled("documents")) {
+      setDocumentResults([]);
+      return;
+    }
+    const paramsDok = new URLSearchParams({ orgId: activeOrgId, q: parsed.text });
+    if (params.get("channelId")) paramsDok.set("channelId", params.get("channelId")!);
+    await apiFetch<{ results: DocumentSearchResultDto[] }>(`/search/documents?${paramsDok}`)
+      .then((r) => setDocumentResults(r.results))
+      .catch(() => setDocumentResults([]));
   }
 
   function handleSearchInput(value: string) {
@@ -2205,6 +2219,36 @@ export function ChatLayout() {
                       </li>
                     ))}
                   </ul>
+                )}
+
+                {documentResults.length > 0 && (
+                  <>
+                    <div className="mb-1 mt-2 border-t border-[var(--glass-border)] pt-2 text-xs font-medium text-[var(--text-dim)]">
+                      Dokumenty ({documentResults.length})
+                    </div>
+                    <ul className="max-h-48 space-y-1 overflow-y-auto">
+                      {documentResults.map((d) => (
+                        <li key={d.documentId}>
+                          <button
+                            onClick={() => {
+                              openSearchResult(d.channelId);
+                              setShowDocuments(true);
+                            }}
+                            className="w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--border)]/40"
+                          >
+                            <span className="text-[var(--text-dim)]">
+                              {d.channelName ? `#${d.channelName}` : "@ DM"}
+                            </span>
+                            <span className="block font-medium text-[var(--text)]">
+                              {d.icon ? `${d.icon} ` : ""}
+                              {d.title}
+                            </span>
+                            <span className="block truncate text-[var(--text-dim)]">{d.snippet}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </div>
             )}
