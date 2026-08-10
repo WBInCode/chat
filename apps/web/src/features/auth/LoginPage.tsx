@@ -5,7 +5,7 @@ import { useAuthStore } from "../../stores/auth.js";
 import { glassInput, glassButtonPrimary, glassCard } from "../../styles/glass.js";
 
 const SSO_ONLY = import.meta.env.VITE_SSO_ONLY === "true";
-const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://wb-partners.pl";
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://wb-platform.pl";
 
 interface LoginResponse {
   accessToken: string;

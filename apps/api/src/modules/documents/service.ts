@@ -48,6 +48,41 @@ export function toBlockDto(row: BlockRow): DocumentBlockDto {
   };
 }
 
+export interface CzlonekDoPowiadomienia {
+  userId: string;
+  mutedAt: Date | null;
+  user: { displayName: string; notifyMode: string };
+}
+
+/**
+ * Kto ma dostać powiadomienie o nowym komentarzu.
+ *
+ * Celowo NIE cały kanał: komentarze potrafią się sypać seriami przy jednym
+ * przeglądzie dokumentu i powiadamianie wszystkich zamieniłoby je w szum,
+ * który ludzie wyciszają razem z całym kanałem. Zawiadamiamy tych, kogo
+ * komentarz faktycznie dotyczy — wskazanych przez `@`, autora dokumentu
+ * i autora omawianego elementu.
+ */
+export function odbiorcyKomentarza(input: {
+  czlonkowie: CzlonekDoPowiadomienia[];
+  autorKomentarzaId: string;
+  autorDokumentuId: string;
+  autorBlokuId: string | null;
+  tresc: string;
+}): string[] {
+  const wskazani = new Set<string>([input.autorDokumentuId]);
+  if (input.autorBlokuId) wskazani.add(input.autorBlokuId);
+  for (const czlonek of input.czlonkowie) {
+    if (input.tresc.includes(`@${czlonek.user.displayName}`)) wskazani.add(czlonek.userId);
+  }
+
+  return input.czlonkowie
+    .filter((czlonek) => czlonek.userId !== input.autorKomentarzaId)
+    .filter((czlonek) => wskazani.has(czlonek.userId))
+    .filter((czlonek) => !czlonek.mutedAt && czlonek.user.notifyMode !== "NONE")
+    .map((czlonek) => czlonek.userId);
+}
+
 export function toSummaryDto(row: {
   id: string;
   channelId: string;

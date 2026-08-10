@@ -15,7 +15,8 @@ export interface PushPayload {
   title: string;
   body: string;
   channelId: string;
-  messageId: string;
+  /** Brak oznacza powiadomienie o kanale, nie o wiadomości — np. o komentarzu w dokumencie. */
+  messageId?: string;
   icon?: string;
 }
 

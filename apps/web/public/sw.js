@@ -126,7 +126,7 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const channelId = event.notification.data?.channelId;
   const messageId = event.notification.data?.messageId;
-  const url = channelId && messageId ? `/?channel=${channelId}&msg=${messageId}` : "/";
+  const url = channelId && messageId ? `/?channel=${channelId}&msg=${messageId}` : channelId ? `/?channel=${channelId}` : "/";
 
   event.waitUntil(
     self.clients.matchAll({ type: "window" }).then((clients) => {
