@@ -25,3 +25,27 @@ export interface SearchResultDto {
   content: string;
   createdAt: string;
 }
+
+/**
+ * Wyszukiwanie dokumentów jest osobne od wiadomości: wynik wskazuje dokument,
+ * nie pojedynczą wiadomość, więc nie da się go wcisnąć w `SearchResultDto`
+ * bez pól, które dla wiadomości nic nie znaczą.
+ */
+export const documentSearchQuerySchema = z.object({
+  q: z.string().trim().min(2).max(200),
+  orgId: z.string().uuid(),
+  channelId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20)
+});
+export type DocumentSearchQuery = z.infer<typeof documentSearchQuerySchema>;
+
+export interface DocumentSearchResultDto {
+  documentId: string;
+  channelId: string;
+  channelName: string | null;
+  title: string;
+  icon: string | null;
+  /** Fragment, w którym trafiono — tytuł albo treść elementu. */
+  snippet: string;
+  updatedAt: string;
+}
