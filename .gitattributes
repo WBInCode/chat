@@ -1,0 +1,4 @@
+# Skrypty powloki jada prosto na serwer. Przy CRLF bash przewraca sie juz na
+# pierwszej linijce ("invalid option name"), wiec koncow linii nie wolno tu
+# zamieniac niezaleznie od ustawien core.autocrlf na stacji roboczej.
+*.sh text eol=lf

@@ -16,6 +16,11 @@ fi
 
 sudo tee "$KAT/turnserver.conf" >/dev/null <<EOF
 listening-port=3478
+# TURNS - przekaznik po TLS. Potrzebny tam, gdzie siec przepuszcza tylko ruch
+# wygladajacy na HTTPS i odrzuca zwykly UDP.
+tls-listening-port=5349
+cert=/etc/coturn/certs/cert.pem
+pkey=/etc/coturn/certs/key.pem
 fingerprint
 
 # Dane dostepowe wystawia chat-api: nazwa "<termin>:<userId>" + HMAC-SHA1.
@@ -104,6 +109,7 @@ services:
     network_mode: host
     volumes:
       - /opt/wb/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - /opt/wb/coturn/certs:/etc/coturn/certs:ro
     command: ["-c", "/etc/coturn/turnserver.conf"]
     logging:
       driver: json-file
@@ -112,6 +118,18 @@ services:
         max-file: "3"
 EOF
 echo "compose: zapisany"
+
+# Certyfikat pochodzi ze skladu Traefika i musi trafic na miejsce ZANIM
+# coturn wstanie - bez niego nie podniesie nasluchu TLS.
+sudo install -m 755 /tmp/coturn-certyfikat.sh /usr/local/bin/coturn-certyfikat.sh
+sudo /usr/local/bin/coturn-certyfikat.sh
+
+# Traefik odnawia certyfikaty samodzielnie i nie wie o istnieniu coturna.
+# Codzienne sprawdzenie przeladowuje przekaznik tylko wtedy, gdy plik sie
+# zmienil.
+echo '17 4 * * * root /usr/local/bin/coturn-certyfikat.sh >/dev/null 2>&1' | sudo tee /etc/cron.d/coturn-certyfikat >/dev/null
+sudo chmod 644 /etc/cron.d/coturn-certyfikat
+echo "odnawianie certyfikatu: wpis w /etc/cron.d/coturn-certyfikat"
 
 cd "$KAT"
 sudo docker compose up -d --force-recreate >/dev/null 2>&1
