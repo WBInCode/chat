@@ -8,7 +8,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @chatv2/shared build
 # Pusty VITE_API_URL => web używa ścieżek względnych (ten sam origin, proxy nginx).
 # SSO-only: strona logowania kieruje do Huba (WB Platform); lokalna rejestracja/login wyłączone.
-RUN printf 'VITE_API_URL=\nVITE_SSO_ONLY=true\nVITE_HUB_URL=https://wb-partners.pl\n' > apps/web/.env.production
+RUN printf 'VITE_API_URL=\nVITE_SSO_ONLY=true\nVITE_HUB_URL=https://wb-platform.pl\n' > apps/web/.env.production
 RUN pnpm --filter @chatv2/web build
 
 FROM nginx:1.27-alpine
