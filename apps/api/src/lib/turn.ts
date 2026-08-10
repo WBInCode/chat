@@ -29,6 +29,10 @@ export function daneDostepoweTurn(userId: string, teraz = Date.now()): IceServer
 
   const wygasa = Math.floor(teraz / 1000) + env.TURN_TTL_SECONDS;
   const username = `${wygasa}:${userId}`;
+  // SHA-1 jest tu narzucone przez protokol (TURN REST API), a nie wybrane -
+  // coturn z `use-auth-secret` nie liczy niczego innego. Analiza statyczna
+  // zglasza to jako slaby algorytm; w roli MAC z sekretem HMAC-SHA1 pozostaje
+  // bezpieczny, a same dane i tak wygasaja po godzinie.
   const credential = createHmac("sha1", env.TURN_SECRET).update(username).digest("base64");
 
   const adresy = env.TURN_URLS.split(",")

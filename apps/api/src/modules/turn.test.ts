@@ -54,6 +54,7 @@ describe("dane dostepowe TURN", () => {
     expect(userId).toBe("u-anna");
     expect(Number(wygasa)).toBeGreaterThan(Math.floor(teraz / 1000));
 
+    // SHA-1 narzucone przez TURN REST API - coturn nie liczy niczego innego.
     const oczekiwany = createHmac("sha1", SEKRET).update(wpis.username!).digest("base64");
     expect(wpis.credential).toBe(oczekiwany);
   });

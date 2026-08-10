@@ -127,7 +127,8 @@ try {
     wynik(odp.readUInt16BE(0) === 0x0113 && Boolean(nonce), `przydzial bez uwierzytelnienia odrzucony (realm: ${realm})`);
   }
 
-  // Klucz long-term: MD5(username:realm:password).
+  // Klucz long-term to MD5(username:realm:password) - tak stanowi RFC 8489
+  // i tego oczekuje serwer. Nie ma tu wyboru algorytmu do podjecia.
   const { createHash } = await import("node:crypto");
   const kluczDla = (uzytkownik, haslo) =>
     createHash("md5").update(`${uzytkownik}:${realm}:${haslo}`).digest();
