@@ -16,6 +16,7 @@ import { parseOrThrow, sendError } from "../../lib/validation.js";
 import { assertChannelMember, assertOrgMember, notFound, forbidden, HttpError } from "../../lib/authz.js";
 import { assertModuleEnabled } from "../../lib/modules.js";
 import { sendPushToUser } from "../../lib/push.js";
+import { convertHtmlToPdf } from "../../lib/gotenberg.js";
 import { isOrgEncryptedAtRest } from "../../lib/message-crypto.js";
 import {
   assertNotLockedByOther,
@@ -27,6 +28,7 @@ import {
   odbiorcyKomentarza,
   parseBlockData,
   positionAfter,
+  renderujDokumentHtml,
   releaseLock,
   toBlockDto,
   toCsv,
@@ -724,5 +726,42 @@ export default async function documentRoutes(fastify: FastifyInstance) {
       .header("Content-Type", "text/csv; charset=utf-8")
       .header("Content-Disposition", `attachment; filename="tabela-${blockId.slice(0, 8)}.csv"`)
       .send(csv);
+  });
+
+  // ── eksport całego dokumentu do PDF ─────────────────────────────────────
+
+  fastify.get("/documents/:documentId/pdf", async (request, reply) => {
+    const { documentId } = request.params as { documentId: string };
+    const { document } = await loadForViewer(documentId, request.user!.id);
+
+    const dto = await loadDocumentDto(fastify, documentId);
+    if (!dto) notFound("Dokument nie istnieje");
+
+    const html = renderujDokumentHtml({
+      title: document.title,
+      icon: document.icon,
+      bloki: dto.blocks
+    });
+
+    let pdf: Buffer;
+    try {
+      pdf = await convertHtmlToPdf(html);
+    } catch (err) {
+      // Gotenberg to osobny kontener — jego awaria nie może wyglądać jak błąd
+      // dokumentu, bo prowadzi to do szukania problemu w zupełnie złym miejscu.
+      fastify.log.warn({ err, documentId }, "Nie udało się wygenerować PDF dokumentu");
+      return sendError(reply, 503, "PDF_UNAVAILABLE", "Usługa generowania PDF jest chwilowo niedostępna");
+    }
+
+    // Nazwa pliku trafia do nagłówka, więc znaki spoza ASCII i cudzysłowy
+    // muszą odpaść — inaczej rozjeżdżają samą składnię nagłówka.
+    const nazwa = document.title.replace(/[^\p{L}\p{N} _-]/gu, "").trim().slice(0, 60) || "dokument";
+    return reply
+      .header("Content-Type", "application/pdf")
+      .header(
+        "Content-Disposition",
+        `attachment; filename="dokument.pdf"; filename*=UTF-8''${encodeURIComponent(`${nazwa}.pdf`)}`
+      )
+      .send(pdf);
   });
 }
