@@ -1315,7 +1315,16 @@ export function ChatLayout() {
     const params = new URLSearchParams(window.location.search);
     const targetChannel = params.get("channel");
     const targetMsg = params.get("msg");
-    if (!targetChannel || !targetMsg || channels.length === 0) return;
+    if (!targetChannel || channels.length === 0) return;
+
+    // Powiadomienie bez wskazanej wiadomości (np. o komentarzu w dokumencie)
+    // ma otworzyć sam kanał — wcześniej lądowało się na stronie głównej.
+    if (!targetMsg) {
+      permalinkHandled.current = true;
+      setActiveChannel(targetChannel);
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
     permalinkHandled.current = true;
     permalinkInProgressRef.current = targetChannel;
 
