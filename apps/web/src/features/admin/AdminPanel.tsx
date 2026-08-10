@@ -1243,9 +1243,9 @@ function TaskSourcesTab({ orgId }: { orgId: string }) {
   const pola = [
     { klucz: "key" as const, etykieta: "Klucz", placeholder: "np. rytm" },
     { klucz: "label" as const, etykieta: "Nazwa", placeholder: "np. Rytm" },
-    { klucz: "searchUrl" as const, etykieta: "Adres wyszukiwarki", placeholder: "https://rytm.wb-partners.pl/api/v1/ecosystem/tasks" },
+    { klucz: "searchUrl" as const, etykieta: "Adres wyszukiwarki", placeholder: "https://rytm.wb-platform.pl/api/v1/ecosystem/tasks" },
     { klucz: "secret" as const, etykieta: "Sekret", placeholder: "sekret uzgodniony z aplikacją" },
-    { klucz: "taskUrlTemplate" as const, etykieta: "Wzór adresu zadania", placeholder: "https://rytm.wb-partners.pl/zadania/{id}" }
+    { klucz: "taskUrlTemplate" as const, etykieta: "Wzór adresu zadania", placeholder: "https://rytm.wb-platform.pl/zadania/{id}" }
   ];
 
   return (
