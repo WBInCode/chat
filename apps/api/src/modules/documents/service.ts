@@ -55,6 +55,76 @@ export interface CzlonekDoPowiadomienia {
 }
 
 /**
+ * Zamienia znaki o znaczeniu w HTML na encje. Treść dokumentu pisza ludzie,
+ * a Chromium po stronie Gotenberga wykonuje skrypty — bez tego wstawiony
+ * `<script>` uruchomiłby się przy generowaniu PDF.
+ */
+export function escapujHtml(tekst: string): string {
+  return tekst
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Składa dokument w samodzielny HTML do wydruku. Bez zasobów zewnętrznych. */
+export function renderujDokumentHtml(input: {
+  title: string;
+  icon: string | null;
+  bloki: DocumentBlockDto[];
+}): string {
+  const czesci = input.bloki.map((blok) => {
+    const dane = blok.data;
+    switch (dane.type) {
+      case "heading":
+        return `<h${dane.level}>${escapujHtml(dane.text)}</h${dane.level}>`;
+      case "text":
+        return `<p>${escapujHtml(dane.text).replace(/\n/g, "<br>")}</p>`;
+      case "divider":
+        return "<hr>";
+      case "checklist":
+        return `<ul class="zadania">${dane.items
+          .map(
+            (poz) =>
+              `<li><span class="znacznik">${poz.checked ? "☑" : "☐"}</span>` +
+              `<span class="${poz.checked ? "zrobione" : ""}">${escapujHtml(poz.text)}</span></li>`
+          )
+          .join("")}</ul>`;
+      case "table":
+        return (
+          `<table><thead><tr>${dane.header
+            .map((n, i) => `<th style="text-align:${dane.align[i] ?? "left"}">${escapujHtml(n)}</th>`)
+            .join("")}</tr></thead><tbody>${dane.rows
+            .map(
+              (wiersz) =>
+                `<tr>${wiersz
+                  .map((k, i) => `<td style="text-align:${dane.align[i] ?? "left"}">${escapujHtml(k)}</td>`)
+                  .join("")}</tr>`
+            )
+            .join("")}</tbody></table>`
+        );
+    }
+  });
+
+  const naglowek = `${input.icon ? `${escapujHtml(input.icon)} ` : ""}${escapujHtml(input.title)}`;
+  return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>${escapujHtml(input.title)}</title>
+<style>
+body{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;font-size:12pt;line-height:1.5;color:#1a1a1a}
+h1.tytul{font-size:20pt;margin:0 0 18px;border-bottom:2px solid #ddd;padding-bottom:8px}
+h1{font-size:17pt}h2{font-size:14pt}h3{font-size:12.5pt}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:10.5pt}
+th,td{border:1px solid #ccc;padding:5px 8px;vertical-align:top}
+th{background:#f3f4f6}
+ul.zadania{list-style:none;padding-left:0}
+ul.zadania li{margin:3px 0}
+.znacznik{margin-right:7px}
+.zrobione{text-decoration:line-through;color:#777}
+hr{border:0;border-top:1px solid #ddd;margin:14px 0}
+</style></head><body><h1 class="tytul">${naglowek}</h1>${czesci.join("")}</body></html>`;
+}
+
+/**
  * Kto ma dostać powiadomienie o nowym komentarzu.
  *
  * Celowo NIE cały kanał: komentarze potrafią się sypać seriami przy jednym

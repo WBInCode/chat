@@ -69,6 +69,7 @@ export function DocumentEditor({
   const [error, setError] = useState<string | null>(null);
   const [addMenuAfter, setAddMenuAfter] = useState<string | null | "none">("none");
   const [showHistory, setShowHistory] = useState(false);
+  const [pobieranie, setPobieranie] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
 
@@ -333,6 +334,20 @@ export function DocumentEditor({
           className={`shrink-0 ${showHistory ? "text-[var(--accent)]" : "text-[var(--text-dim)] hover:text-[var(--text)]"}`}
         >
           <Icon icon={History} size={15} />
+        </button>
+        <button
+          onClick={() => {
+            setPobieranie(true);
+            void downloadFile(`/documents/${documentId}/pdf`, `${doc.title}.pdf`)
+              .catch(() => setError("Nie udało się pobrać dokumentu jako PDF."))
+              .finally(() => setPobieranie(false));
+          }}
+          disabled={pobieranie}
+          title="Pobierz dokument jako PDF"
+          aria-label="Pobierz dokument jako PDF"
+          className="shrink-0 text-[var(--text-dim)] hover:text-[var(--text)] disabled:opacity-40"
+        >
+          <Icon icon={Download} size={15} />
         </button>
       </div>
 
