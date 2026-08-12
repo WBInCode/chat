@@ -148,8 +148,8 @@ function channelBlock(channel: DigestChannel): string {
         }
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-left:46px;">
           <tr>
-            <td style="background-color:#3d6df2;border-radius:8px;">
-              <a href="${link}" style="display:inline-block;padding:9px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#ffffff;text-decoration:none;">Otwórz rozmowę</a>
+            <td style="background-color:#3d6df2;border-radius:999px;">
+              <a href="${link}" style="display:inline-block;padding:11px 24px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:999px;">Otwórz rozmowę</a>
             </td>
           </tr>
         </table>
@@ -169,12 +169,24 @@ export function renderDigestHtml(recipientName: string, channels: DigestChannel[
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(digestSubject(channels, total))}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f2f3f7;">
+<body style="margin:0;padding:0;background-color:#eef1f8;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(digestSubject(channels, total))}</div>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f2f3f7;padding:24px 12px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#eef1f8;padding:32px 12px;">
   <tr>
     <td align="center">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e2e5ec;border-radius:14px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">
+        <tr>
+          <td style="padding:0 6px 18px 6px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="40" height="40" align="center" valign="middle" bgcolor="#3d6df2" style="border-radius:13px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;">WB</td>
+                <td valign="middle" style="padding-left:12px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#101322;">Chat WB Platform</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr><td>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#ffffff;border:1px solid #e3e8f4;border-radius:24px;">
         <tr>
           <td style="padding:22px 24px 6px 24px;">
             <div style="font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:bold;color:#1b1f27;">
@@ -197,6 +209,13 @@ export function renderDigestHtml(recipientName: string, channels: DigestChannel[
               Wysyłamy je tylko wtedy, gdy nie jesteś aktywny w aplikacji.
               <a href="${settingsLink}" style="color:#3d6df2;">Zmień ustawienia powiadomień</a>.
             </div>
+          </td>
+        </tr>
+      </table>
+        </td></tr>
+        <tr>
+          <td style="padding:18px 30px 0 30px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#a4aabd;">
+            WB PARTNERS Sp. z o.o., ul. Juliusza Słowackiego 24/11, 35-060 Rzeszów
           </td>
         </tr>
       </table>
