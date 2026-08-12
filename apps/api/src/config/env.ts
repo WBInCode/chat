@@ -1,6 +1,17 @@
 import { z } from "zod";
 import "dotenv/config";
 
+/**
+ * Wartosc logiczna ze zmiennej srodowiskowej. Swiadomie nie uzywamy
+ * z.coerce.boolean(), bo ono robi Boolean("false") czyli true — wpisanie
+ * SMTP_SECURE=false wlaczyloby TLS zamiast go wylaczyc.
+ */
+const wartoscLogiczna = (domyslna: boolean) =>
+  z
+    .enum(["true", "false"])
+    .default(domyslna ? "true" : "false")
+    .transform((v) => v === "true");
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -31,11 +42,20 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().default("mailto:admin@chatv2.local"),
-  // Powiadomienia e-mail. Bez SMTP_URL cały mechanizm jest wyłączony
-  // (no-op, tak jak push bez kluczy VAPID) — nigdy nie wywraca wysyłki
-  // wiadomości. Format: smtp://user:pass@host:587 lub smtps://... dla TLS.
+  // Powiadomienia e-mail. Bez konfiguracji SMTP caly mechanizm jest wylaczony
+  // (no-op, tak jak push bez kluczy VAPID) — nigdy nie wywraca wysylki wiadomosci.
+  //
+  // Preferowane sa osobne zmienne, bo haslo w adresie URL wycieka przy kazdym
+  // wypisaniu konfiguracji, w logach i na zrzutach ekranu. SMTP_URL zostaje dla
+  // zgodnosci wstecz i jest uzywany tylko wtedy, gdy nie podano SMTP_HOST.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_SECURE: wartoscLogiczna(true),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  /** Zgodnosc wstecz. Format: smtp://user:pass@host:587 albo smtps://... dla TLS. */
   SMTP_URL: z.string().optional(),
-  MAIL_FROM: z.string().default("Chat WB Platform <no-reply@wb-partners.pl>"),
+  MAIL_FROM: z.string().default("Chat WB Platform <chat@wb-platform.pl>"),
   /** Baza linków w e-mailach; domyślnie pierwszy wpis CORS_ORIGIN. */
   APP_PUBLIC_URL: z.string().optional(),
   /** Twardy dzienny limit e-maili na osobę — ostatni bezpiecznik antyspamowy. */
