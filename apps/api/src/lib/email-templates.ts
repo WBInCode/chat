@@ -31,6 +31,10 @@ export interface DigestChannel {
 
 const PALETTE = ["#5b7cff", "#22c55e", "#f59e0b", "#e5484d", "#a855f7", "#06b6d4", "#ec4899", "#84cc16"];
 
+// Zasob marki lezy przy panelu platformy, nie przy Czacie. Klienty pocztowe nie
+// renderuja SVG, wiec bierzemy PNG bez pustego marginesu.
+const LOGO = "https://wb-platform.pl/wb-logo-mail.png";
+
 function colorForId(id: string): string {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
@@ -179,8 +183,10 @@ export function renderDigestHtml(recipientName: string, channels: DigestChannel[
           <td style="padding:0 6px 18px 6px;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                <td width="40" height="40" align="center" valign="middle" bgcolor="#3d6df2" style="border-radius:13px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;">WB</td>
-                <td valign="middle" style="padding-left:12px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#101322;">Chat WB Platform</td>
+                <td width="74" valign="middle">
+                  <img src="${LOGO}" width="74" height="40" alt="" style="display:block;width:74px;height:40px;border:0;outline:none;text-decoration:none;">
+                </td>
+                <td valign="middle" style="padding-left:14px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#101322;">Chat WB Platform</td>
               </tr>
             </table>
           </td>
