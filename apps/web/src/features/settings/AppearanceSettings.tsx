@@ -4,8 +4,10 @@ import { glassCard } from "../../styles/glass.js";
 const SKIN_OPTIONS: { value: Skin; label: string; hint: string }[] = [
   { value: "klasyczny", label: "Klasyczny", hint: "Gęsty układ, jeden panel rozmowy" },
   { value: "platforma", label: "Platforma", hint: "Miękkie kafle na płótnie, jak reszta WB Platform" },
+  { value: "czytelny", label: "Czytelny", hint: "Większy tekst, mocny kontrast, przyciski z ramką" },
   { value: "konsola", label: "Konsola", hint: "Maksimum wierszy na ekranie, kanciasto i bez cieni" },
-  { value: "papier", label: "Papier", hint: "Bez paneli, sama typografia — do czytania długich wątków" }
+  { value: "papier", label: "Papier", hint: "Bez paneli, sama typografia — do czytania długich wątków" },
+  { value: "nokturn", label: "Nokturn", hint: "Ciepłe barwy do pracy po zmroku, zawsze ciemny" }
 ];
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; hint: string }[] = [
@@ -35,7 +37,7 @@ export function AppearanceSettings() {
 
       <div className="mb-4">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">Styl interfejsu</p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {SKIN_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -55,6 +57,11 @@ export function AppearanceSettings() {
 
       <div className="mb-4">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">Motyw</p>
+        {skin === "nokturn" && (
+          <p className="mb-2 text-[11px] text-[var(--text-dim)]">
+            Nokturn ma własną, zawsze ciemną paletę — wybór poniżej jej nie zmieni.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {THEME_OPTIONS.map((opt) => (
             <button

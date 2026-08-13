@@ -14,6 +14,8 @@ import "./styles/index.css";
 import "./styles/skin-platforma.css";
 import "./styles/skin-konsola.css";
 import "./styles/skin-papier.css";
+import "./styles/skin-czytelny.css";
+import "./styles/skin-nokturn.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {

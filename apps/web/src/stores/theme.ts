@@ -3,7 +3,7 @@ import { create } from "zustand";
 export type ThemeMode = "light" | "dark" | "midnight" | "system";
 export type Density = "comfortable" | "compact";
 /** Skórka steruje układem i bryłą interfejsu, niezależnie od jasny/ciemny. */
-export type Skin = "klasyczny" | "platforma" | "konsola" | "papier";
+export type Skin = "klasyczny" | "platforma" | "konsola" | "papier" | "czytelny" | "nokturn";
 
 const STORAGE_KEY = "chatv2-theme";
 const DENSITY_KEY = "chatv2-density";

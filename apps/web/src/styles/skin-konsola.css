@@ -150,6 +150,12 @@
   border-radius: 2px;
 }
 
+/* Przyciski przy polu pisania sa w kodzie pigulkami — tutaj nic nie jest
+   okragle, wiec i one nie moga byc. */
+:root[data-skin="konsola"] main.glass > form button {
+  border-radius: 2px;
+}
+
 :root[data-skin="konsola"] .composer-glow:focus-within {
   box-shadow: none;
   border-color: var(--accent);

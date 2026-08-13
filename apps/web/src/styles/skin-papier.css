@@ -197,6 +197,11 @@
   background: transparent;
 }
 
+/* Pole pisania ma kanciasta ramke, wiec pigulki obok niej odstaja. */
+:root[data-skin="papier"] main.glass > form button {
+  border-radius: 0;
+}
+
 :root[data-skin="papier"] .composer-glow:focus-within {
   box-shadow: none;
   border-color: var(--accent);
