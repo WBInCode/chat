@@ -193,6 +193,26 @@ textarea::placeholder {
   line-height: 1.35;
 }
 
+/* ── Cele wskazania: minimum 24×24 px (WCAG 2.5.8) ───────────────────
+   Sterowanie w panelu bocznym i w pasku nad rozmową miało 18 px wysokości
+   — trafienie palcem było loterią, a kursorem wymagało celowania. Rośnie
+   pole trafienia, nie ikona.
+
+   `inline-flex` na odnośnikach jest konieczny: na elemencie liniowym
+   `min-height` nie robi nic i reguła wyglądałaby na działającą. */
+aside button,
+aside a,
+main > header button,
+[id^="message-"] > div > button {
+  min-height: 24px;
+  min-width: 24px;
+}
+
+aside a {
+  display: inline-flex;
+  align-items: center;
+}
+
 /* ── Mobile sidebar drawer ─────────────────────────────────────────────
    Own CSS (not Tailwind translate utilities) because Tailwind v4 drives
    translate via the `translate` CSS property, which made a conditional

@@ -12,9 +12,9 @@ const SKIN_OPTIONS: { value: Skin; label: string; hint: string }[] = [
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; hint: string }[] = [
   { value: "system", label: "Systemowy", hint: "Podąża za ustawieniem systemu" },
-  { value: "light", label: "Jasny", hint: "Pastelowy liquid glass" },
-  { value: "dark", label: "Ciemny", hint: "Granatowy liquid glass" },
-  { value: "midnight", label: "Midnight", hint: "Czysta czerń OLED, bez rozmyć" }
+  { value: "light", label: "Jasny", hint: "Jasne tło, ciemny tekst" },
+  { value: "dark", label: "Ciemny", hint: "Ciemne tło, jasny tekst" },
+  { value: "midnight", label: "Midnight", hint: "Czysta czerń — oszczędza baterię na ekranach OLED" }
 ];
 
 const DENSITY_OPTIONS: { value: Density; label: string; hint: string }[] = [

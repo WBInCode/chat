@@ -239,14 +239,15 @@ export function MessageRow({
           <button
             type="button"
             onClick={(e) => onOpenProfile?.(m.authorId, { x: e.clientX, y: e.clientY })}
-            className="shrink-0 rounded-full transition-transform hover:scale-105"
+            aria-label={`Profil: ${authorName}`}
+            className="flex shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105"
           >
             <Avatar userId={m.authorId} displayName={authorName} url={avatarUrl} size={22} />
           </button>
           <button
             type="button"
             onClick={(e) => onOpenProfile?.(m.authorId, { x: e.clientX, y: e.clientY })}
-            className={`text-sm font-semibold hover:underline ${mine ? "text-[var(--accent)]" : ""}`}
+            className={`text-sm font-semibold hover:underline ${mine ? "text-[var(--accent-hi)]" : ""}`}
           >
             {authorName}
           </button>

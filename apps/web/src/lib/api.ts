@@ -41,6 +41,15 @@ function refreshOnce(): Promise<string | null> {
   return refreshInFlight;
 }
 
+/**
+ * Odtwarza sesję z ciasteczka odnawiającego. Token dostępu żyje wyłącznie
+ * w pamięci, więc po przeładowaniu strony pierwsze zapytanie i tak dostałoby
+ * 401 — lepiej odnowić sesję od razu niż prowokować błąd i powtarzać zapytanie.
+ */
+export function odtworzSesje(): Promise<string | null> {
+  return refreshOnce();
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},

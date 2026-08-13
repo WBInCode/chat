@@ -32,7 +32,7 @@ export function SettingsPage() {
         <h1 className="text-lg font-semibold">Ustawienia</h1>
         <Link
           to="/"
-          className="flex items-center gap-1.5 text-sm font-medium text-[var(--accent)] transition-colors hover:underline"
+          className="flex min-h-6 items-center gap-1.5 text-sm font-medium text-[var(--accent-hi)] transition-colors hover:underline"
         >
           <Icon icon={ArrowLeft} size={15} /> Wróć do czatu
         </Link>
