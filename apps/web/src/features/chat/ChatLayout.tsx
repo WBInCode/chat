@@ -1583,7 +1583,7 @@ export function ChatLayout() {
 
   // ── render ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full gap-0 p-0 md:gap-3 md:p-3">
+    <div className="chat-shell flex h-full gap-0 p-0 md:gap-3 md:p-3">
       {wsDisconnected && (
         <div className="fixed left-1/2 top-2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[var(--warning)]/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-black/60" />
@@ -1683,6 +1683,7 @@ export function ChatLayout() {
                   <button
                     key={`fav-${c.id}`}
                     onClick={() => setActiveChannel(c.id)}
+                    data-aktywny={c.id === activeChannelId ? "tak" : undefined}
                     className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
                       c.id === activeChannelId
                         ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent-ring)]"
@@ -1759,6 +1760,7 @@ export function ChatLayout() {
                 <button
                   key={c.id}
                   onClick={() => setActiveChannel(c.id)}
+                  data-aktywny={c.id === activeChannelId ? "tak" : undefined}
                   className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
                     c.id === activeChannelId
                       ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
@@ -2404,7 +2406,7 @@ export function ChatLayout() {
               </div>
             </div>
 
-            <div className="flex h-5 items-center gap-1.5 px-4 text-xs text-[var(--text-dim)]">
+            <div data-pasek="pisanie" className="flex h-5 items-center gap-1.5 px-4 text-xs text-[var(--text-dim)]">
               {typingNames.length > 0 && (
                 <>
                   <span className="flex gap-0.5">

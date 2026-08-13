@@ -9,6 +9,9 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/sora";
 import "@fontsource-variable/jetbrains-mono";
 import "./styles/index.css";
+// Po bazowym arkuszu: skórka celowo nadpisuje część reguł o tej samej wadze
+// (np. brak cieni w trybie midnight), więc musi być dalej w kolejności.
+import "./styles/skin-platforma.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
