@@ -205,12 +205,19 @@ aside a,
 main > header button,
 [id^="message-"] > div > button {
   min-height: 24px;
-  min-width: 24px;
 }
 
 aside a {
   display: inline-flex;
   align-items: center;
+}
+
+/* Szerokość podnosimy WYŁĄCZNIE tam, gdzie przycisk jest samą ikoną.
+   `min-width` na elemencie flex zastępuje domyślne `min-width: auto`,
+   które chroni go przed skurczeniem się poniżej własnej treści — ustawione
+   szerzej, zawija podpisy sekcji w panelu bocznym na dwie linijki. */
+main > header button {
+  min-width: 24px;
 }
 
 /* ── Mobile sidebar drawer ─────────────────────────────────────────────

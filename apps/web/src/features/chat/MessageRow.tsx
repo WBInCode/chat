@@ -240,7 +240,7 @@ export function MessageRow({
             type="button"
             onClick={(e) => onOpenProfile?.(m.authorId, { x: e.clientX, y: e.clientY })}
             aria-label={`Profil: ${authorName}`}
-            className="flex shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105"
+            className="flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105"
           >
             <Avatar userId={m.authorId} displayName={authorName} url={avatarUrl} size={22} />
           </button>
@@ -550,7 +550,7 @@ export function MessageRow({
       {!inThread && (m.replyCount ?? 0) > 0 && onOpenThread && (
         <button
           onClick={() => onOpenThread(m.id)}
-          className="mt-1 flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline touch:min-h-9"
+          className="mt-1 flex min-h-6 items-center gap-1 text-xs font-medium text-[var(--accent-hi)] hover:underline touch:min-h-9"
         >
           <Icon icon={MessageSquare} size={14} /> {m.replyCount} {m.replyCount === 1 ? "odpowiedź" : "odpowiedzi"}
         </button>
