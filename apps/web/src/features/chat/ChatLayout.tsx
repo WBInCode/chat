@@ -2319,6 +2319,7 @@ export function ChatLayout() {
                 </button>
               )}
               <div
+                data-kolumna="wiadomosci"
                 style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}
               >
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -2366,7 +2367,7 @@ export function ChatLayout() {
                       {newDay && (
                         <div className="my-2 flex items-center gap-3 px-1 select-none">
                           <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--glass-border)] to-[var(--glass-border)]" />
-                          <span className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-0.5 font-[family-name:var(--font-display)] text-[11px] font-medium tracking-wide text-[var(--text-dim)] backdrop-blur-sm">
+                          <span data-etykieta="dzien" className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-0.5 font-[family-name:var(--font-display)] text-[11px] font-medium tracking-wide text-[var(--text-dim)] backdrop-blur-sm">
                             {formatDayLabel(new Date(m.createdAt))}
                           </span>
                           <span className="h-px flex-1 bg-gradient-to-l from-transparent via-[var(--glass-border)] to-[var(--glass-border)]" />

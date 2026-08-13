@@ -3,7 +3,7 @@ import { create } from "zustand";
 export type ThemeMode = "light" | "dark" | "midnight" | "system";
 export type Density = "comfortable" | "compact";
 /** Skórka steruje układem i bryłą interfejsu, niezależnie od jasny/ciemny. */
-export type Skin = "klasyczny" | "platforma";
+export type Skin = "klasyczny" | "platforma" | "konsola" | "papier";
 
 const STORAGE_KEY = "chatv2-theme";
 const DENSITY_KEY = "chatv2-density";
@@ -28,11 +28,11 @@ function applyDensity(density: Density) {
 
 function applySkin(skin: Skin) {
   document.documentElement.dataset.skin = skin;
-  // Krój huba dociągamy dopiero przy włączeniu skórki — kto zostaje przy
-  // klasycznej, nie płaci za niego transferem. Import jest idempotentny.
-  if (skin === "platforma") {
-    void import("@fontsource-variable/plus-jakarta-sans");
-  }
+  // Kroje dociągamy dopiero przy włączeniu skórki, która ich używa — kto
+  // zostaje przy klasycznej, nie płaci za nie transferem. Import jest
+  // idempotentny, więc powrót do skórki nic nie kosztuje.
+  if (skin === "platforma") void import("@fontsource-variable/plus-jakarta-sans");
+  if (skin === "papier") void import("@fontsource-variable/literata");
 }
 
 interface ThemeState {

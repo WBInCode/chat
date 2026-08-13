@@ -1,0 +1,207 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Skórka „Papier": rozmowa jako tekst do czytania.
+
+   Odwrotność „Platformy". Tam każdy obszar był osobną płytką; tutaj nie ma
+   ani jednego panelu — cała aplikacja to jedna kartka, a jedyną strukturą
+   są typografia i włoskowate kreski. Zero cieni, zero zaokrągleń, zero tła
+   pod elementami.
+
+   Sygnaturą jest MIARA: kolumna wiadomości ma ograniczoną szerokość, więc
+   na szerokim monitorze wiersz nie ciągnie się przez pół ekranu. To jedyna
+   skórka, w której da się przeczytać długą wiadomość bez gubienia linijki.
+
+   Krój: Literata (przeznaczona do czytania na ekranie) w kolumnie rozmowy
+   i w polu pisania — piszesz tym, czym potem czytasz. Interfejs zostaje
+   na Interze, bo szeryfy w drobnych etykietach robią się miałkie.
+   ───────────────────────────────────────────────────────────────────── */
+
+:root[data-skin="papier"] {
+  --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-body);
+  --font-czytanie: "Literata Variable", Georgia, "Times New Roman", serif;
+
+  --bg-base: #f4f3ef;
+  --glass: #f4f3ef;
+  --glass-strong: #fbfaf7;
+  --glass-border: #ddd9d0;
+  --glass-highlight: transparent;
+
+  --bg: var(--bg-base);
+  --surface: var(--glass);
+  --border: #ddd9d0;
+  --text: #23211d;
+  --text-dim: #6f6a60;
+
+  /* Atrament, nie firmowy błękit — na papierze czyta się cieplej. */
+  --accent: #2f4a8c;
+  --accent-hi: #1e3268;
+  --accent-grad: linear-gradient(0deg, #2f4a8c 0%, #2f4a8c 100%);
+  --accent-glow: transparent;
+  --accent-ring: rgba(47, 74, 140, 0.28);
+  --accent-2: #2b6b46;
+  --danger: #a4302c;
+  --warning: #8a6212;
+
+  --radius-glass: 0px;
+  --shadow-glass: none;
+}
+
+:root[data-skin="papier"].dark,
+:root[data-skin="papier"].midnight {
+  --bg-base: #1a1917;
+  --glass: #1a1917;
+  --glass-strong: #232120;
+  --glass-border: #35322e;
+  --border: #35322e;
+  --text: #e6e2d9;
+  --text-dim: #9a9388;
+
+  --accent: #93a9e6;
+  --accent-hi: #b0c1f2;
+  --accent-grad: linear-gradient(0deg, #93a9e6 0%, #93a9e6 100%);
+  --accent-ring: rgba(147, 169, 230, 0.3);
+  --accent-2: #6fb08a;
+  --danger: #e0736d;
+  --warning: #d0a63f;
+}
+
+:root[data-skin="papier"].midnight {
+  --bg-base: #000000;
+  --glass: #000000;
+  --glass-strong: #0d0d0c;
+}
+
+/* ── Brak paneli: cała aplikacja to jedna kartka ───────────────────── */
+
+:root[data-skin="papier"] .glass {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Okna dialogowe muszą się jednak odciąć od tła, inaczej zlewają się
+   z kartką pod spodem. Kreska zamiast cienia. */
+:root[data-skin="papier"] .glass-strong {
+  border: 1px solid var(--text-dim);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+@media (min-width: 768px) {
+  :root[data-skin="papier"] .chat-shell {
+    gap: 0;
+    padding: 0;
+  }
+
+  /* Jedyna granica w całym układzie. */
+  :root[data-skin="papier"] aside.glass {
+    border-right: 1px solid var(--glass-border);
+    width: 15rem;
+  }
+
+  /* Sygnatura: miara. Kolumna rozmowy nie rozlewa się na całą szerokość
+     monitora — przy wierszu dłuższym niż ~70 znaków oko gubi początek
+     następnej linijki. `max-width` wygrywa z `width: 100%` ustawionym
+     w kodzie wirtualizatora, więc nie trzeba go tam ruszac. */
+  :root[data-skin="papier"] [data-kolumna="wiadomosci"] {
+    max-width: 72ch;
+    margin-inline: auto;
+  }
+
+  /* Pole pisania trzyma tę samą miarę co kolumna rozmowy — inaczej pisze się
+     w pasku szerokim na pół ekranu, a czyta w wąskiej szpalcie. */
+  :root[data-skin="papier"] main.glass > form > * {
+    max-width: 72ch;
+    margin-inline: auto;
+  }
+
+  :root[data-skin="papier"] main.glass > div[aria-live="polite"],
+  :root[data-skin="papier"] main.glass > header,
+  :root[data-skin="papier"] main.glass > form {
+    padding-inline: clamp(1.25rem, 5vw, 3rem);
+  }
+}
+
+/* ── Typografia: to jest cała reszta układu ────────────────────────── */
+
+:root[data-skin="papier"] main.glass > div[aria-live="polite"],
+:root[data-skin="papier"] .composer-glow {
+  font-family: var(--font-czytanie);
+}
+
+:root[data-skin="papier"] [id^="message-"] {
+  border-radius: 0;
+  line-height: 1.65;
+  padding-block: 0.15rem;
+}
+
+/* Nazwisko nadawcy jest nagłówkiem wypowiedzi, nie odnośnikiem — stąd
+   kapitaliki zamiast koloru akcentu. Tylko `button`, bo wzmianki w treści
+   też są pogrubione i robiły się z tego krzyczace @KANAL. */
+:root[data-skin="papier"] [id^="message-"] > div > button.font-semibold {
+  font-family: var(--font-body);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Kartka nie ma pigułek — data dnia to podpis między kreskami. */
+:root[data-skin="papier"] [data-etykieta="dzien"] {
+  border: none;
+  background: transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+:root[data-skin="papier"] .uppercase {
+  letter-spacing: 0.16em;
+  opacity: 0.65;
+}
+
+/* ── Nawigacja: znak na marginesie ─────────────────────────────────── */
+
+:root[data-skin="papier"] .nav-item {
+  border-radius: 0;
+}
+
+:root[data-skin="papier"] .nav-item:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+/* Zaznaczenie to gruba kreska na marginesie i mocniejszy atrament —
+   tak zaznacza się akapit w książce, a nie kolorowym prostokątem. */
+:root[data-skin="papier"] .nav-item[data-aktywny="tak"] {
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+/* ── Kontrolki: bez ozdób ──────────────────────────────────────────── */
+
+:root[data-skin="papier"] [data-awatar] {
+  border-radius: 50%;
+  filter: saturate(0.55);
+}
+
+:root[data-skin="papier"] .btn-gradient {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:root[data-skin="papier"] .composer-glow {
+  border-radius: 0;
+  border-color: var(--text-dim);
+  background: transparent;
+}
+
+:root[data-skin="papier"] .composer-glow:focus-within {
+  box-shadow: none;
+  border-color: var(--accent);
+}
+
+:root[data-skin="papier"] .field-pill {
+  border-radius: 0;
+}

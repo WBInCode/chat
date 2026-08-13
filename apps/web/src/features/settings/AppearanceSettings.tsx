@@ -3,7 +3,9 @@ import { glassCard } from "../../styles/glass.js";
 
 const SKIN_OPTIONS: { value: Skin; label: string; hint: string }[] = [
   { value: "klasyczny", label: "Klasyczny", hint: "Gęsty układ, jeden panel rozmowy" },
-  { value: "platforma", label: "Platforma", hint: "Miękkie karty i więcej powietrza, jak reszta WB Platform" }
+  { value: "platforma", label: "Platforma", hint: "Miękkie kafle na płótnie, jak reszta WB Platform" },
+  { value: "konsola", label: "Konsola", hint: "Maksimum wierszy na ekranie, kanciasto i bez cieni" },
+  { value: "papier", label: "Papier", hint: "Bez paneli, sama typografia — do czytania długich wątków" }
 ];
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; hint: string }[] = [

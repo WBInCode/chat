@@ -184,6 +184,34 @@
   }
 }
 
+/* Na telefonie plansza kafli się nie mieści, ale sama idea musi być widoczna
+   — inaczej po przełączeniu skórki zmienia się tylko krój. Rozmowa zostaje
+   pełnoekranowa, a sterowanie (nagłówek i pole pisania) odkleja się od
+   krawędzi i pływa nad płótnem. */
+@media (max-width: 767px) {
+  :root[data-skin="platforma"] main.glass {
+    background: var(--bg-base);
+    gap: 0.55rem;
+    padding: 0.55rem 0;
+  }
+
+  :root[data-skin="platforma"] main.glass > header,
+  :root[data-skin="platforma"] main.glass > form {
+    margin: 0 0.55rem;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    box-shadow: var(--clay-raised);
+    overflow: hidden;
+  }
+
+  :root[data-skin="platforma"] main.glass > div[aria-live="polite"] {
+    background: var(--glass);
+    border-top: 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--glass-border);
+  }
+}
+
 /* ── Nawigacja: sygnatura skórki ───────────────────────────────────── */
 
 /* Pasek akcentu z lewej należy do skórki klasycznej. Tutaj wybór widać
@@ -238,6 +266,12 @@
 }
 
 /* ── Kontrolki ─────────────────────────────────────────────────────── */
+
+/* Glina nie ma idealnych kół — awatary dostają kształt zaokrąglonego
+   kwadratu, tak jak ikony aplikacji w launcherze huba. */
+:root[data-skin="platforma"] [data-awatar] {
+  border-radius: 32%;
+}
 
 :root[data-skin="platforma"] .btn-gradient {
   border-radius: 999px;
