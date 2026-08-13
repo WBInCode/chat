@@ -5,6 +5,7 @@ import type { ChannelCategoryDto } from "@chatv2/shared";
 import { normalizeChannelName } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { MemberPicker, type PickableMember } from "../../components/MemberPicker.js";
+import { useOknoModalne } from "../../components/oknoModalne.js";
 
 interface CreateChannelModalProps {
   orgId: string;
@@ -34,6 +35,7 @@ export function CreateChannelModal({
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const panelRef = useOknoModalne(onClose);
 
   const category = categories.find((c) => c.id === categoryId) ?? null;
   const categoryIsPrivate = category?.private ?? false;
@@ -73,7 +75,13 @@ export function CreateChannelModal({
   return createPortal(
     <>
       <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 max-h-[88vh] w-[26rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 overflow-y-auto p-5">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Utwórz kanał"
+        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 max-h-[88vh] w-[26rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 overflow-y-auto p-5"
+      >
         <h2 className="text-sm font-semibold">Utwórz kanał</h2>
 
         <label className="block space-y-1 text-sm">

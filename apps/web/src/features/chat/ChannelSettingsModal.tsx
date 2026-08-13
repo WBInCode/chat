@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Hash, Megaphone, Timer, FolderTree, Trash2, AlertTriangle } from "lucide-react";
 import type { ChannelCategoryDto } from "@chatv2/shared";
@@ -6,6 +6,7 @@ import { SLOWMODE_OPTIONS, normalizeChannelName } from "@chatv2/shared";
 import type { ChannelItem } from "../../stores/chat.js";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { ConfirmDialog } from "../../components/Dialog.js";
+import { useOknoModalne } from "../../components/oknoModalne.js";
 
 /**
  * Ustawienia kanału w układzie zakładek, wzorowane na Discordzie.
@@ -54,14 +55,7 @@ export function ChannelSettingsModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const panelRef = useOknoModalne(onClose);
 
   const normalizedName = normalizeChannelName(name);
   const dirty =
@@ -120,6 +114,10 @@ export function ChannelSettingsModal({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Ustawienia kanału ${channel.name ?? ""}`}
         onClick={(e) => e.stopPropagation()}
         className="flex h-[min(90vh,44rem)] w-full max-w-3xl overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
       >

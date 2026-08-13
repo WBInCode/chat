@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Forward } from "lucide-react";
 import { Icon } from "../../components/Icon.js";
+import { useOknoModalne } from "../../components/oknoModalne.js";
 import type { ChannelItem } from "../../stores/chat.js";
 
 interface ForwardPickerProps {
@@ -14,11 +15,18 @@ interface ForwardPickerProps {
 export function ForwardPicker({ channels, onClose, onSubmit }: ForwardPickerProps) {
   const [targetId, setTargetId] = useState(channels[0]?.id ?? "");
   const [comment, setComment] = useState("");
+  const panelRef = useOknoModalne(onClose);
 
   return createPortal(
     <>
       <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-96 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 p-5">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Przekaż wiadomość"
+        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-96 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 p-5"
+      >
         <h2 className="flex items-center gap-1.5 text-sm font-semibold">
           <Icon icon={Forward} size={15} className="text-[var(--accent)]" /> Przekaż wiadomość
         </h2>
