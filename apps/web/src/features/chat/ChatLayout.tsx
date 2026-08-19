@@ -866,7 +866,14 @@ export function ChatLayout() {
     count: channelMessages.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 56,
-    overscan: 10
+    overscan: 10,
+    // Key measured heights by stable message id, not array index: messages
+    // get prepended (older history), spliced (optimistic tempId -> real id
+    // reconciliation) and edited/deleted via WebSocket, all of which shift
+    // what's at a given index. Index-keyed measurement cache then reuses a
+    // stale height for the wrong message, producing wrong translateY offsets
+    // (rows overlapping / stacking) until a full remount clears the cache.
+    getItemKey: (index) => channelMessages[index]!.id
   });
 
   useEffect(() => {
