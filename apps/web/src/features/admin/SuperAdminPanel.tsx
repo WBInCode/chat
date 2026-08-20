@@ -75,7 +75,13 @@ export function SuperAdminPanel() {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col gap-4 overflow-y-auto p-6">
+    <div
+      className="mx-auto flex h-full max-w-6xl flex-col gap-4 overflow-y-auto overscroll-contain p-6"
+      style={{
+        paddingTop: "calc(1.5rem + env(safe-area-inset-top))",
+        paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))"
+      }}
+    >
       <div>
         <h1 className="text-lg font-semibold">Panel super-admina</h1>
         <p className="text-xs text-[var(--text-dim)]">

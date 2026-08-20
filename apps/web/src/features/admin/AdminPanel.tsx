@@ -75,7 +75,10 @@ export function AdminPanel() {
 
   return (
     <div className="mx-auto flex h-full w-full min-w-0 max-w-6xl flex-col gap-4 p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      <header
+        className="flex flex-wrap items-start justify-between gap-3"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">Panel administracyjny</h1>
           <p className="truncate text-xs text-[var(--text-dim)]">
