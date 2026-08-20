@@ -337,7 +337,7 @@ export function renderMarkdown(
       blocks.push(<div key={`b${blockKey++}`} className="h-1.5" />);
     } else {
       blocks.push(
-        <div key={`b${blockKey++}`}>{renderInline(line, members, currentUserId, taskSources, `b${blockKey}p-`)}</div>
+        <div key={`b${blockKey++}`} className="[overflow-wrap:break-word]">{renderInline(line, members, currentUserId, taskSources, `b${blockKey}p-`)}</div>
       );
     }
     i++;

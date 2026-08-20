@@ -35,6 +35,7 @@ import { ThemeToggle } from "../settings/ThemeToggle.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { useIdlePresence } from "../../lib/idlePresence.js";
+import { useVisualViewportHeight } from "../../hooks/useVisualViewportHeight.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import {
@@ -167,6 +168,7 @@ function presenceDotClass(status: "online" | "away" | "dnd" | "offline" | undefi
 }
 
 export function ChatLayout() {
+  useVisualViewportHeight();
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clear);
   const navigate = useNavigate();
@@ -1590,7 +1592,7 @@ export function ChatLayout() {
 
   // ── render ─────────────────────────────────────────────────────────────
   return (
-    <div className="chat-shell flex h-full gap-0 p-0 md:gap-3 md:p-3">
+    <div className="chat-shell flex h-full gap-0 p-0 md:gap-3 md:p-3" style={{ height: "var(--vvh, 100%)" }}>
       {wsDisconnected && (
         <div className="fixed left-1/2 top-2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[var(--warning)]/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-black/60" />
@@ -1607,7 +1609,7 @@ export function ChatLayout() {
         onClickCapture={() => {
           if (window.innerWidth < 768) setShowMobileSidebar(false);
         }}
-        className={`mobile-drawer glass flex w-[82%] max-w-xs shrink-0 flex-col overflow-hidden max-md:!rounded-none max-md:!border-y-0 max-md:!border-l-0 md:static md:z-auto md:w-64 ${
+        className={`mobile-drawer glass flex w-[82%] max-w-xs shrink-0 flex-col overflow-hidden max-md:!rounded-none max-md:!border-y-0 max-md:!border-l-0 pl-[env(safe-area-inset-left)] md:static md:z-auto md:w-64 md:pl-0 ${
           showMobileSidebar ? "mobile-drawer--open" : ""
         }`}
       >
@@ -1661,7 +1663,7 @@ export function ChatLayout() {
           </div>
         </div>
 
-        <div className="cascade flex-1 overflow-y-auto p-2">
+        <div className="cascade flex-1 overflow-y-auto p-2 [overscroll-behavior:contain]">
           <button
             onClick={() => setShowSaved((v) => !v)}
             className={`mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors duration-150 ${
@@ -1850,7 +1852,10 @@ export function ChatLayout() {
       <main className="glass flex min-w-0 flex-1 flex-col overflow-hidden max-md:!rounded-none max-md:!border-0 max-md:!shadow-none">
         {activeChannel ? (
           <>
-            <header className="flex items-center justify-between gap-4 border-b border-[var(--glass-border)] px-4 py-3">
+            <header
+              className="flex items-center justify-between gap-4 border-b border-[var(--glass-border)] px-4 py-3"
+              style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
+            >
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <button
@@ -2212,7 +2217,7 @@ export function ChatLayout() {
                 {searchResults.length === 0 ? (
                   <p className="py-2 text-xs text-[var(--text-dim)]">Brak wyników.</p>
                 ) : (
-                  <ul className="max-h-48 space-y-1 overflow-y-auto">
+                  <ul className="max-h-48 space-y-1 overflow-y-auto [overscroll-behavior:contain]">
                     {searchResults.map((r) => (
                       <li key={r.messageId}>
                         <button
@@ -2235,7 +2240,7 @@ export function ChatLayout() {
                     <div className="mb-1 mt-2 border-t border-[var(--glass-border)] pt-2 text-xs font-medium text-[var(--text-dim)]">
                       Dokumenty ({documentResults.length})
                     </div>
-                    <ul className="max-h-48 space-y-1 overflow-y-auto">
+                    <ul className="max-h-48 space-y-1 overflow-y-auto [overscroll-behavior:contain]">
                       {documentResults.map((d) => (
                         <li key={d.documentId}>
                           <button
@@ -2264,7 +2269,7 @@ export function ChatLayout() {
 
             <div
               ref={scrollRef}
-              className="relative flex-1 overflow-y-auto px-4 py-3"
+              className="relative flex-1 overflow-y-auto px-4 py-3 [overscroll-behavior:contain]"
               aria-live="polite"
               onScroll={handleScrollList}
               onDragOver={(e) => {
@@ -2427,7 +2432,11 @@ export function ChatLayout() {
               )}
             </div>
 
-            <form onSubmit={handleSend} className="border-t border-[var(--glass-border)] p-3">
+            <form
+              onSubmit={handleSend}
+              className="border-t border-[var(--glass-border)] p-3"
+              style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+            >
               {peerKeyChanged ? (
                 <button
                   type="button"
@@ -2476,7 +2485,7 @@ export function ChatLayout() {
                       <button
                         type="button"
                         onClick={() => removePending(p.localId)}
-                        className="ml-1 text-[var(--text-dim)] transition-colors hover:text-[var(--danger)]"
+                        className="-m-1.5 ml-1 p-1.5 text-[var(--text-dim)] transition-colors hover:text-[var(--danger)] touch:-m-2.5 touch:p-2.5"
                         aria-label="Usuń załącznik"
                       >
                         <Icon icon={X} size={13} />
@@ -2892,7 +2901,7 @@ export function ChatLayout() {
                         ? "Kanał ogłoszeniowy — brak uprawnień do pisania"
                         : "Wyślij"
                   }
-                  className="btn-gradient flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_var(--accent-glow)] transition-all duration-150 hover:brightness-[1.06] active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 sm:px-4"
+                  className="btn-gradient flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_var(--accent-glow)] transition-all duration-150 hover:brightness-[1.06] active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 touch:min-h-11 touch:min-w-11 sm:px-4"
                 >
                   <Icon icon={Send} className="sm:hidden" />
                   <span className="hidden sm:inline">Wyślij</span>
@@ -3116,7 +3125,7 @@ export function ChatLayout() {
         createPortal(
           <div className="animate-overlay-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAiSummary(null)}>
             <div
-              className="glass-strong max-h-[70vh] w-full max-w-md overflow-y-auto rounded-2xl p-5 shadow-2xl"
+              className="glass-strong max-h-[70dvh] w-full max-w-md overflow-y-auto rounded-2xl p-5 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mb-3 flex items-center gap-2">

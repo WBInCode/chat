@@ -42,9 +42,12 @@ export function ProfileCard({ orgId, userId, anchor, onClose }: ProfileCardProps
     };
   }, [orgId, userId]);
 
+  // Karta to w-64 = 16rem, czyli 288px przy html{font-size:18px} — nie 256.
+  // innerHeight nie kurczy się na iOS przy otwartej klawiaturze — visualViewport tak.
+  const vh = window.visualViewport?.height ?? window.innerHeight;
   const style = {
-    left: Math.min(anchor.x, window.innerWidth - 280),
-    top: Math.min(anchor.y, window.innerHeight - 260)
+    left: Math.max(8, Math.min(anchor.x, window.innerWidth - 288 - 8)),
+    top: Math.max(8, Math.min(anchor.y, vh - 260 - 8))
   };
 
   return createPortal(

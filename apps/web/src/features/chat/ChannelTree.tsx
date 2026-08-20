@@ -324,7 +324,7 @@ export function ChannelTree({
                   <button
                     onClick={() => onCreateChannel(category.id)}
                     title={`Nowy kanał w kategorii ${category.name}`}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--accent)] group-hover:opacity-100 touch:opacity-100"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--accent)] group-hover:opacity-100 touch:h-11 touch:w-11 touch:opacity-100"
                   >
                     <Plus size={13} />
                   </button>
@@ -334,7 +334,7 @@ export function ChannelTree({
                     onClick={(e) => openMenu(e, { kind: "category", category })}
                     title={`Zarządzaj kategorią ${category.name}`}
                     aria-label={`Zarządzaj kategorią ${category.name}`}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--text)] group-hover:opacity-100 touch:opacity-100"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-dim)] opacity-0 transition-opacity hover:bg-[var(--border)]/40 hover:text-[var(--text)] group-hover:opacity-100 touch:h-11 touch:w-11 touch:opacity-100"
                   >
                     <MoreVertical size={13} />
                   </button>
@@ -511,8 +511,10 @@ function ContextMenu({
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
+    // innerHeight nie kurczy się na iOS przy otwartej klawiaturze — visualViewport tak.
+    const vh = window.visualViewport?.height ?? window.innerHeight;
     const x = Math.min(state.x, window.innerWidth - rect.width - 8);
-    const y = Math.min(state.y, window.innerHeight - rect.height - 8);
+    const y = Math.min(state.y, vh - rect.height - 8);
     setPosition({ x: Math.max(8, x), y: Math.max(8, y) });
   }, [state.x, state.y]);
 

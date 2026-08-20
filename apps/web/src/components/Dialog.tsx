@@ -14,8 +14,12 @@ import { useOknoModalne } from "./oknoModalne.js";
  */
 
 const OVERLAY = "animate-overlay-in fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm";
+// Zakotwiczone blisko góry (nie wycentrowane) na mobile: przy otwartej klawiaturze
+// prawdziwe wycentrowanie liczy się względem pełnego layout viewportu, więc dolna
+// połowa panelu (przyciski Zapisz/Anuluj) ląduje pod klawiaturą. Od md w górę wraca
+// klasyczne centrowanie, tam klawiatura nie zasłania ekranu.
 const PANEL =
-  "animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-[61] w-[26rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-4 p-5";
+  "animate-modal-pop glass-strong fixed left-1/2 top-4 z-[61] w-[26rem] max-w-[92vw] max-h-[calc(100dvh-2rem)] -translate-x-1/2 space-y-4 overflow-y-auto p-5 md:top-1/2 md:-translate-y-1/2";
 const CANCEL_BTN =
   "min-h-9 rounded-lg px-3 py-1.5 text-sm text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--text)] touch:min-h-11";
 const CONFIRM_BTN =

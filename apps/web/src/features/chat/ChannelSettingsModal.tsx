@@ -119,7 +119,7 @@ export function ChannelSettingsModal({
         aria-modal="true"
         aria-label={`Ustawienia kanału ${channel.name ?? ""}`}
         onClick={(e) => e.stopPropagation()}
-        className="flex h-[min(90vh,44rem)] w-full max-w-3xl overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
+        className="flex h-[min(90dvh,44rem)] w-full max-w-3xl overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
       >
         <nav className="w-52 shrink-0 border-r border-[var(--border)] bg-[var(--bg)]/40 p-3">
           <p className="truncate px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-dim)]">

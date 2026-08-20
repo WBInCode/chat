@@ -62,7 +62,7 @@ export function OrgDocumentsModal({ orgId, onOpen, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="Dokumenty organizacji"
-        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 flex h-[min(80vh,34rem)] w-[36rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col p-5"
+        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 flex h-[min(80dvh,34rem)] w-[36rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col p-5"
       >
         <div className="flex items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold">

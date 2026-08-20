@@ -136,7 +136,8 @@ export function EmojiPicker({
     if (!el) return;
     const margin = 8;
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    // innerHeight nie kurczy się na iOS przy otwartej klawiaturze — visualViewport tak.
+    const vh = window.visualViewport?.height ?? window.innerHeight;
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     const left = Math.min(Math.max(anchor.right - w, margin), Math.max(vw - w - margin, margin));
@@ -222,7 +223,7 @@ export function EmojiPicker({
               type="button"
               onClick={() => setActive(cat.id)}
               title={cat.label}
-              className={`rounded-lg px-1.5 py-1 text-base transition-transform hover:scale-110 ${
+              className={`rounded-lg px-1.5 py-1 text-base transition-transform hover:scale-110 touch:min-h-11 touch:min-w-11 ${
                 cat.id === active ? "bg-[var(--accent)]/20" : ""
               }`}
             >
@@ -231,7 +232,7 @@ export function EmojiPicker({
           ))}
         </div>
       )}
-      <div className="max-h-48 overflow-y-auto p-1.5">
+      <div className="max-h-48 overflow-y-auto p-1.5 [overscroll-behavior:contain]">
         {shown.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs text-[var(--text-dim)]">Brak wyników</p>
         ) : (

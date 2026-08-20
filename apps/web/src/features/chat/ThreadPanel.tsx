@@ -82,8 +82,14 @@ export function ThreadPanel({
   }
 
   return (
-    <aside className="glass animate-float-in fixed inset-0 z-40 flex flex-col overflow-hidden md:static md:z-auto md:w-80 md:shrink-0">
-      <div className="flex items-center justify-between border-b border-[var(--glass-border)] px-4 py-3">
+    <aside
+      className="glass animate-float-in fixed inset-0 z-40 flex flex-col overflow-hidden md:static md:z-auto md:w-80 md:shrink-0"
+      style={{ height: "var(--vvh, 100%)" }}
+    >
+      <div
+        className="flex items-center justify-between border-b border-[var(--glass-border)] px-4 py-3"
+        style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
+      >
         <h2 className="text-sm font-semibold">Wątek</h2>
         <button
           onClick={onClose}
@@ -131,7 +137,11 @@ export function ThreadPanel({
         )}
       </div>
 
-      <form onSubmit={handleSend} className="border-t border-[var(--glass-border)] p-3">
+      <form
+        onSubmit={handleSend}
+        className="border-t border-[var(--glass-border)] p-3"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
         <input
           type="text"
           value={draft}

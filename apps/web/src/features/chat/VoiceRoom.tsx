@@ -158,14 +158,14 @@ export function VoiceRoom({ channelId, channelName, myUserId, members, onClose, 
         <button
           onClick={toggleMute}
           title={myMuted ? "Włącz mikrofon" : "Wycisz mikrofon"}
-          className={`flex-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] py-2 transition-all hover:bg-[var(--border)]/40 ${myMuted ? "text-[var(--danger)]" : ""}`}
+          className={`flex-1 touch:min-h-11 rounded-xl border border-[var(--glass-border)] bg-[var(--glass)] py-2 transition-all hover:bg-[var(--border)]/40 ${myMuted ? "text-[var(--danger)]" : ""}`}
         >
           <Icon icon={myMuted ? MicOff : Mic} className="mx-auto" />
         </button>
         <button
           onClick={onClose}
           title="Rozłącz"
-          className="flex-1 rounded-xl bg-[var(--danger)]/90 py-2 text-white transition-all hover:opacity-90"
+          className="flex-1 touch:min-h-11 rounded-xl bg-[var(--danger)]/90 py-2 text-white transition-all hover:opacity-90"
         >
           <Icon icon={PhoneOff} className="mx-auto" />
         </button>

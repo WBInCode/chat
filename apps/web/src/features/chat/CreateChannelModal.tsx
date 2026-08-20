@@ -80,7 +80,7 @@ export function CreateChannelModal({
         role="dialog"
         aria-modal="true"
         aria-label="Utwórz kanał"
-        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 max-h-[88vh] w-[26rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 overflow-y-auto p-5"
+        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 max-h-[88dvh] w-[26rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 overflow-y-auto p-5"
       >
         <h2 className="text-sm font-semibold">Utwórz kanał</h2>
 

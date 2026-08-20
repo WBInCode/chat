@@ -96,7 +96,7 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
           placeholder="Przejdź do kanału, osoby lub uruchom komendę…"
           className="w-full border-b border-[var(--glass-border)] bg-transparent px-4 py-3 text-sm outline-none"
         />
-        <div className="max-h-80 overflow-y-auto p-1.5">
+        <div className="max-h-80 overflow-y-auto p-1.5 [overscroll-behavior:contain]">
           {entries.length === 0 && (
             <p className="px-3 py-2 text-sm text-[var(--text-dim)]">Brak wyników</p>
           )}

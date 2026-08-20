@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { PlatformUserDto, PlatformOrgDto } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { glassButtonGhost, glassButtonPrimary, glassInput } from "../../styles/glass.js";
+import { TableWrap } from "./AdminUi.js";
 
 const ROLE_OPTIONS = ["OWNER", "ADMIN", "HR", "MEMBER"] as const;
 
@@ -110,6 +111,7 @@ export function SuperAdminPanel() {
             </button>
           </div>
         )}
+        <TableWrap minWidth={520}>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--glass-border)] text-left text-xs uppercase tracking-wide text-[var(--text-dim)]">
@@ -130,10 +132,12 @@ export function SuperAdminPanel() {
             ))}
           </tbody>
         </table>
+        </TableWrap>
       </section>
 
       <section className="glass flex flex-col gap-3 p-4">
         <h2 className="text-sm font-semibold">Użytkownicy ({users.length})</h2>
+        <TableWrap minWidth={640}>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--glass-border)] text-left text-xs uppercase tracking-wide text-[var(--text-dim)]">
@@ -227,6 +231,7 @@ export function SuperAdminPanel() {
             ))}
           </tbody>
         </table>
+        </TableWrap>
       </section>
     </div>
   );
