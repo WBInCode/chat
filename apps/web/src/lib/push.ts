@@ -51,6 +51,35 @@ export async function disablePushNotifications(): Promise<void> {
   await subscription.unsubscribe();
 }
 
+/**
+ * Uzgadnia subskrypcję push z serwerem przy starcie aplikacji.
+ *
+ * Przeglądarka co jakiś czas sama rotuje subskrypcję. Backend poprawnie
+ * sprząta martwy endpoint przy 410/404, ale nikt nie zgłaszał nowego, więc
+ * push działał tydzień i po cichu przestawał — a przełącznik w ustawieniach
+ * dalej pokazywał "włączone", bo sprawdza tylko lokalny obiekt.
+ *
+ * Wywołanie jest ciche i bezpieczne: nic nie robi, gdy użytkownik nigdy nie
+ * włączył powiadomień ani nie prosi o żadne uprawnienia.
+ */
+export async function zsynchronizujPush(): Promise<void> {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) return;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    const json = subscription.toJSON();
+    await apiFetch("/me/push-subscribe", {
+      method: "POST",
+      body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys })
+    });
+  } catch {
+    // Push to udogodnienie, nie warunek działania czatu — cisza jest w porządku.
+  }
+}
+
 export async function isPushEnabled(): Promise<boolean> {
   if (!("serviceWorker" in navigator)) return false;
   const registration = await navigator.serviceWorker.getRegistration();

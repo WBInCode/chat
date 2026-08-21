@@ -117,10 +117,22 @@ self.addEventListener("push", (event) => {
       icon: "/icon-192.png",
       badge: "/icon-192.png",
       data: { channelId: payload.channelId, messageId: payload.messageId },
-      tag: payload.channelId // collapse multiple notifications from the same channel
+      tag: payload.channelId, // collapse multiple notifications from the same channel
+      // Bez tego `tag` podmienia istniejące powiadomienie PO CICHU: pierwsza
+      // wiadomość z kanału dawała banner i dźwięk systemowy, a druga i każda
+      // kolejna — nic. Wyglądało to losowo, a było w pełni deterministyczne
+      // i odpowiadało za sporą część zgłoszeń "powiadomienia raz są, raz nie".
+      renotify: true
     })
   );
 });
+
+// Rotację subskrypcji obsługuje strona, nie ten plik: `/me/push-subscribe`
+// wymaga tokenu, który żyje wyłącznie w pamięci karty. Service worker nie ma
+// jak się uwierzytelnić, więc handler `pushsubscriptionchange` mógłby co
+// najwyżej odtworzyć subskrypcję, o której serwer i tak by się nie dowiedział.
+// Synchronizacja siedzi w `lib/push.ts` (`zsynchronizujPush`) i odpala się
+// przy starcie aplikacji.
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();

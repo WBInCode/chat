@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate } from "react-router-dom";
 import type { MessageDto, ModuleKey, ChannelCategoryDto, TaskSearchResult, DocumentSearchResultDto } from "@chatv2/shared";
+import { decydujPowiadomienie, WZMIANKA_ZBIOROWA } from "@chatv2/shared";
 import { formatTaskRef } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { uploadFile, uploadEncryptedFile, isAllowedFile, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
@@ -48,7 +49,10 @@ import {
   type E2eFileRef
 } from "../../lib/e2e.js";
 import { E2eVerifyModal } from "./E2eVerifyModal.js";
-import { playMessageChime, startRing, stopRing } from "../../lib/sound.js";
+import { playMessageChime, playMentionChime, startRing, stopRing } from "../../lib/sound.js";
+import { useNotifyPrefsStore } from "../../stores/notifyPrefs.js";
+import { usePresenceModeStore } from "../../stores/presenceMode.js";
+import { zsynchronizujPush } from "../../lib/push.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
 import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, ShieldAlert, Timer, FileText } from "lucide-react";
@@ -62,6 +66,34 @@ import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
  * zdania nie otwierał podpowiedzi. Grupa 1 to znak poprzedzający, grupa 2 fraza.
  */
 const WYZWALACZ_ZADANIA = /(^|\s)!([\p{L}\d -]{0,40})$/u;
+
+/**
+ * Zbiera stan z magazynów i pyta wspólną regułę, czy zagrać. Sama reguła siedzi
+ * w `@chatv2/shared`, żeby dało się ją sprawdzić testem i żeby istniała jedna
+ * definicja zamiast dwóch rozjeżdżających się.
+ */
+function zagrajPowiadomienie(m: MessageDto) {
+  const me = useAuthStore.getState().user;
+  if (!me) return;
+
+  const chan = useChatStore.getState().channels.find((c) => c.id === m.channelId);
+  const tresc = m.content ?? "";
+
+  const decyzja = decydujPowiadomienie({
+    wlasna: m.authorId === me.id,
+    kanalZnany: !!chan,
+    wyciszony: !!chan?.muted,
+    niePrzeszkadzac: usePresenceModeStore.getState().manual === "dnd",
+    tryb: useNotifyPrefsStore.getState().mode,
+    wzmianka: tresc.includes(`@${me.displayName}`) || WZMIANKA_ZBIOROWA.test(tresc),
+    rozmowaPrywatna: chan?.type === "DM"
+  });
+
+  // Wzmianki i rozmowy prywatne mają własny, wyraźniejszy dźwięk. Był
+  // zdefiniowany od początku, ale nikt go nigdy nie wywoływał.
+  if (decyzja === "wzmianka") playMentionChime();
+  else if (decyzja === "wiadomosc") playMessageChime();
+}
 
 /** True when two dates fall on the same calendar day (local time). */
 function isSameDay(a: Date, b: Date): boolean {
@@ -312,6 +344,15 @@ export function ChatLayout() {
     void apiFetch<{ enabled: boolean }>("/ai/status")
       .then((r) => setAiEnabled(r.enabled))
       .catch(() => setAiEnabled(false));
+
+    // Tryb powiadomień jest potrzebny do decyzji o dźwięku, więc musi żyć poza
+    // ekranem ustawień. Przy błędzie zostaje domyślne "ALL" — lepiej zagrać
+    // za dużo niż wyciszyć komuś czat przez nieudane zapytanie.
+    void apiFetch<{ mode: "ALL" | "MENTIONS" | "NONE" }>("/me/notification-preferences")
+      .then((r) => useNotifyPrefsStore.getState().setMode(r.mode))
+      .catch(() => {});
+
+    void zsynchronizujPush();
   }, []);
 
   // Load per-org module state so the UI hides disabled features (F7-A).
@@ -441,14 +482,7 @@ export function ChatLayout() {
       if (!m.parentId) addMessage(m);
       else incrementReplyCount(m.channelId, m.parentId);
 
-      // Notification ping: skip own messages and muted channels. Reads the
-      // store imperatively (not via the hook) so this handler doesn't need
-      // `user`/`channels` in the effect's dependency array.
-      const me = useAuthStore.getState().user;
-      if (m.authorId !== me?.id) {
-        const chan = useChatStore.getState().channels.find((c) => c.id === m.channelId);
-        if (!chan?.muted) playMessageChime();
-      }
+      zagrajPowiadomienie(m);
     });
     socket.on("message:updated", (m) => updateMessage(m));
     socket.on("message:deleted", ({ channelId, messageId }) =>
