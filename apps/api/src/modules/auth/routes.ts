@@ -7,6 +7,7 @@ import {
 import { createAuthRepo } from "./repo.js";
 import { createAuthService, AuthError } from "./service.js";
 import { parseOrThrow, ValidationError, sendError } from "../../lib/validation.js";
+import { hashToken } from "../../lib/tokens.js";
 import { env } from "../../config/env.js";
 
 export default async function authRoutes(fastify: FastifyInstance) {
@@ -18,14 +19,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
       return sendError(reply, 400, "VALIDATION_ERROR", "Nieprawidłowe dane wejściowe");
     }
     if (error instanceof AuthError) {
-      const status =
-        error.code === "TOTP_REQUIRED"
-          ? 401
-          : error.code === "INVALID_CREDENTIALS" || error.code === "INVALID_TOTP"
-            ? 401
-            : error.code === "EMAIL_TAKEN"
-              ? 409
-              : 400;
+      // Błędy sesji muszą być 401, nie 400: klient odróżnia po statusie
+      // "trzeba się zalogować" od "coś jest nie tak z żądaniem", a w logach
+      // proxy wygasła sesja wyglądała dotąd jak błąd walidacji.
+      const unauthorized = new Set([
+        "TOTP_REQUIRED",
+        "INVALID_CREDENTIALS",
+        "INVALID_TOTP",
+        "INVALID_REFRESH",
+        "SESSION_EXPIRED",
+        "REFRESH_REUSE_DETECTED"
+      ]);
+      const status = unauthorized.has(error.code) ? 401 : error.code === "EMAIL_TAKEN" ? 409 : 400;
       return sendError(reply, status, error.code, error.message);
     }
     throw error;
@@ -94,22 +99,44 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
   );
 
-  fastify.post("/refresh", async (request, reply) => {
-    const refreshToken = request.cookies[service.REFRESH_COOKIE_NAME];
-    if (!refreshToken) {
-      return sendError(reply, 401, "NO_REFRESH_TOKEN", "Brak tokenu odświeżającego");
+  fastify.post(
+    "/refresh",
+    {
+      config: {
+        // Odnawianie sesji dzieliło globalny budżet 300 żądań/min liczony na
+        // adres IP z całym pozostałym ruchem. Całe biuro siedzi za jednym NAT-em,
+        // więc w godzinach szczytu limiter odrzucał ludziom odświeżenie sesji
+        // i wylogowywał ich za cudzy ruch. Klucz to sam token odświeżający,
+        // czyli limit działa na sesję, nie na biuro.
+        rateLimit: {
+          max: 60,
+          timeWindow: "1 minute",
+          // Skrót, nie surowy token: klucz limitera ląduje w nazwie klucza
+          // Redisa, a tam sekret nie ma czego szukać.
+          keyGenerator: (req: { cookies: Record<string, string | undefined>; ip: string }) => {
+            const rt = req.cookies[service.REFRESH_COOKIE_NAME];
+            return rt ? `rt:${hashToken(rt)}` : `ip:${req.ip}`;
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      const refreshToken = request.cookies[service.REFRESH_COOKIE_NAME];
+      if (!refreshToken) {
+        return sendError(reply, 401, "NO_REFRESH_TOKEN", "Brak tokenu odświeżającego");
+      }
+
+      const result = await service.refresh(refreshToken, {
+        userAgent: request.headers["user-agent"] ?? null,
+        ip: request.ip
+      });
+
+      reply.setCookie(service.REFRESH_COOKIE_NAME, result.refreshToken, result.cookieOptions);
+      return reply.send({ accessToken: result.accessToken });
     }
+  );
 
-    const result = await service.refresh(refreshToken, {
-      userAgent: request.headers["user-agent"] ?? null,
-      ip: request.ip
-    });
-
-    reply.setCookie(service.REFRESH_COOKIE_NAME, result.refreshToken, result.cookieOptions);
-    return reply.send({ accessToken: result.accessToken });
-  });
-
-  fastify.post("/logout", { preHandler: fastify.authenticate }, async (request, reply) => {
+  fastify.post("/logout", async (request, reply) => {
     const refreshToken = request.cookies[service.REFRESH_COOKIE_NAME];
     await service.logout(refreshToken, request.user?.sessionId);
     reply.clearCookie(service.REFRESH_COOKIE_NAME, { path: "/api/v1/auth" });

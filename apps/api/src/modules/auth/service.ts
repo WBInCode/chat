@@ -26,6 +26,27 @@ export class AuthError extends Error {
 const REFRESH_COOKIE_NAME = "chatv2_rt";
 const GENERIC_LOGIN_ERROR = "Nieprawidłowy email lub hasło";
 
+/**
+ * Okno tolerancji dla rotacji tokenu odświeżającego.
+ *
+ * Rotacja bez tolerancji zakłada, że klient nigdy nie wyśle dwóch odświeżeń
+ * z tym samym tokenem. To założenie łamie się codziennie: dwie karty, powrót
+ * przeglądarki z "otwórz poprzednie karty", wybudzenie laptopa, F5 w trakcie
+ * trwającego odświeżenia. Drugie żądanie trafiało wtedy w wykrywanie nadużycia
+ * i kasowało całą rodzinę — a że ciasteczko trzymało token martwej rodziny,
+ * każda kolejna próba ginęła tak samo i jedynym wyjściem było ręczne logowanie.
+ *
+ * W oknie tolerancji oddajemy tę samą parę tokenów, którą dostał zwycięzca
+ * wyścigu. Rodzina ma dalej dokładnie jeden żywy token odświeżający, więc
+ * wykrywanie nadużycia poza oknem działa bez zmian.
+ *
+ * Cena: realna kradzież tokenu odtworzona w ciągu tych sekund nie zostanie
+ * wykryta. Bilans wychodzi na plus, bo równocześnie domykamy dziurę, przez
+ * którą unieważniona rodzina autoryzowała żądania jeszcze przez 10 minut.
+ */
+const REFRESH_GRACE_SECONDS = 15;
+const REFRESH_GRACE_PREFIX = "refresh-grace:";
+
 export function createAuthService(fastify: FastifyInstance, repo: AuthRepo) {
   function refreshCookieOptions() {
     const isProd = env.NODE_ENV === "production";
@@ -145,8 +166,24 @@ export function createAuthService(fastify: FastifyInstance, repo: AuthRepo) {
       throw new AuthError("INVALID_REFRESH", "Sesja wygasła, zaloguj się ponownie");
     }
 
-    if (session.revokedAt || session.expiresAt < new Date()) {
-      await repo.revokeSessionFamily(session.familyId);
+    // Naturalne wygaśnięcie to nie kradzież. Wcześniej oba przypadki dzieliły
+    // jedną gałąź, więc człowiek wracający z urlopu dostawał komunikat
+    // o podejrzanej aktywności zamiast zwykłej prośby o zalogowanie.
+    if (session.expiresAt < new Date()) {
+      throw new AuthError("SESSION_EXPIRED", "Sesja wygasła, zaloguj się ponownie");
+    }
+
+    if (session.revokedAt) {
+      const cached = await fastify.redis.get(`${REFRESH_GRACE_PREFIX}${presentedHash}`);
+      if (cached) {
+        const pair = JSON.parse(cached) as { accessToken: string; refreshToken: string };
+        return { ...pair, cookieOptions: refreshCookieOptions() };
+      }
+
+      const revokedIds = await repo.revokeSessionFamily(session.familyId);
+      await Promise.all(
+        revokedIds.map((id) => revokeSession(fastify, id, env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60))
+      );
       throw new AuthError("REFRESH_REUSE_DETECTED", "Wykryto podejrzaną aktywność sesji");
     }
 
@@ -166,18 +203,32 @@ export function createAuthService(fastify: FastifyInstance, repo: AuthRepo) {
 
     const accessToken = await signAccessToken({ sub: session.userId, sid: newSession.id });
 
+    // Kluczem jest skrót STAREGO tokenu, więc odczytać to może wyłącznie ktoś,
+    // kto i tak ten token ma. Wpis znika sam po kilkunastu sekundach.
+    await fastify.redis.set(
+      `${REFRESH_GRACE_PREFIX}${presentedHash}`,
+      JSON.stringify({ accessToken, refreshToken: newRefreshToken }),
+      "EX",
+      REFRESH_GRACE_SECONDS
+    );
+
     return { accessToken, refreshToken: newRefreshToken, cookieOptions: refreshCookieOptions() };
   }
 
   async function logout(refreshToken: string | undefined, sessionId: string | undefined) {
+    // Samo ciasteczko wystarcza do unieważnienia sesji. Wcześniej trasa
+    // wymagała ważnego access tokenu, więc po kwadransie bezczynności
+    // "Wyloguj" zwracało 401 i nie robiło nic — sesja zostawała żywa.
+    let sid = sessionId;
     if (refreshToken) {
       const session = await repo.findSessionByRefreshHash(hashToken(refreshToken));
       if (session) {
         await repo.revokeSession(session.id);
+        sid ??= session.id;
       }
     }
-    if (sessionId) {
-      await revokeSession(fastify, sessionId, env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60);
+    if (sid) {
+      await revokeSession(fastify, sid, env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60);
     }
   }
 

@@ -21,6 +21,23 @@ export function LoginPage() {
   const [needsTotp, setNeedsTotp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const sessionEndReason = useAuthStore((s) => s.sessionEndReason);
+
+  // Dotąd wylogowanie wyglądało jak awaria — nagle pusty formularz, zero
+  // wyjaśnienia. Powód przychodzi ze store'a, ustawiany tam, gdzie sesja
+  // faktycznie się kończy.
+  const sessionNotice =
+    sessionEndReason === "expired"
+      ? "Twoja sesja wygasła. Zaloguj się ponownie, aby wrócić do rozmów."
+      : sessionEndReason === "revoked"
+        ? "Sesja została zakończona na tym urządzeniu. Zaloguj się ponownie."
+        : null;
+
+  const sessionBanner = sessionNotice ? (
+    <p role="status" className="mb-4 rounded-lg bg-[var(--glass)] p-3 text-center text-sm text-[var(--text-dim)]">
+      {sessionNotice}
+    </p>
+  ) : null;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -64,6 +81,7 @@ export function LoginPage() {
             <h1 className="text-brand-gradient text-2xl font-semibold">Zaloguj się</h1>
             <p className="mt-1 text-sm text-[var(--text-dim)]">Dostęp wyłącznie przez WB Platform</p>
           </div>
+          {sessionBanner}
           <a href={HUB_URL} className={`${glassButtonPrimary} block text-center no-underline`}>
             Zaloguj przez WB Platform
           </a>
@@ -137,6 +155,8 @@ export function LoginPage() {
               />
             </div>
           )}
+
+          {sessionBanner}
 
           {error && (
             <p role="alert" className="text-sm text-[var(--danger)]">
