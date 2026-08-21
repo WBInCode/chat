@@ -397,13 +397,17 @@ describe("szablon wiadomości", () => {
     ];
 
     const html = renderDigestHtml("Piotr", channels, 1);
-    // Znaczniki mają zostać tekstem, a nie kodem: brak surowego "<script"
-    // czy "<img", za to obecna postać zneutralizowana. Sam ciąg "onerror="
-    // wolno zostawić, bo po zamianie nawiasów jest zwykłym napisem.
+    // Znaczniki mają zostać tekstem, a nie kodem. Sprawdzamy KONKRETNY ładunek
+    // od użytkownika, a nie obecność znacznika w całym dokumencie: nagłówek
+    // podsumowania zawiera legalne <img> z logo, więc dawne
+    // `not.toContain("<img")` odrzucało poprawnie zescapowany szablon.
+    // Ta wersja jest przy okazji ostrzejsza — pilnuje całego ładunku, nie
+    // samego początku znacznika. Ciąg "onerror=" wolno zostawić, bo po
+    // zamianie nawiasów jest zwykłym napisem.
     expect(html).not.toContain("<script");
-    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<img src=x");
     expect(html).toContain("&lt;script&gt;");
-    expect(html).toContain("&lt;img");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 
   it("escapeHtml zamienia wszystkie znaki o znaczeniu składniowym", () => {
