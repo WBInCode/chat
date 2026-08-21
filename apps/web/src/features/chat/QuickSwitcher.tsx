@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Hash, Lock, User } from "lucide-react";
 import { Icon } from "../../components/Icon.js";
+import { useOknoModalne } from "../../components/oknoModalne.js";
 import type { ChannelItem } from "../../stores/chat.js";
 
 interface MemberLite {
@@ -31,6 +32,7 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useOknoModalne(onClose);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -72,15 +74,20 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
     } else if (e.key === "Enter") {
       e.preventDefault();
       entries[activeIndex]?.onSelect();
-    } else if (e.key === "Escape") {
-      onClose();
     }
+    // Escape obsluguje useOknoModalne — tutaj bylby drugi raz.
   }
 
   return createPortal(
     <>
       <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-modal-pop glass-strong fixed left-1/2 top-24 z-50 w-[28rem] -translate-x-1/2 overflow-hidden">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Szybkie przejście"
+        className="animate-modal-pop glass-strong fixed left-1/2 top-24 z-50 w-[28rem] -translate-x-1/2 overflow-hidden"
+      >
         <input
           ref={inputRef}
           value={query}
@@ -89,7 +96,7 @@ export function QuickSwitcher({ channels, members, onSelectChannel, onSelectMemb
           placeholder="Przejdź do kanału, osoby lub uruchom komendę…"
           className="w-full border-b border-[var(--glass-border)] bg-transparent px-4 py-3 text-sm outline-none"
         />
-        <div className="max-h-80 overflow-y-auto p-1.5">
+        <div className="max-h-80 overflow-y-auto p-1.5 [overscroll-behavior:contain]">
           {entries.length === 0 && (
             <p className="px-3 py-2 text-sm text-[var(--text-dim)]">Brak wyników</p>
           )}

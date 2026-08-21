@@ -40,6 +40,7 @@ export function Avatar({ userId, displayName, url, size = 32, className = "" }: 
         src={url}
         alt={displayName}
         style={style}
+        data-awatar=""
         className={`rounded-full object-cover ring-1 ring-[var(--glass-border)] ${className}`}
       />
     );
@@ -48,6 +49,7 @@ export function Avatar({ userId, displayName, url, size = 32, className = "" }: 
   return (
     <div
       style={{ ...style, backgroundColor: colorForId(userId) }}
+      data-awatar=""
       className={`flex shrink-0 items-center justify-center rounded-full font-semibold text-white ${className}`}
     >
       {initials(displayName)}

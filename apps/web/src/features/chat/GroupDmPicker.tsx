@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { useOknoModalne } from "../../components/oknoModalne.js";
 
 interface OrgMemberLite {
   userId: string;
@@ -15,10 +16,18 @@ interface GroupDmPickerProps {
 
 /** Multi-select picker for starting a group DM with 2+ colleagues. */
 export function GroupDmPicker({ members, selection, onToggle, onClose, onSubmit }: GroupDmPickerProps) {
+  const panelRef = useOknoModalne(onClose);
+
   return createPortal(
     <>
       <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-80 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 p-5">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Nowa grupa"
+        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 w-80 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-3 p-5"
+      >
         <h2 className="text-sm font-semibold">Nowa grupa (2+ osoby)</h2>
         <div className="max-h-64 space-y-1 overflow-y-auto">
           {members.map((m) => (

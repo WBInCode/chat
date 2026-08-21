@@ -1,0 +1,180 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Skórka „Czytelny": nic nie trzeba zgadywać.
+
+   Dla osób, które nie wychowały się na ikonkach i nie mają ochoty sprawdzać
+   metodą prób, co robi mały symbol w rogu. Nie jest to tryb dla
+   niedowidzących — to zwykły interfejs, tylko zbudowany tak, żeby wszystko
+   było widać za pierwszym razem:
+
+   • wszystko o ~11% większe (zmiana `font-size` na :root skaluje cały układ,
+     bo odstępy w Tailwindzie są w rem-ach),
+   • przygaszony tekst przestaje być jasnoszary — kontrast rośnie na tyle,
+     żeby czytało się go bez mrużenia oczu,
+   • przyciski z samą ikoną dostają ramkę i wyglądają jak przyciski, a nie
+     jak ozdoba obok tytułu,
+   • pola dotyku mają co najmniej 44 px, więc trafia się w nie za pierwszym
+     razem także na telefonie.
+
+   Sygnaturą jest zaznaczenie NIE DO PRZEOCZENIA: wybrany kanał to pełne
+   wypełnienie akcentem z białym tekstem. Żadnych 15-procentowych przygaszeń,
+   po których trzeba się domyślać, który kanał jest otwarty.
+   ───────────────────────────────────────────────────────────────────── */
+
+:root[data-skin="czytelny"] {
+  /* Baza to 18 px — tu 20 px, czyli cały interfejs rośnie razem z tekstem. */
+  font-size: 20px;
+
+  --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-body);
+
+  --bg-base: #e9edf3;
+  --glass: #ffffff;
+  --glass-strong: #ffffff;
+  /* Krawędź ma być widoczna — po to jest. */
+  --glass-border: #b4bfcc;
+  --glass-highlight: #ffffff;
+
+  --bg: var(--bg-base);
+  --surface: var(--glass);
+  --border: #c8d1dc;
+  --text: #0f1319;
+  /* Domyślne #5f6877 na białym daje ~5:1. Tu 8,5:1 — przygaszony tekst
+     nadal jest tekstem, a nie szarą sugestią. */
+  --text-dim: #414b58;
+
+  --accent: #1f5bd4;
+  --accent-hi: #17459f;
+  --accent-grad: linear-gradient(0deg, #1f5bd4 0%, #1f5bd4 100%);
+  --accent-glow: rgba(31, 91, 212, 0.18);
+  --accent-ring: rgba(31, 91, 212, 0.4);
+  --accent-2: #0a7a4f;
+  --danger: #bf2233;
+  --warning: #8a5a00;
+
+  --radius-glass: 14px;
+  --shadow-glass:
+    0 1px 2px rgba(15, 19, 25, 0.06),
+    0 6px 16px -8px rgba(15, 19, 25, 0.18);
+}
+
+:root[data-skin="czytelny"].dark,
+:root[data-skin="czytelny"].midnight {
+  --bg-base: #14181e;
+  --glass: #1d232c;
+  --glass-strong: #232a35;
+  --glass-border: #4a5563;
+  --border: #3c4655;
+  --text: #f3f6fa;
+  --text-dim: #bcc6d4;
+
+  --accent: #7fa8ff;
+  --accent-hi: #a3c1ff;
+  --accent-grad: linear-gradient(0deg, #7fa8ff 0%, #7fa8ff 100%);
+  --accent-ring: rgba(127, 168, 255, 0.45);
+  --accent-2: #4cc494;
+  --danger: #ff7b84;
+  --warning: #e5ae4a;
+}
+
+:root[data-skin="czytelny"].midnight {
+  --bg-base: #000000;
+  --glass: #12161c;
+  --glass-strong: #181d25;
+}
+
+/* ── Sygnatura: widać, co jest wybrane ─────────────────────────────── */
+
+:root[data-skin="czytelny"] .nav-active-bar {
+  display: none;
+}
+
+:root[data-skin="czytelny"] .nav-item {
+  border-radius: 10px;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+:root[data-skin="czytelny"] .nav-item:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Pełne wypełnienie zamiast przygaszenia — nie trzeba się domyślać. */
+:root[data-skin="czytelny"] .nav-item[data-aktywny="tak"] {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+:root[data-skin="czytelny"].dark .nav-item[data-aktywny="tak"],
+:root[data-skin="czytelny"].midnight .nav-item[data-aktywny="tak"] {
+  color: #0f1319;
+}
+
+:root[data-skin="czytelny"] .nav-item[data-aktywny="tak"] :is(span, svg) {
+  color: inherit;
+  opacity: 1;
+}
+
+/* ── Przyciski mają wyglądać jak przyciski ─────────────────────────── */
+
+/* Pasek nad rozmową to jedyne miejsce, gdzie sterowanie jest samymi
+   ikonami bez podpisu — gwiazdka, dzwonek, ludzik, zegar. Ramka mówi
+   „to się klika" i porządkuje je w pasek narzędzi.
+
+   Uwaga: NIE używać tu `svg:only-child` do wykrywania przycisków bez
+   podpisu. `:only-child` liczy wyłącznie elementy, więc `<button><Icon/>
+   Zapisane</button>` też się łapie i ramki lądują na nagłówkach sekcji.
+
+   Tylko od 768 px: na telefonie pasek ma trzy pozycje i nie wymaga
+   tłumaczenia, a ramki zabierają szerokość, przez którą tytuł kanału
+   wchodzi pod przycisk menu. */
+@media (min-width: 768px) {
+  :root[data-skin="czytelny"] main.glass > header button:has(svg) {
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 0.3rem 0.4rem;
+    color: var(--text);
+  }
+
+  :root[data-skin="czytelny"] main.glass > header button:has(svg):hover {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: var(--accent);
+  }
+}
+
+/* Palec trafia pewnie dopiero od ~44 px — na telefonie to ważniejsze
+   niż jakakolwiek ozdoba. */
+:root[data-skin="czytelny"] main.glass > header button,
+:root[data-skin="czytelny"] aside.glass .nav-item {
+  min-height: 2.2rem;
+}
+
+/* ── Reszta: mniej niespodzianek ───────────────────────────────────── */
+
+/* Odnośnik ma być rozpoznawalny bez najeżdżania kursorem. */
+:root[data-skin="czytelny"] [id^="message-"] a[href] {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+:root[data-skin="czytelny"] [id^="message-"] {
+  border-radius: 10px;
+  line-height: 1.55;
+}
+
+/* Licznik nieprzeczytanych to najważniejsza liczba w całym oknie. */
+:root[data-skin="czytelny"] .nav-item .btn-gradient {
+  min-width: 1.5rem;
+  padding-inline: 0.45rem;
+  font-size: 0.8rem;
+}
+
+:root[data-skin="czytelny"] :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:root[data-skin="czytelny"] .composer-glow:focus-within {
+  box-shadow: 0 0 0 4px var(--accent-ring);
+}

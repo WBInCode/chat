@@ -7,7 +7,7 @@ import { SettingsPage } from "./features/settings/SettingsPage.js";
 import { AdminPanel } from "./features/admin/AdminPanel.js";
 import { SuperAdminPanel } from "./features/admin/SuperAdminPanel.js";
 import { useAuthStore } from "./stores/auth.js";
-import { apiFetch } from "./lib/api.js";
+import { apiFetch, odtworzSesje } from "./lib/api.js";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -47,6 +47,12 @@ export function App() {
     let cancelled = false;
     void (async () => {
       try {
+        // Najpierw odnowienie sesji, dopiero potem pytanie o użytkownika.
+        // Bez tokenu w pamięci `/auth/me` i tak zwróciłoby 401, więc każde
+        // wejście do aplikacji kosztowało trzy zapytania zamiast dwóch
+        // i zostawiało w logach serwera błąd, który nic nie znaczy.
+        const token = await odtworzSesje();
+        if (!token) return;
         const me = await apiFetch<MeResponse>("/auth/me");
         if (!cancelled) {
           setAuth(useAuthStore.getState().accessToken ?? "", me);

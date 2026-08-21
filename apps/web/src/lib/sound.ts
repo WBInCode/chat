@@ -5,13 +5,58 @@
 // no external asset is downloaded, bundled, or played back. This sidesteps
 // the "royalty-free but still copyrighted" question entirely.
 //
-// Autoplay note: browsers block audio until a user gesture has occurred on
-// the page. By the time any of these fire, the user has already logged in
-// (a click), so the AudioContext can resume without issue; the resume call
-// is still wrapped defensively in case it hasn't.
+// Autoplay: przeglądarka blokuje dźwięk do pierwszego gestu użytkownika.
+// Wcześniej zakładaliśmy, że logowanie zawsze jest takim gestem — to nieprawda.
+// `App.tsx` odtwarza sesję z ciasteczka po cichu, więc po każdym F5, po
+// odzyskaniu karty przez przeglądarkę i po otwarciu zakładki z poprzedniej
+// sesji użytkownik jest zalogowany BEZ ani jednego kliknięcia. Kontekst
+// startował wtedy jako `suspended`, `resume()` był odrzucany, a jego wynik
+// nikt nie sprawdzał — stąd zgłoszenia "raz gra, raz nie".
+//
+// Dodatkowo tony były planowane MIMO zamrożonego kontekstu, na `currentTime`,
+// który stoi. Po pierwszym kliknięciu cała zaległa kolejka odgrywała się
+// naraz jako jeden zniekształcony blip.
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
+
+/** WebKit ma dodatkowy, niestandardowy stan poza specyfikacją. */
+type StanKontekstu = AudioContextState | "interrupted";
+
+function utworzKontekst(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const Ctor =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return null;
+  if (!ctx) ctx = new Ctor();
+  return ctx;
+}
+
+/**
+ * Budzi kontekst, jeśli śpi. Wołane z gestu użytkownika i przy powrocie karty.
+ * Na iOS kontekst wpada też w stan `interrupted` (rozmowa telefoniczna,
+ * blokada ekranu) — warunek sprawdzający wyłącznie `suspended` go pomijał
+ * i dźwięk zostawał martwy aż do przeładowania strony.
+ */
+function obudz() {
+  const c = utworzKontekst();
+  if (!c) return;
+  const stan = c.state as StanKontekstu;
+  if (stan === "running") return;
+  void c.resume().catch(() => {});
+}
+
+if (typeof window !== "undefined") {
+  // Listenery zostają na stałe: kontekst może zostać zamrożony ponownie
+  // (powrót z tła, przerwanie przez rozmowę), więc kolejny gest ma go obudzić.
+  for (const zdarzenie of ["pointerdown", "keydown", "touchstart"]) {
+    window.addEventListener(zdarzenie, obudz, { passive: true });
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") obudz();
+  });
+}
 
 /**
  * Wspólne wzmocnienie wszystkich powiadomień. Dotychczasowe szczyty rzędu 0,15
@@ -20,13 +65,20 @@ let master: GainNode | null = null;
  */
 const GLOSNOSC = 2.4;
 
+/**
+ * Zwraca kontekst WYŁĄCZNIE wtedy, gdy naprawdę gra. Przy zamrożonym zwracamy
+ * `null` i próbujemy obudzić w tle — jeden pominięty dzwonek jest lepszy niż
+ * kolejka tonów zaplanowanych na stojącym zegarze, która potem odgrywa się
+ * naraz jako trzask.
+ */
 function getContext(): AudioContext | null {
-  if (typeof window === "undefined") return null;
-  const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!Ctor) return null;
-  if (!ctx) ctx = new Ctor();
-  if (ctx.state === "suspended") void ctx.resume().catch(() => {});
-  return ctx;
+  const c = utworzKontekst();
+  if (!c) return null;
+  if ((c.state as StanKontekstu) !== "running") {
+    obudz();
+    return null;
+  }
+  return c;
 }
 
 /** Wyjście z ogranicznikiem, żeby podbita głośność nie trzeszczała przy nakładaniu tonów. */
@@ -83,8 +135,10 @@ let ringInterval: ReturnType<typeof setInterval> | null = null;
 /** Classic alternating two-tone ring, repeating until stopRing() is called (incoming voice call). */
 export function startRing() {
   stopRing();
-  const c = getContext();
-  if (!c) return;
+  obudz();
+  // Świadomie NIE przerywamy, gdy kontekst jeszcze śpi: interwał i tak sprawdza
+  // stan przy każdym powtórzeniu, więc dzwonek odezwie się od razu po
+  // przebudzeniu. Wcześniej wyjście w tym miejscu kasowało dzwonek na dobre.
   const ringOnce = () => {
     const ctxNow = getContext();
     if (!ctxNow) return;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
+import { useOknoModalne } from "./oknoModalne.js";
 
 /**
  * Okna dialogowe aplikacji. Zastępują natywne window.prompt i window.confirm,
@@ -12,29 +13,13 @@ import { AlertTriangle } from "lucide-react";
  * potwierdzenia, żeby dało się je obsłużyć z samej klawiatury.
  */
 
-function useDialogChrome(onCancel: () => void) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onCancel();
-      }
-    }
-    // Faza przechwytywania: inaczej Escape najpierw zamknąłby okno pod spodem
-    // (np. ustawienia kanału), zostawiając nasze okno wiszące nad pustką.
-    document.addEventListener("keydown", onKey, true);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey, true);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [onCancel]);
-}
-
 const OVERLAY = "animate-overlay-in fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm";
+// Zakotwiczone blisko góry (nie wycentrowane) na mobile: przy otwartej klawiaturze
+// prawdziwe wycentrowanie liczy się względem pełnego layout viewportu, więc dolna
+// połowa panelu (przyciski Zapisz/Anuluj) ląduje pod klawiaturą. Od md w górę wraca
+// klasyczne centrowanie, tam klawiatura nie zasłania ekranu.
 const PANEL =
-  "animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-[61] w-[26rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 space-y-4 p-5";
+  "animate-modal-pop glass-strong fixed left-1/2 top-4 z-[61] w-[26rem] max-w-[92vw] max-h-[calc(100dvh-2rem)] -translate-x-1/2 space-y-4 overflow-y-auto p-5 md:top-1/2 md:-translate-y-1/2";
 const CANCEL_BTN =
   "min-h-9 rounded-lg px-3 py-1.5 text-sm text-[var(--text-dim)] transition-colors hover:bg-[var(--border)]/40 hover:text-[var(--text)] touch:min-h-11";
 const CONFIRM_BTN =
@@ -69,7 +54,7 @@ export function PromptDialog({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useDialogChrome(onCancel);
+  const panelRef = useOknoModalne(onCancel);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -93,7 +78,7 @@ export function PromptDialog({
   return createPortal(
     <>
       <div className={OVERLAY} onClick={onCancel} />
-      <div className={PANEL} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={panelRef} className={PANEL} role="dialog" aria-modal="true" aria-label={title}>
         <h2 className="text-sm font-semibold text-[var(--text)]">{title}</h2>
 
         <label className="block space-y-1.5 text-sm">
@@ -165,7 +150,7 @@ export function ConfirmDialog({
   const confirmRef = useRef<HTMLButtonElement>(null);
   const phraseRef = useRef<HTMLInputElement>(null);
 
-  useDialogChrome(onCancel);
+  const panelRef = useOknoModalne(onCancel);
 
   useEffect(() => {
     if (requirePhrase) phraseRef.current?.focus();
@@ -189,7 +174,7 @@ export function ConfirmDialog({
   return createPortal(
     <>
       <div className={OVERLAY} onClick={onCancel} />
-      <div className={PANEL} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={panelRef} className={PANEL} role="dialog" aria-modal="true" aria-label={title}>
         <div className="flex items-start gap-3">
           {danger && (
             <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--danger)]/10 text-[var(--danger)]">

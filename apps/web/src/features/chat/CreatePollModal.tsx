@@ -119,7 +119,7 @@ export function CreatePollModal({ onClose, onSubmit }: CreatePollModalProps) {
         role="dialog"
         aria-modal="true"
         aria-label="Nowa ankieta"
-        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[26rem] max-w-[94vw] -translate-x-1/2 -translate-y-1/2 flex-col p-5"
+        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 flex max-h-[88dvh] w-[26rem] max-w-[94vw] -translate-x-1/2 -translate-y-1/2 flex-col p-5"
       >
         <h2 className="flex items-center gap-1.5 text-sm font-semibold">
           <Icon icon={BarChart3} size={15} className="text-[var(--accent)]" /> Nowa ankieta

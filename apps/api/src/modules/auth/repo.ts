@@ -33,11 +33,22 @@ export function createAuthRepo(prisma: PrismaClient) {
       return prisma.session.update({ where: { id }, data: { revokedAt: new Date() } });
     },
 
-    revokeSessionFamily(familyId: string) {
-      return prisma.session.updateMany({
+    /**
+     * Zwraca identyfikatory unieważnionych sesji, żeby wywołujący mógł je
+     * dołożyć do listy odrzuconych w Redisie. Bez tego `authenticate` (który
+     * czyta WYŁĄCZNIE Redis) autoryzował unieważnioną rodzinę jeszcze przez
+     * cały czas życia access tokenu, czyli do 10 minut po wykryciu nadużycia.
+     */
+    async revokeSessionFamily(familyId: string) {
+      const sessions = await prisma.session.findMany({
+        where: { familyId, revokedAt: null },
+        select: { id: true }
+      });
+      await prisma.session.updateMany({
         where: { familyId, revokedAt: null },
         data: { revokedAt: new Date() }
       });
+      return sessions.map((s) => s.id);
     },
 
     setPendingTotpSecret(userId: string, encryptedSecret: string) {

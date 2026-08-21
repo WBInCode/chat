@@ -145,7 +145,7 @@ export function FileAttachment({
               <img
                 src={lightboxUrl}
                 alt={file.name}
-                className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+                className="max-h-[90dvh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
               />
             </div>,
             document.body

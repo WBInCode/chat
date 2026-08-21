@@ -4,6 +4,7 @@ import type { NotificationPreferencesDto } from "@chatv2/shared";
 import { apiFetch } from "../../lib/api.js";
 import { enablePushNotifications, disablePushNotifications, isPushEnabled } from "../../lib/push.js";
 import { glassButtonGhost } from "../../styles/glass.js";
+import { useNotifyPrefsStore } from "../../stores/notifyPrefs.js";
 
 type NotifyMode = "ALL" | "MENTIONS" | "NONE";
 type EmailDigestMode = "OFF" | "MENTIONS" | "ALL";
@@ -40,6 +41,7 @@ export function NotificationSettings() {
   useEffect(() => {
     void apiFetch<NotificationPreferencesDto>("/me/notification-preferences").then((r) => {
       setMode(r.mode);
+      useNotifyPrefsStore.getState().setMode(r.mode);
       setEmailDigest(r.emailDigest);
       setEmailAvailable(r.emailAvailable);
     });
@@ -48,6 +50,9 @@ export function NotificationSettings() {
 
   async function changeMode(next: NotifyMode) {
     setMode(next);
+    // Bez tego zmiana trybu działała dopiero po przeładowaniu strony: dźwięk
+    // czyta wartość ze store'a, nie ze stanu tego ekranu.
+    useNotifyPrefsStore.getState().setMode(next);
     await apiFetch("/me/notification-preferences", { method: "PATCH", body: JSON.stringify({ mode: next }) });
   }
 

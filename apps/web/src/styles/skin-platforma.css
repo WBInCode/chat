@@ -1,0 +1,296 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Skórka „Platforma": czat w języku wizualnym reszty WB Platform.
+
+   Klasyczna skórka jest gęsta i płaska — jeden panel na całą rozmowę,
+   ostre krawędzie, dużo treści na ekranie. Ta jest odwrotnością: miękkie,
+   wypukłe karty na pastelowym płótnie, oddzielone przerwą zamiast kreską.
+
+   Sygnaturą jest zachowanie kanałów: nieaktywny leży płasko, najechany
+   unosi się, a wybrany jest WCIŚNIĘTY w tło. Zaznaczenie jest więc
+   wgłębieniem, nie kolorową plamą — stąd brak paska akcentu z lewej.
+
+   Wszystko wisi na `data-skin="platforma"` na <html>, więc składa się
+   z motywem jasnym/ciemnym i nie dotyka skórki klasycznej.
+   ───────────────────────────────────────────────────────────────────── */
+
+:root[data-skin="platforma"] {
+  --font-body: "Plus Jakarta Sans Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-body);
+
+  --bg-base: #e8ecf7;
+  --glass: #ffffff;
+  --glass-strong: #ffffff;
+  /* Krawędzie prawie nie istnieją — bryłę buduje cień, nie linia. */
+  --glass-border: #e2e8f6;
+  --glass-highlight: #ffffff;
+
+  --bg: var(--bg-base);
+  --surface: var(--glass);
+  --border: #dfe5f4;
+  --text: #1d2333;
+  --text-dim: #6a738a;
+
+  --accent: #3d6df2;
+  --accent-hi: #2b55d4;
+  --accent-glow: rgba(61, 109, 242, 0.22);
+  --accent-ring: rgba(61, 109, 242, 0.3);
+  --accent-2: #12a172;
+  --danger: #dc3b48;
+  --warning: #b5730a;
+
+  --radius-glass: 22px;
+  --radius-control: 14px;
+
+  /* Trzy stany gliny. Wypukłość to cień na dole + rozjaśnienie u góry;
+     wgłębienie to ten sam zabieg odwrócony. */
+  --clay-raised:
+    0 1px 2px rgba(28, 38, 70, 0.05),
+    0 10px 24px -12px rgba(28, 38, 70, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --clay-lift:
+    0 2px 4px rgba(28, 38, 70, 0.06),
+    0 16px 30px -14px rgba(28, 38, 70, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --clay-pressed:
+    inset 0 2px 6px rgba(28, 38, 70, 0.14),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.8);
+
+  --shadow-glass: var(--clay-raised);
+}
+
+/* Ciemny wariant: płótno wpada w granat, a rozjaśnienie u góry karty
+   zastępuje białą krawędź — inaczej wszystko wyglądałoby jak płaskie
+   prostokąty w jednym kolorze. */
+:root[data-skin="platforma"].dark,
+:root[data-skin="platforma"].midnight {
+  --bg-base: #101420;
+  --glass: #1a1f2c;
+  --glass-strong: #202636;
+  --glass-border: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e8ebf3;
+  --text-dim: #98a1b6;
+
+  --accent: #7f9bff;
+  --accent-hi: #9ab0ff;
+
+  --clay-raised:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 12px 26px -14px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --clay-lift:
+    0 2px 6px rgba(0, 0, 0, 0.45),
+    0 18px 34px -16px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --clay-pressed:
+    inset 0 2px 7px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+
+  --shadow-glass: var(--clay-raised);
+}
+
+/* Midnight to tryb oszczędzania energii na OLED — czerń zostaje czernią,
+   ale gliny bez cienia nie ma, więc karty dostają je z powrotem. */
+:root[data-skin="platforma"].midnight {
+  --bg-base: #000000;
+  --glass: #101420;
+  --glass-strong: #151a28;
+}
+
+:root[data-skin="platforma"].midnight .glass,
+:root[data-skin="platforma"].midnight .glass-strong {
+  box-shadow: var(--clay-raised);
+}
+
+/* ── Powierzchnie ──────────────────────────────────────────────────── */
+
+:root[data-skin="platforma"] .glass,
+:root[data-skin="platforma"] .glass-strong {
+  border-radius: var(--radius-glass);
+  box-shadow: var(--clay-raised);
+}
+
+:root[data-skin="platforma"] .glass-strong {
+  box-shadow: var(--clay-lift);
+}
+
+/* ── Rozkład: karty pływają na płótnie ─────────────────────────────── */
+
+@media (min-width: 768px) {
+  :root[data-skin="platforma"] .chat-shell {
+    gap: 1.1rem;
+    padding: 1.1rem;
+  }
+
+  /* Skórka klasyczna trzyma wszystko w dwóch bryłach i rozdziela obszary
+     kreską. Tutaj każdy obszar — nawigacja, stopka, nagłówek rozmowy, jej
+     przebieg, pole pisania — jest samodzielną płytką leżącą na płótnie.
+     To jest ta różnica w układzie: zamiast paneli mamy planszę kafli. */
+  :root[data-skin="platforma"] aside.glass,
+  :root[data-skin="platforma"] main.glass {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    gap: 0.85rem;
+    /* Płytki muszą móc rzucać cień poza obrys rodzica. */
+    overflow: visible;
+  }
+
+  :root[data-skin="platforma"] aside.glass > div,
+  :root[data-skin="platforma"] main.glass > header,
+  :root[data-skin="platforma"] main.glass > form,
+  :root[data-skin="platforma"] main.glass > div:not([data-pasek]) {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-glass);
+    box-shadow: var(--clay-raised);
+  }
+
+  /* Kreski rozdzielające były granicą między obszarami jednej bryły.
+     Teraz granicą jest przerwa, więc kreski są już tylko ozdobą. */
+  :root[data-skin="platforma"] aside.glass > div,
+  :root[data-skin="platforma"] main.glass > header,
+  :root[data-skin="platforma"] main.glass > form {
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-color: var(--glass-border);
+  }
+
+  /* Rodzic nie przycina już zawartości, więc robią to same płytki —
+     inaczej pasek narzędzi nagłówka wychodzi poza swoją kartę. Lista
+     wiadomości i nawigacja są wyjątkiem: mają własne przewijanie. */
+  :root[data-skin="platforma"] aside.glass > div:not(.cascade),
+  :root[data-skin="platforma"] main.glass > header,
+  :root[data-skin="platforma"] main.glass > form {
+    overflow: hidden;
+  }
+
+  :root[data-skin="platforma"] main.glass > header {
+    padding: 0.85rem 1.15rem;
+  }
+
+  :root[data-skin="platforma"] main.glass > form {
+    padding: 0.7rem;
+  }
+
+  :root[data-skin="platforma"] main.glass > div[aria-live="polite"] {
+    padding: 0.9rem 1.15rem;
+  }
+
+  /* Pasek „X pisze…" zostaje na płótnie, w przerwie między płytkami.
+     Jako własna karta byłby 23-pikselowym paskiem udającym panel. */
+  :root[data-skin="platforma"] main.glass > [data-pasek="pisanie"] {
+    padding-left: 1.15rem;
+  }
+}
+
+/* Na telefonie plansza kafli się nie mieści, ale sama idea musi być widoczna
+   — inaczej po przełączeniu skórki zmienia się tylko krój. Rozmowa zostaje
+   pełnoekranowa, a sterowanie (nagłówek i pole pisania) odkleja się od
+   krawędzi i pływa nad płótnem. */
+@media (max-width: 767px) {
+  :root[data-skin="platforma"] main.glass {
+    background: var(--bg-base);
+    gap: 0.55rem;
+    padding: 0.55rem 0;
+  }
+
+  :root[data-skin="platforma"] main.glass > header,
+  :root[data-skin="platforma"] main.glass > form {
+    margin: 0 0.55rem;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    box-shadow: var(--clay-raised);
+    overflow: hidden;
+  }
+
+  :root[data-skin="platforma"] main.glass > div[aria-live="polite"] {
+    background: var(--glass);
+    border-top: 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--glass-border);
+  }
+}
+
+/* ── Nawigacja: sygnatura skórki ───────────────────────────────────── */
+
+/* Pasek akcentu z lewej należy do skórki klasycznej. Tutaj wybór widać
+   po tym, że kafelek jest wciśnięty w tło. */
+:root[data-skin="platforma"] .nav-active-bar {
+  display: none;
+}
+
+:root[data-skin="platforma"] .nav-item {
+  border-radius: 999px;
+  transition:
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+:root[data-skin="platforma"] .nav-item:hover {
+  box-shadow: var(--clay-raised);
+}
+
+/* `.nav-item` w stanie aktywnym niesie z Tailwinda własne tło i obramowanie
+   — nadpisujemy oba. Wybrany kanał dostaje kolor płótna, więc wygląda jak
+   wgniecenie w karcie odsłaniające to, co pod nią leży. */
+:root[data-skin="platforma"] .nav-item[data-aktywny="tak"] {
+  background: var(--bg-base);
+  color: var(--accent-hi);
+  font-weight: 600;
+  box-shadow: var(--clay-pressed);
+}
+
+:root[data-skin="platforma"] .nav-item[data-aktywny="tak"]:hover {
+  box-shadow: var(--clay-pressed);
+}
+
+/* ── Boczny panel ──────────────────────────────────────────────────── */
+
+/* Nagłówki sekcji (KANAŁY, ZESPÓŁ) mają być cichym drogowskazem,
+   nie kolejnym elementem walczącym o uwagę. */
+:root[data-skin="platforma"] aside.glass .uppercase {
+  letter-spacing: 0.14em;
+  opacity: 0.7;
+}
+
+/* ── Wiadomości: oddech zamiast gęstwiny ───────────────────────────── */
+
+/* Bez własnego tła na najechanie — nadpisywałoby podświetlenie wiadomości
+   otwartej z odnośnika i zaznaczenie do przekazania dalej. */
+:root[data-skin="platforma"] [id^="message-"] {
+  border-radius: 16px;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+/* ── Kontrolki ─────────────────────────────────────────────────────── */
+
+/* Glina nie ma idealnych kół — awatary dostają kształt zaokrąglonego
+   kwadratu, tak jak ikony aplikacji w launcherze huba. */
+:root[data-skin="platforma"] [data-awatar] {
+  border-radius: 32%;
+}
+
+:root[data-skin="platforma"] .btn-gradient {
+  border-radius: 999px;
+  box-shadow: var(--clay-raised);
+}
+
+:root[data-skin="platforma"] .composer-glow {
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--bg-base) 55%, var(--glass));
+  box-shadow: var(--clay-pressed);
+}
+
+:root[data-skin="platforma"] .composer-glow:focus-within {
+  background: var(--glass);
+  box-shadow:
+    var(--clay-pressed),
+    0 0 0 3px var(--accent-ring);
+}
+
+:root[data-skin="platforma"] .field-pill {
+  border-radius: 999px;
+}

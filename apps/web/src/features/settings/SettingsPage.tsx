@@ -27,18 +27,27 @@ export function SettingsPage() {
   const [active, setActive] = useState<SectionKey>("profile");
 
   return (
-    <div className="mx-auto max-w-4xl p-4 md:p-6">
-      <div className="mb-5 flex items-center justify-between">
+    // h-full + wewnetrzne przewijanie, tak samo jak AdminPanel. Bez tego cala
+    // strona przewijala sie dokumentem i naglowek z jedynym wyjsciem ("Wroc do
+    // czatu") odjezdzal poza ekran — na telefonie nie dalo sie wyjsc z ustawien
+    // inaczej niz przyciskiem wstecz przegladarki.
+    <div className="mx-auto flex h-full max-w-4xl flex-col p-4 md:p-6">
+      <div
+        className="mb-5 flex shrink-0 items-center justify-between"
+        // viewport-fit=cover wpuszcza tresc pod pasek statusu; reszta aplikacji
+        // kompensuje to w ChatLayout i ThreadPanel, ten ekran byl pominiety.
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <h1 className="text-lg font-semibold">Ustawienia</h1>
         <Link
           to="/"
-          className="flex items-center gap-1.5 text-sm font-medium text-[var(--accent)] transition-colors hover:underline"
+          className="flex min-h-6 items-center gap-1.5 text-sm font-medium text-[var(--accent-hi)] transition-colors hover:underline"
         >
           <Icon icon={ArrowLeft} size={15} /> Wróć do czatu
         </Link>
       </div>
 
-      <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row md:gap-6">
         {/* Section navigation: horizontal chips on mobile, vertical list on desktop. */}
         <nav
           aria-label="Sekcje ustawień"
@@ -62,7 +71,10 @@ export function SettingsPage() {
           ))}
         </nav>
 
-        <div className="min-w-0 flex-1 space-y-6">
+        <div
+          className="min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-contain"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
           {active === "profile" && <ProfileSettings />}
           {active === "appearance" && <AppearanceSettings />}
           {active === "notifications" && <NotificationSettings />}

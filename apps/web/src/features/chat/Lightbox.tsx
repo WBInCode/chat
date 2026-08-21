@@ -115,7 +115,7 @@ export function Lightbox({
           src={url}
           alt={current.name}
           onClick={(e) => e.stopPropagation()}
-          className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+          className="max-h-[90dvh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
         />
       ) : (
         <div className="text-sm text-white/70">Ładowanie…</div>

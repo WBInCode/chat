@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate } from "react-router-dom";
 import type { MessageDto, ModuleKey, ChannelCategoryDto, TaskSearchResult, DocumentSearchResultDto } from "@chatv2/shared";
+import { decydujPowiadomienie, WZMIANKA_ZBIOROWA } from "@chatv2/shared";
 import { formatTaskRef } from "@chatv2/shared";
 import { apiFetch, ApiError } from "../../lib/api.js";
 import { uploadFile, uploadEncryptedFile, isAllowedFile, MAX_FILE_SIZE_BYTES } from "../../lib/upload.js";
@@ -35,6 +36,7 @@ import { ThemeToggle } from "../settings/ThemeToggle.js";
 import { Avatar } from "../../components/Avatar.js";
 import { useAvatarStore } from "../../stores/avatars.js";
 import { useIdlePresence } from "../../lib/idlePresence.js";
+import { useVisualViewportHeight } from "../../hooks/useVisualViewportHeight.js";
 import { parseSearchFilters } from "../../lib/searchFilters.js";
 import { getDraft, setDraft as setDraftPersisted, clearDraft as clearDraftPersisted, hasDraft } from "../../lib/drafts.js";
 import {
@@ -47,7 +49,10 @@ import {
   type E2eFileRef
 } from "../../lib/e2e.js";
 import { E2eVerifyModal } from "./E2eVerifyModal.js";
-import { playMessageChime, startRing, stopRing } from "../../lib/sound.js";
+import { playMessageChime, playMentionChime, startRing, stopRing } from "../../lib/sound.js";
+import { useNotifyPrefsStore } from "../../stores/notifyPrefs.js";
+import { usePresenceModeStore } from "../../stores/presenceMode.js";
+import { zsynchronizujPush } from "../../lib/push.js";
 import { Icon } from "../../components/Icon.js";
 import { glassButtonGhost } from "../../styles/glass.js";
 import { Paperclip, BarChart3, Clock, Star, Bell, BellOff, Users, Pin, Bookmark, X, Plus, Sparkles, Mic, Menu, Send, Search, MoreVertical, Bold, Italic, Code, Link2, Strikethrough, Smile, ChevronDown, Check, Eye, Lock, Hash, Settings, Shield, LogOut, MessageSquare, ArrowDown, ShieldCheck, ShieldAlert, Timer, FileText } from "lucide-react";
@@ -61,6 +66,34 @@ import { BrowseChannelsModal } from "./BrowseChannelsModal.js";
  * zdania nie otwierał podpowiedzi. Grupa 1 to znak poprzedzający, grupa 2 fraza.
  */
 const WYZWALACZ_ZADANIA = /(^|\s)!([\p{L}\d -]{0,40})$/u;
+
+/**
+ * Zbiera stan z magazynów i pyta wspólną regułę, czy zagrać. Sama reguła siedzi
+ * w `@chatv2/shared`, żeby dało się ją sprawdzić testem i żeby istniała jedna
+ * definicja zamiast dwóch rozjeżdżających się.
+ */
+function zagrajPowiadomienie(m: MessageDto) {
+  const me = useAuthStore.getState().user;
+  if (!me) return;
+
+  const chan = useChatStore.getState().channels.find((c) => c.id === m.channelId);
+  const tresc = m.content ?? "";
+
+  const decyzja = decydujPowiadomienie({
+    wlasna: m.authorId === me.id,
+    kanalZnany: !!chan,
+    wyciszony: !!chan?.muted,
+    niePrzeszkadzac: usePresenceModeStore.getState().manual === "dnd",
+    tryb: useNotifyPrefsStore.getState().mode,
+    wzmianka: tresc.includes(`@${me.displayName}`) || WZMIANKA_ZBIOROWA.test(tresc),
+    rozmowaPrywatna: chan?.type === "DM"
+  });
+
+  // Wzmianki i rozmowy prywatne mają własny, wyraźniejszy dźwięk. Był
+  // zdefiniowany od początku, ale nikt go nigdy nie wywoływał.
+  if (decyzja === "wzmianka") playMentionChime();
+  else if (decyzja === "wiadomosc") playMessageChime();
+}
 
 /** True when two dates fall on the same calendar day (local time). */
 function isSameDay(a: Date, b: Date): boolean {
@@ -167,6 +200,7 @@ function presenceDotClass(status: "online" | "away" | "dnd" | "offline" | undefi
 }
 
 export function ChatLayout() {
+  useVisualViewportHeight();
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clear);
   const navigate = useNavigate();
@@ -310,6 +344,15 @@ export function ChatLayout() {
     void apiFetch<{ enabled: boolean }>("/ai/status")
       .then((r) => setAiEnabled(r.enabled))
       .catch(() => setAiEnabled(false));
+
+    // Tryb powiadomień jest potrzebny do decyzji o dźwięku, więc musi żyć poza
+    // ekranem ustawień. Przy błędzie zostaje domyślne "ALL" — lepiej zagrać
+    // za dużo niż wyciszyć komuś czat przez nieudane zapytanie.
+    void apiFetch<{ mode: "ALL" | "MENTIONS" | "NONE" }>("/me/notification-preferences")
+      .then((r) => useNotifyPrefsStore.getState().setMode(r.mode))
+      .catch(() => {});
+
+    void zsynchronizujPush();
   }, []);
 
   // Load per-org module state so the UI hides disabled features (F7-A).
@@ -439,14 +482,7 @@ export function ChatLayout() {
       if (!m.parentId) addMessage(m);
       else incrementReplyCount(m.channelId, m.parentId);
 
-      // Notification ping: skip own messages and muted channels. Reads the
-      // store imperatively (not via the hook) so this handler doesn't need
-      // `user`/`channels` in the effect's dependency array.
-      const me = useAuthStore.getState().user;
-      if (m.authorId !== me?.id) {
-        const chan = useChatStore.getState().channels.find((c) => c.id === m.channelId);
-        if (!chan?.muted) playMessageChime();
-      }
+      zagrajPowiadomienie(m);
     });
     socket.on("message:updated", (m) => updateMessage(m));
     socket.on("message:deleted", ({ channelId, messageId }) =>
@@ -866,7 +902,14 @@ export function ChatLayout() {
     count: channelMessages.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 56,
-    overscan: 10
+    overscan: 10,
+    // Key measured heights by stable message id, not array index: messages
+    // get prepended (older history), spliced (optimistic tempId -> real id
+    // reconciliation) and edited/deleted via WebSocket, all of which shift
+    // what's at a given index. Index-keyed measurement cache then reuses a
+    // stale height for the wrong message, producing wrong translateY offsets
+    // (rows overlapping / stacking) until a full remount clears the cache.
+    getItemKey: (index) => channelMessages[index]!.id
   });
 
   useEffect(() => {
@@ -1583,7 +1626,7 @@ export function ChatLayout() {
 
   // ── render ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full gap-0 p-0 md:gap-3 md:p-3">
+    <div className="chat-shell flex h-full gap-0 p-0 md:gap-3 md:p-3" style={{ height: "var(--vvh, 100%)" }}>
       {wsDisconnected && (
         <div className="fixed left-1/2 top-2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[var(--warning)]/90 px-4 py-1.5 text-xs font-medium text-black shadow-lg">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-black/60" />
@@ -1600,7 +1643,7 @@ export function ChatLayout() {
         onClickCapture={() => {
           if (window.innerWidth < 768) setShowMobileSidebar(false);
         }}
-        className={`mobile-drawer glass flex w-[82%] max-w-xs shrink-0 flex-col overflow-hidden max-md:!rounded-none max-md:!border-y-0 max-md:!border-l-0 md:static md:z-auto md:w-64 ${
+        className={`mobile-drawer glass flex w-[82%] max-w-xs shrink-0 flex-col overflow-hidden max-md:!rounded-none max-md:!border-y-0 max-md:!border-l-0 pl-[env(safe-area-inset-left)] md:static md:z-auto md:w-64 md:pl-0 ${
           showMobileSidebar ? "mobile-drawer--open" : ""
         }`}
       >
@@ -1654,7 +1697,7 @@ export function ChatLayout() {
           </div>
         </div>
 
-        <div className="cascade flex-1 overflow-y-auto p-2">
+        <div className="cascade flex-1 overflow-y-auto p-2 [overscroll-behavior:contain]">
           <button
             onClick={() => setShowSaved((v) => !v)}
             className={`mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors duration-150 ${
@@ -1683,6 +1726,7 @@ export function ChatLayout() {
                   <button
                     key={`fav-${c.id}`}
                     onClick={() => setActiveChannel(c.id)}
+                    data-aktywny={c.id === activeChannelId ? "tak" : undefined}
                     className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
                       c.id === activeChannelId
                         ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent-ring)]"
@@ -1759,6 +1803,7 @@ export function ChatLayout() {
                 <button
                   key={c.id}
                   onClick={() => setActiveChannel(c.id)}
+                  data-aktywny={c.id === activeChannelId ? "tak" : undefined}
                   className={`nav-item flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-all duration-150 ${
                     c.id === activeChannelId
                       ? "bg-[var(--accent)]/15 text-[var(--accent)] shadow-[inset_0_0_0_1px_rgba(91,124,255,0.25)]"
@@ -1841,7 +1886,10 @@ export function ChatLayout() {
       <main className="glass flex min-w-0 flex-1 flex-col overflow-hidden max-md:!rounded-none max-md:!border-0 max-md:!shadow-none">
         {activeChannel ? (
           <>
-            <header className="flex items-center justify-between gap-4 border-b border-[var(--glass-border)] px-4 py-3">
+            <header
+              className="flex items-center justify-between gap-4 border-b border-[var(--glass-border)] px-4 py-3"
+              style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
+            >
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <button
@@ -2203,7 +2251,7 @@ export function ChatLayout() {
                 {searchResults.length === 0 ? (
                   <p className="py-2 text-xs text-[var(--text-dim)]">Brak wyników.</p>
                 ) : (
-                  <ul className="max-h-48 space-y-1 overflow-y-auto">
+                  <ul className="max-h-48 space-y-1 overflow-y-auto [overscroll-behavior:contain]">
                     {searchResults.map((r) => (
                       <li key={r.messageId}>
                         <button
@@ -2226,7 +2274,7 @@ export function ChatLayout() {
                     <div className="mb-1 mt-2 border-t border-[var(--glass-border)] pt-2 text-xs font-medium text-[var(--text-dim)]">
                       Dokumenty ({documentResults.length})
                     </div>
-                    <ul className="max-h-48 space-y-1 overflow-y-auto">
+                    <ul className="max-h-48 space-y-1 overflow-y-auto [overscroll-behavior:contain]">
                       {documentResults.map((d) => (
                         <li key={d.documentId}>
                           <button
@@ -2255,7 +2303,7 @@ export function ChatLayout() {
 
             <div
               ref={scrollRef}
-              className="relative flex-1 overflow-y-auto px-4 py-3"
+              className="relative flex-1 overflow-y-auto px-4 py-3 [overscroll-behavior:contain]"
               aria-live="polite"
               onScroll={handleScrollList}
               onDragOver={(e) => {
@@ -2317,6 +2365,7 @@ export function ChatLayout() {
                 </button>
               )}
               <div
+                data-kolumna="wiadomosci"
                 style={{ height: rowVirtualizer.getTotalSize(), position: "relative", width: "100%" }}
               >
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -2364,7 +2413,7 @@ export function ChatLayout() {
                       {newDay && (
                         <div className="my-2 flex items-center gap-3 px-1 select-none">
                           <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[var(--glass-border)] to-[var(--glass-border)]" />
-                          <span className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-0.5 font-[family-name:var(--font-display)] text-[11px] font-medium tracking-wide text-[var(--text-dim)] backdrop-blur-sm">
+                          <span data-etykieta="dzien" className="rounded-full border border-[var(--glass-border)] bg-[var(--glass)] px-3 py-0.5 font-[family-name:var(--font-display)] text-[11px] font-medium tracking-wide text-[var(--text-dim)] backdrop-blur-sm">
                             {formatDayLabel(new Date(m.createdAt))}
                           </span>
                           <span className="h-px flex-1 bg-gradient-to-l from-transparent via-[var(--glass-border)] to-[var(--glass-border)]" />
@@ -2404,7 +2453,7 @@ export function ChatLayout() {
               </div>
             </div>
 
-            <div className="flex h-5 items-center gap-1.5 px-4 text-xs text-[var(--text-dim)]">
+            <div data-pasek="pisanie" className="flex h-5 items-center gap-1.5 px-4 text-xs text-[var(--text-dim)]">
               {typingNames.length > 0 && (
                 <>
                   <span className="flex gap-0.5">
@@ -2417,7 +2466,11 @@ export function ChatLayout() {
               )}
             </div>
 
-            <form onSubmit={handleSend} className="border-t border-[var(--glass-border)] p-3">
+            <form
+              onSubmit={handleSend}
+              className="border-t border-[var(--glass-border)] p-3"
+              style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+            >
               {peerKeyChanged ? (
                 <button
                   type="button"
@@ -2466,7 +2519,7 @@ export function ChatLayout() {
                       <button
                         type="button"
                         onClick={() => removePending(p.localId)}
-                        className="ml-1 text-[var(--text-dim)] transition-colors hover:text-[var(--danger)]"
+                        className="-m-1.5 ml-1 p-1.5 text-[var(--text-dim)] transition-colors hover:text-[var(--danger)] touch:-m-2.5 touch:p-2.5"
                         aria-label="Usuń załącznik"
                       >
                         <Icon icon={X} size={13} />
@@ -2882,7 +2935,7 @@ export function ChatLayout() {
                         ? "Kanał ogłoszeniowy — brak uprawnień do pisania"
                         : "Wyślij"
                   }
-                  className="btn-gradient flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_var(--accent-glow)] transition-all duration-150 hover:brightness-[1.06] active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 sm:px-4"
+                  className="btn-gradient flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium text-white shadow-[0_4px_16px_var(--accent-glow)] transition-all duration-150 hover:brightness-[1.06] active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 touch:min-h-11 touch:min-w-11 sm:px-4"
                 >
                   <Icon icon={Send} className="sm:hidden" />
                   <span className="hidden sm:inline">Wyślij</span>
@@ -3106,7 +3159,7 @@ export function ChatLayout() {
         createPortal(
           <div className="animate-overlay-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAiSummary(null)}>
             <div
-              className="glass-strong max-h-[70vh] w-full max-w-md overflow-y-auto rounded-2xl p-5 shadow-2xl"
+              className="glass-strong max-h-[70dvh] w-full max-w-md overflow-y-auto rounded-2xl p-5 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mb-3 flex items-center gap-2">

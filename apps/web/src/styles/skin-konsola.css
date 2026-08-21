@@ -1,0 +1,167 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Skórka „Konsola": narzędzie pracy, nie miejsce spotkań.
+
+   Dla kogoś, kto ma trzydzieści kanałów i patrzy w czat cały dzień. Priorytet
+   ma liczba wierszy na ekranie, nie wrażenie. Wszystko jest prostokątem
+   z krawędzią 1 px, nic się nie unosi, nic nie ma cienia — bo cień to
+   piksele wydane na nastrój zamiast na treść.
+
+   Sygnaturą jest zaznaczenie przez INWERSJĘ: aktywny kanał to pełny blok
+   akcentu z tekstem w kolorze tła. Tak zaznacza się wiersz w terminalu.
+
+   Krój: JetBrains Mono na całym obramowaniu interfejsu (nazwy kanałów,
+   godziny, nagłówki), Inter na treści wiadomości — mono czyta się źle
+   przy dłuższych akapitach, a to wciąż ma być czat.
+   ───────────────────────────────────────────────────────────────────── */
+
+:root[data-skin="konsola"] {
+  --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --bg-base: #e7eaec;
+  --glass: #ffffff;
+  --glass-strong: #ffffff;
+  --glass-border: #c9d0d6;
+  --glass-highlight: transparent;
+
+  --bg: var(--bg-base);
+  --surface: var(--glass);
+  --border: #d6dce1;
+  --text: #10161a;
+  --text-dim: #5b686f;
+
+  --accent: #0e7c86;
+  --accent-hi: #0a5b63;
+  --accent-grad: linear-gradient(0deg, #0e7c86 0%, #0e7c86 100%);
+  --accent-glow: transparent;
+  --accent-ring: rgba(14, 124, 134, 0.35);
+  --accent-2: #12805a;
+  --danger: #c02a33;
+  --warning: #9a6a00;
+
+  --radius-glass: 3px;
+  --shadow-glass: none;
+}
+
+:root[data-skin="konsola"].dark,
+:root[data-skin="konsola"].midnight {
+  --bg-base: #0d1117;
+  --glass: #12171e;
+  --glass-strong: #171d26;
+  --glass-border: #262d38;
+  --border: #262d38;
+  --text: #d6dce5;
+  --text-dim: #8592a1;
+
+  --accent: #2db6c0;
+  --accent-hi: #4fd4dd;
+  --accent-grad: linear-gradient(0deg, #2db6c0 0%, #2db6c0 100%);
+  --accent-ring: rgba(45, 182, 192, 0.4);
+  --accent-2: #3fae7d;
+  --danger: #e05561;
+  --warning: #d19a2f;
+}
+
+:root[data-skin="konsola"].midnight {
+  --bg-base: #000000;
+  --glass: #06090d;
+  --glass-strong: #0b0f14;
+}
+
+/* ── Powierzchnie: krawędź zamiast cienia ──────────────────────────── */
+
+:root[data-skin="konsola"] .glass,
+:root[data-skin="konsola"] .glass-strong {
+  border-radius: var(--radius-glass);
+  box-shadow: none;
+}
+
+/* Okna dialogowe to jedyne miejsce, gdzie coś naprawdę leży NAD czymś —
+   zamiast cienia dostają mocniejszą krawędź. */
+:root[data-skin="konsola"] .glass-strong {
+  border-color: var(--accent);
+}
+
+/* ── Gęstość ───────────────────────────────────────────────────────── */
+
+:root[data-skin="konsola"] .nav-item {
+  border-radius: 0;
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  font-family: var(--font-display);
+  font-size: 0.82em;
+  letter-spacing: -0.01em;
+}
+
+:root[data-skin="konsola"] .nav-item:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Sygnatura: zaznaczenie przez inwersję, jak podświetlony wiersz
+   w terminalu. Bez zaokrągleń, bez półprzezroczystości. */
+:root[data-skin="konsola"] .nav-active-bar {
+  display: none;
+}
+
+:root[data-skin="konsola"] .nav-item[data-aktywny="tak"] {
+  background: var(--accent);
+  color: var(--glass);
+  font-weight: 600;
+}
+
+:root[data-skin="konsola"] .nav-item[data-aktywny="tak"] :is(span, svg) {
+  color: inherit;
+}
+
+/* Nagłówki sekcji i godziny przy wiadomościach też idą monospacem —
+   dzięki temu kolumna godzin jest równa i da się ją skanować wzrokiem. */
+:root[data-skin="konsola"] .uppercase,
+:root[data-skin="konsola"] [id^="message-"] [title*=":"] {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-skin="konsola"] [id^="message-"] {
+  border-radius: 0;
+  line-height: 1.4;
+}
+
+/* Nic tu nie jest zaokrąglone, więc data dnia też nie. */
+:root[data-skin="konsola"] [data-etykieta="dzien"] {
+  border-radius: 0;
+}
+
+:root[data-skin="konsola"] main.glass > header {
+  font-family: var(--font-display);
+}
+
+/* ── Kontrolki: kanciaste ──────────────────────────────────────────── */
+
+:root[data-skin="konsola"] [data-awatar] {
+  border-radius: 2px;
+}
+
+:root[data-skin="konsola"] .btn-gradient {
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+:root[data-skin="konsola"] .composer-glow {
+  border-radius: 2px;
+}
+
+/* Przyciski przy polu pisania sa w kodzie pigulkami — tutaj nic nie jest
+   okragle, wiec i one nie moga byc. */
+:root[data-skin="konsola"] main.glass > form button {
+  border-radius: 2px;
+}
+
+:root[data-skin="konsola"] .composer-glow:focus-within {
+  box-shadow: none;
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+:root[data-skin="konsola"] .field-pill {
+  border-radius: 2px;
+}

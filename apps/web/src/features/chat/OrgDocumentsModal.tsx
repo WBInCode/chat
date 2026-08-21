@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, FileText, MessageSquare, Search } from "lucide-react";
 import { apiFetch, ApiError } from "../../lib/api.js";
+import { useOknoModalne } from "../../components/oknoModalne.js";
 
 /**
  * Lista dokumentów ze wszystkich kanałów, do których użytkownik należy.
@@ -39,20 +40,13 @@ export function OrgDocumentsModal({ orgId, onOpen, onClose }: Props) {
   const [dokumenty, setDokumenty] = useState<OrgDocumentDto[] | null>(null);
   const [blad, setBlad] = useState<string | null>(null);
   const [fraza, setFraza] = useState("");
+  const panelRef = useOknoModalne(onClose);
 
   useEffect(() => {
     void apiFetch<OrgDocumentDto[]>(`/orgs/${orgId}/documents`)
       .then(setDokumenty)
       .catch((e) => setBlad(e instanceof ApiError ? e.message : "Nie udało się wczytać dokumentów."));
   }, [orgId]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const widoczne = (dokumenty ?? []).filter((d) => {
     if (!fraza.trim()) return true;
@@ -63,7 +57,13 @@ export function OrgDocumentsModal({ orgId, onOpen, onClose }: Props) {
   return createPortal(
     <>
       <div className="animate-overlay-in fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 flex h-[min(80vh,34rem)] w-[36rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col p-5">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dokumenty organizacji"
+        className="animate-modal-pop glass-strong fixed left-1/2 top-1/2 z-50 flex h-[min(80dvh,34rem)] w-[36rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 flex-col p-5"
+      >
         <div className="flex items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <FileText size={16} /> Dokumenty

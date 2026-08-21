@@ -136,7 +136,7 @@ describe("GET /api/v1/auth/me", () => {
 });
 
 describe("POST /api/v1/auth/refresh — rotation & reuse detection", () => {
-  it("rotates refresh token and detects reuse of a consumed token", async () => {
+  it("w oknie tolerancji powtórka zużytego tokenu oddaje tę samą parę", async () => {
     const login = await app.inject({
       method: "POST",
       url: "/api/v1/auth/login",
@@ -144,7 +144,6 @@ describe("POST /api/v1/auth/refresh — rotation & reuse detection", () => {
     });
     const oldCookie = extractRefreshCookie(login.headers["set-cookie"]);
 
-    // First refresh with the original token — should succeed and rotate.
     const refresh1 = await app.inject({
       method: "POST",
       url: "/api/v1/auth/refresh",
@@ -154,22 +153,66 @@ describe("POST /api/v1/auth/refresh — rotation & reuse detection", () => {
     const newCookie = extractRefreshCookie(refresh1.headers["set-cookie"]);
     expect(newCookie).not.toBe(oldCookie);
 
-    // Replay of the OLD (already consumed) token — reuse detection must fire.
+    // Druga karta wysyła ten sam token ułamek sekundy później. Dostaje tę samą
+    // parę co zwycięzca wyścigu, zamiast wysadzić całą rodzinę sesji.
+    const race = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/refresh",
+      headers: { cookie: oldCookie }
+    });
+    expect(race.statusCode).toBe(200);
+    expect(extractRefreshCookie(race.headers["set-cookie"])).toBe(newCookie);
+
+    // Sesja żyje dalej — token wydany zwycięzcy nadal działa.
+    const afterRace = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/refresh",
+      headers: { cookie: newCookie }
+    });
+    expect(afterRace.statusCode).toBe(200);
+  });
+
+  it("po wygaśnięciu okna tolerancji powtórka kasuje całą rodzinę", async () => {
+    const email = `graceless-${Date.now().toString(36)}@example.com`;
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: { email, password: PASSWORD, displayName: DISPLAY_NAME }
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { email, password: PASSWORD }
+    });
+    const oldCookie = extractRefreshCookie(login.headers["set-cookie"]);
+
+    const refresh1 = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/refresh",
+      headers: { cookie: oldCookie }
+    });
+    expect(refresh1.statusCode).toBe(200);
+    const newCookie = extractRefreshCookie(refresh1.headers["set-cookie"]);
+
+    // Symulacja upływu okna: kasujemy wpis tolerancji, reszta stanu bez zmian.
+    const graceKeys = await app.redis.keys("refresh-grace:*");
+    if (graceKeys.length > 0) await app.redis.del(...graceKeys);
+
     const replay = await app.inject({
       method: "POST",
       url: "/api/v1/auth/refresh",
       headers: { cookie: oldCookie }
     });
-    expect(replay.statusCode).toBe(400);
+    expect(replay.statusCode).toBe(401);
     expect(replay.json().error.code).toBe("REFRESH_REUSE_DETECTED");
 
-    // The whole family is revoked — even the NEW token must now fail.
+    // Cała rodzina unieważniona — nowy token też przestaje działać.
     const afterBreach = await app.inject({
       method: "POST",
       url: "/api/v1/auth/refresh",
       headers: { cookie: newCookie }
     });
-    expect(afterBreach.statusCode).toBe(400);
+    expect(afterBreach.statusCode).toBe(401);
     expect(afterBreach.json().error.code).toBe("REFRESH_REUSE_DETECTED");
   });
 
@@ -211,6 +254,29 @@ describe("POST /api/v1/auth/logout", () => {
       url: "/api/v1/auth/refresh",
       headers: { cookie }
     });
-    expect(refresh.statusCode).toBe(400);
+    expect(refresh.statusCode).toBe(401);
+  });
+
+  it("działa na samym ciasteczku, bez ważnego access tokenu", async () => {
+    const email = `logout-nocookie-${Date.now().toString(36)}@example.com`;
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/register",
+      payload: { email, password: PASSWORD, displayName: DISPLAY_NAME }
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { email, password: PASSWORD }
+    });
+    const cookie = extractRefreshCookie(login.headers["set-cookie"]);
+
+    // Bez nagłówka Authorization — tak wygląda wylogowanie po dłuższej
+    // bezczynności, gdy access token dawno wygasł.
+    const logout = await app.inject({ method: "POST", url: "/api/v1/auth/logout", headers: { cookie } });
+    expect(logout.statusCode).toBe(204);
+
+    const refresh = await app.inject({ method: "POST", url: "/api/v1/auth/refresh", headers: { cookie } });
+    expect(refresh.statusCode).toBe(401);
   });
 });

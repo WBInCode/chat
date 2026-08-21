@@ -1,11 +1,20 @@
-import { useThemeStore, type ThemeMode, type Density } from "../../stores/theme.js";
+import { useThemeStore, type ThemeMode, type Density, type Skin } from "../../stores/theme.js";
 import { glassCard } from "../../styles/glass.js";
+
+const SKIN_OPTIONS: { value: Skin; label: string; hint: string }[] = [
+  { value: "klasyczny", label: "Klasyczny", hint: "Gęsty układ, jeden panel rozmowy" },
+  { value: "platforma", label: "Platforma", hint: "Miękkie kafle na płótnie, jak reszta WB Platform" },
+  { value: "czytelny", label: "Czytelny", hint: "Większy tekst, mocny kontrast, przyciski z ramką" },
+  { value: "konsola", label: "Konsola", hint: "Maksimum wierszy na ekranie, kanciasto i bez cieni" },
+  { value: "papier", label: "Papier", hint: "Bez paneli, sama typografia — do czytania długich wątków" },
+  { value: "nokturn", label: "Nokturn", hint: "Ciepłe barwy do pracy po zmroku, zawsze ciemny" }
+];
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; hint: string }[] = [
   { value: "system", label: "Systemowy", hint: "Podąża za ustawieniem systemu" },
-  { value: "light", label: "Jasny", hint: "Pastelowy liquid glass" },
-  { value: "dark", label: "Ciemny", hint: "Granatowy liquid glass" },
-  { value: "midnight", label: "Midnight", hint: "Czysta czerń OLED, bez rozmyć" }
+  { value: "light", label: "Jasny", hint: "Jasne tło, ciemny tekst" },
+  { value: "dark", label: "Ciemny", hint: "Ciemne tło, jasny tekst" },
+  { value: "midnight", label: "Midnight", hint: "Czysta czerń — oszczędza baterię na ekranach OLED" }
 ];
 
 const DENSITY_OPTIONS: { value: Density; label: string; hint: string }[] = [
@@ -17,15 +26,42 @@ const DENSITY_OPTIONS: { value: Density; label: string; hint: string }[] = [
 export function AppearanceSettings() {
   const mode = useThemeStore((s) => s.mode);
   const density = useThemeStore((s) => s.density);
+  const skin = useThemeStore((s) => s.skin);
   const setMode = useThemeStore((s) => s.setMode);
   const setDensity = useThemeStore((s) => s.setDensity);
+  const setSkin = useThemeStore((s) => s.setSkin);
 
   return (
     <section className={glassCard}>
       <h2 className="mb-3 text-sm font-semibold">Wygląd</h2>
 
       <div className="mb-4">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">Styl interfejsu</p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {SKIN_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setSkin(opt.value)}
+              className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                skin === opt.value
+                  ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                  : "border-[var(--glass-border)] hover:bg-[var(--border)]/40"
+              }`}
+            >
+              <span className="block font-medium">{opt.label}</span>
+              <span className="block text-[11px] text-[var(--text-dim)]">{opt.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-4">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--text-dim)]">Motyw</p>
+        {skin === "nokturn" && (
+          <p className="mb-2 text-[11px] text-[var(--text-dim)]">
+            Nokturn ma własną, zawsze ciemną paletę — wybór poniżej jej nie zmieni.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {THEME_OPTIONS.map((opt) => (
             <button
