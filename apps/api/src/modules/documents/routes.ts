@@ -15,6 +15,9 @@ import {
 import { parseOrThrow, sendError } from "../../lib/validation.js";
 import { assertChannelMember, assertOrgMember, notFound, forbidden, HttpError } from "../../lib/authz.js";
 import { assertModuleEnabled } from "../../lib/modules.js";
+import { sendPushToUser } from "../../lib/push.js";
+import { convertHtmlToPdf } from "../../lib/gotenberg.js";
+import { isOrgEncryptedAtRest } from "../../lib/message-crypto.js";
 import {
   assertNotLockedByOther,
   claimLock,
@@ -22,8 +25,10 @@ import {
   loadDocumentDto,
   maybeSnapshot,
   moveBlock,
+  odbiorcyKomentarza,
   parseBlockData,
   positionAfter,
+  renderujDokumentHtml,
   releaseLock,
   toBlockDto,
   toCsv,
@@ -71,6 +76,67 @@ export default async function documentRoutes(fastify: FastifyInstance) {
       actorId,
       ...(block ? { block } : {})
     });
+  }
+
+  /**
+   * Powiadamia o nowym komentarzu. O tym, kto jest odbiorcą, decyduje
+   * `odbiorcyKomentarza` — tutaj zostaje samo dostarczenie.
+   */
+  async function powiadomOKomentarzu(input: {
+    document: { id: string; title: string; channelId: string; orgId: string; createdBy: string };
+    blockId: string | null;
+    autorId: string;
+    tresc: string;
+  }) {
+    const czlonkowie = await fastify.prisma.channelMember.findMany({
+      where: { channelId: input.document.channelId },
+      include: { user: true }
+    });
+
+    let autorBlokuId: string | null = null;
+    if (input.blockId) {
+      const blok = await fastify.prisma.documentBlock.findUnique({
+        where: { id: input.blockId },
+        select: { updatedById: true }
+      });
+      autorBlokuId = blok?.updatedById ?? null;
+    }
+
+    const odbiorcy = odbiorcyKomentarza({
+      czlonkowie,
+      autorKomentarzaId: input.autorId,
+      autorDokumentuId: input.document.createdBy,
+      autorBlokuId,
+      tresc: input.tresc
+    });
+    if (odbiorcy.length === 0) return;
+
+    const autor = await fastify.prisma.user.findUnique({
+      where: { id: input.autorId },
+      select: { displayName: true }
+    });
+    // Ta sama granica co przy wiadomościach: przy szyfrowaniu bazy treść nie
+    // opuszcza aplikacji, więc na ekran blokady idzie sam fakt komentarza.
+    const ukryjTresc = await isOrgEncryptedAtRest(fastify, input.document.orgId);
+    const podglad = ukryjTresc
+      ? "Nowy komentarz"
+      : input.tresc.length > 120
+        ? `${input.tresc.slice(0, 120)}…`
+        : input.tresc;
+
+    await Promise.all(
+      odbiorcy.map(async (userId) => {
+        // Push przerywa tu i teraz, więc respektuje „nie przeszkadzać".
+        if ((await fastify.redis.get(`presence:${userId}`)) === "dnd") return;
+        await sendPushToUser(fastify, userId, {
+          title: `${autor?.displayName ?? "Ktoś"} skomentował: ${input.document.title}`,
+          body: podglad,
+          channelId: input.document.channelId
+        }).catch((err) =>
+          fastify.log.warn({ err }, "Powiadomienie o komentarzu nie zostało wysłane")
+        );
+      })
+    );
   }
 
   async function broadcastLocks(documentId: string, channelId: string) {
@@ -577,6 +643,15 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     });
 
     await broadcast(documentId, document.channelId, "comments", userId);
+    // Poza transakcją i bez czekania na wynik: nieudane powiadomienie nie może
+    // cofnąć zapisanego już komentarza.
+    void powiadomOKomentarzu({
+      document,
+      blockId: input.blockId ?? null,
+      autorId: userId,
+      tresc: input.body
+    }).catch((err) => fastify.log.warn({ err }, "Powiadomienia o komentarzu nie poszły"));
+
     return reply.status(201).send({
       id: row.id,
       blockId: row.blockId,
@@ -651,5 +726,42 @@ export default async function documentRoutes(fastify: FastifyInstance) {
       .header("Content-Type", "text/csv; charset=utf-8")
       .header("Content-Disposition", `attachment; filename="tabela-${blockId.slice(0, 8)}.csv"`)
       .send(csv);
+  });
+
+  // ── eksport całego dokumentu do PDF ─────────────────────────────────────
+
+  fastify.get("/documents/:documentId/pdf", async (request, reply) => {
+    const { documentId } = request.params as { documentId: string };
+    const { document } = await loadForViewer(documentId, request.user!.id);
+
+    const dto = await loadDocumentDto(fastify, documentId);
+    if (!dto) notFound("Dokument nie istnieje");
+
+    const html = renderujDokumentHtml({
+      title: document.title,
+      icon: document.icon,
+      bloki: dto.blocks
+    });
+
+    let pdf: Buffer;
+    try {
+      pdf = await convertHtmlToPdf(html);
+    } catch (err) {
+      // Gotenberg to osobny kontener — jego awaria nie może wyglądać jak błąd
+      // dokumentu, bo prowadzi to do szukania problemu w zupełnie złym miejscu.
+      fastify.log.warn({ err, documentId }, "Nie udało się wygenerować PDF dokumentu");
+      return sendError(reply, 503, "PDF_UNAVAILABLE", "Usługa generowania PDF jest chwilowo niedostępna");
+    }
+
+    // Nazwa pliku trafia do nagłówka, więc znaki spoza ASCII i cudzysłowy
+    // muszą odpaść — inaczej rozjeżdżają samą składnię nagłówka.
+    const nazwa = document.title.replace(/[^\p{L}\p{N} _-]/gu, "").trim().slice(0, 60) || "dokument";
+    return reply
+      .header("Content-Type", "application/pdf")
+      .header(
+        "Content-Disposition",
+        `attachment; filename="dokument.pdf"; filename*=UTF-8''${encodeURIComponent(`${nazwa}.pdf`)}`
+      )
+      .send(pdf);
   });
 }

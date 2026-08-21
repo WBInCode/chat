@@ -63,6 +63,15 @@ const envSchema = z.object({
   GROQ_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
   AI_DAILY_LIMIT: z.coerce.number().int().positive().default(300),
+  /**
+   * TURN dla rozmów głosowych. Bez `TURN_SECRET` cały mechanizm jest wyłączony
+   * i klient dostaje sam STUN — dokładnie tak, jak działało wcześniej.
+   * Adresy rozdzielone przecinkiem, np. "turn:chat.wb-partners.pl:3478?transport=udp".
+   */
+  TURN_URLS: z.string().optional(),
+  TURN_SECRET: z.string().optional(),
+  /** Jak długo ważne są dane dostępowe wystawiane przeglądarce. */
+  TURN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   // SSO-only: gdy true, lokalna rejestracja i logowanie hasłem są wyłączone —
   // dostęp wyłącznie przez SSO z Hubem (wb-platform).
   AUTH_SSO_ONLY: z.coerce.boolean().default(false)

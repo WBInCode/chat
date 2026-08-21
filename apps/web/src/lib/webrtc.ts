@@ -1,4 +1,5 @@
 import type { AppSocket } from "./socket.js";
+import { apiFetch } from "./api.js";
 
 /**
  * Zero-cost WebRTC P2P mesh manager (F5-E). Each participant opens one
@@ -6,12 +7,15 @@ import type { AppSocket } from "./socket.js";
  * at 4 participants total (see MAX_VOICE_PARTICIPANTS server-side) since a
  * mesh's connection count grows O(n^2) and a paid SFU is out of scope for
  * a 100%-free-tier deployment. Signaling rides the existing Socket.IO
- * connection; STUN is Google's free public server; TURN is optional (env
- * on the client if ever added) and simply omitted when unset — calls will
- * still work for the common NAT cases, just not symmetric-NAT-behind-symmetric-NAT.
+ * connection.
+ *
+ * Konfigurację ICE pobieramy z serwera przy każdym wejściu do rozmowy: dane
+ * dostępowe do TURN są czasowe, więc nie da się ich wpisać na stałe w kod.
+ * Gdy TURN nie jest skonfigurowany, serwer zwraca sam STUN — czyli zachowanie
+ * sprzed jego wprowadzenia.
  */
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+const ICE_ZAPASOWE: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
 export interface VoicePeer {
   userId: string;
@@ -34,6 +38,7 @@ export class VoiceRoomManager {
   private handlers: VoiceRoomHandlers;
   private analyserCleanups = new Map<string, () => void>();
   private muted = false;
+  private iceServers: RTCIceServer[] = ICE_ZAPASOWE;
 
   constructor(socket: AppSocket, channelId: string, handlers: VoiceRoomHandlers = {}) {
     this.socket = socket;
@@ -42,6 +47,14 @@ export class VoiceRoomManager {
   }
 
   async start(): Promise<MediaStream> {
+    // Konfiguracja ICE musi być znana ZANIM powstanie pierwsze połączenie:
+    // `RTCPeerConnection` czyta listę serwerów przy tworzeniu obiektu.
+    // Niepowodzenie nie blokuje rozmowy — zostaje sam STUN, czyli tyle,
+    // ile działało wcześniej.
+    this.iceServers = await apiFetch<{ iceServers: RTCIceServer[] }>("/voice/ice-servers")
+      .then((r) => (r.iceServers.length > 0 ? r.iceServers : ICE_ZAPASOWE))
+      .catch(() => ICE_ZAPASOWE);
+
     this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     this.socket.on("voice:offer", this.handleOffer);
     this.socket.on("voice:answer", this.handleAnswer);
@@ -68,7 +81,7 @@ export class VoiceRoomManager {
   }
 
   private createPeer(userId: string): VoicePeer {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     const peer: VoicePeer = { userId, pc, stream: null, speaking: false };
     this.peers.set(userId, peer);
 
